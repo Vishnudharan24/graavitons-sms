@@ -1,0 +1,163 @@
+.add-achiever {
+    padding: 40px;
+    background-color: #f7f8fc;
+    min-height: 100vh;
+    margin-left: 80px;
+}
+
+.add-achiever-header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.add-achiever-header h2 {
+    color: #2d3748;
+    font-size: 28px;
+    margin: 0;
+    font-weight: 600;
+}
+
+.add-achiever .back-button {
+    padding: 10px 20px;
+    background-color: #5b5fc7;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.add-achiever .back-button:hover {
+    background-color: #4a4fb8;
+    box-shadow: 0 2px 8px rgba(91, 95, 199, 0.3);
+}
+
+/* Form Sections */
+.add-achiever .form-section {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    margin-bottom: 25px;
+    border: 1px solid #e2e8f0;
+}
+
+.add-achiever .form-section h3 {
+    font-size: 18px;
+    color: #2d3748;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #5b5fc7;
+    padding-bottom: 10px;
+    font-weight: 600;
+}
+
+/* Form Grid */
+.add-achiever .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.add-achiever .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.add-achiever .form-group label {
+    font-size: 13px;
+    color: #2d3748;
+    font-weight: 600;
+}
+
+.add-achiever .form-group input,
+.add-achiever .form-group select {
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+
+.add-achiever .form-group input:focus,
+.add-achiever .form-group select:focus {
+    outline: none;
+    border-color: #5b5fc7;
+    box-shadow: 0 0 0 3px rgba(91, 95, 199, 0.1);
+}
+
+.add-achiever .form-group input::placeholder {
+    color: #bdc3c7;
+}
+
+/* Form Actions */
+.add-achiever .form-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: flex-end;
+    margin-top: 30px;
+    padding: 20px 30px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e2e8f0;
+}
+
+.add-achiever .btn-cancel {
+    padding: 12px 30px;
+    background-color: #cbd5e0;
+    color: #2d3748;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.add-achiever .btn-cancel:hover {
+    background-color: #a0aec0;
+}
+
+.add-achiever .btn-submit {
+    padding: 12px 30px;
+    background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+    color: #2d3748;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.add-achiever .btn-submit:hover {
+    background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
+    box-shadow: 0 2px 8px rgba(255, 215, 0, 0.4);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .add-achiever {
+        padding: 24px 16px;
+        margin-left: 0;
+    }
+
+    .add-achiever .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .add-achiever .form-actions {
+        flex-direction: column;
+    }
+
+    .add-achiever .btn-cancel,
+    .add-achiever .btn-submit {
+        width: 100%;
+    }
+}

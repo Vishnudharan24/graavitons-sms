@@ -1,0 +1,171 @@
+/* Analysis Common Styles */
+.subjectwise-analysis,
+.branchwise-analysis,
+.individual-analysis {
+    padding: 0;
+}
+
+/* Statistics Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.stat-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 25px;
+    border-radius: 12px;
+    color: white;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.stat-card h4 {
+    margin: 0 0 20px 0;
+    font-size: 20px;
+    font-weight: 600;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+    padding-bottom: 10px;
+}
+
+.stat-values {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+.stat-values .stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.stat-values .stat-label {
+    font-size: 12px;
+    opacity: 0.9;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-values .stat-value {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.stat-values .stat-value.top {
+    color: #00ff88;
+}
+
+.stat-values .stat-value.low {
+    color: #ffaa00;
+}
+
+/* Branch Card Specific */
+.branch-card {
+    background: linear-gradient(135deg, #5b5fc7 0%, #764ba2 100%);
+}
+
+/* Student Info Card */
+.student-info-card {
+    display: flex;
+    gap: 25px;
+    align-items: center;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+}
+
+.student-photo {
+    flex-shrink: 0;
+}
+
+.student-photo img {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 4px solid #5b5fc7;
+}
+
+.student-details h4 {
+    margin: 0 0 10px 0;
+    font-size: 22px;
+    color: #2d3748;
+}
+
+.student-details p {
+    margin: 5px 0;
+    color: #4a5568;
+    font-size: 14px;
+}
+
+/* Marks Table Enhancements */
+.marks-table {
+    overflow-x: auto;
+}
+
+.marks-table table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+}
+
+.marks-table thead {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.marks-table th {
+    padding: 15px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.marks-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 14px;
+    color: #2d3748;
+}
+
+.marks-table tbody tr:hover {
+    background: #f7fafc;
+}
+
+.marks-table .exam-name,
+.marks-table .student-name {
+    font-weight: 600;
+    color: #5b5fc7;
+}
+
+.marks-table .top-score {
+    color: #48bb78;
+    font-weight: 600;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .student-info-card {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .stat-values {
+        grid-template-columns: 1fr;
+    }
+}

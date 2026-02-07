@@ -1,0 +1,108 @@
+.achievers-section {
+    padding: 40px 24px;
+    background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+    min-height: 100vh;
+}
+
+.achievers-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 40px;
+    position: relative;
+    gap: 20px;
+}
+
+.achievers-header .header-content {
+    flex: 1;
+    text-align: center;
+}
+
+.achievers-header .back-button {
+    position: static;
+    padding: 10px 20px;
+    background-color: #5b5fc7;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.achievers-header .back-button:hover {
+    background-color: #4a4fb8;
+    box-shadow: 0 2px 8px rgba(91, 95, 199, 0.3);
+}
+
+.add-achiever-btn {
+    padding: 10px 24px;
+    background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+    color: #2d3748;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.add-achiever-btn:hover {
+    background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
+    box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
+    transform: translateY(-1px);
+}
+
+.achievers-header h2 {
+    font-size: 32px;
+    font-weight: 700;
+    color: #2d3748;
+    margin: 0 0 12px 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.achievers-header p {
+    font-size: 16px;
+    color: #718096;
+    margin: 0;
+}
+
+.achievers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 30px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .achievers-section {
+        padding: 24px 16px;
+    }
+
+    .achievers-header h2 {
+        font-size: 24px;
+    }
+
+    .achievers-header p {
+        font-size: 14px;
+    }
+
+    .achievers-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .achievers-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
