@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import AnalysisFilters from './AnalysisFilters';
 import './Analysis.css';
+
+const API_BASE = 'http://localhost:8000';
 
 const SubjectwiseAnalysis = () => {
     const [filters, setFilters] = useState({
@@ -13,81 +15,105 @@ const SubjectwiseAnalysis = () => {
         toDate: ''
     });
 
-    // Sample data with metadata - would come from API in real implementation
-    const allStudentData = [
-        { student: 'Rajesh Kumar', admissionNo: '2024001', grade: '12th', batch: 'NEET 2024-25', physics: 85, chemistry: 88, biology: 90, mathematics: 87 },
-        { student: 'Priya Sharma', admissionNo: '2024002', grade: '12th', batch: 'NEET 2024-25', physics: 78, chemistry: 82, biology: 85, mathematics: 80 },
-        { student: 'Amit Patel', admissionNo: '2024003', grade: '11th', batch: 'JEE 2024-25', physics: 92, chemistry: 89, biology: 88, mathematics: 94 },
-        { student: 'Sneha Reddy', admissionNo: '2024004', grade: '12th', batch: 'NEET 2024-25', physics: 88, chemistry: 91, biology: 93, mathematics: 86 },
-        { student: 'Karthik Iyer', admissionNo: '2024005', grade: '11th', batch: 'JEE 2024-25', physics: 75, chemistry: 78, biology: 80, mathematics: 77 },
-        { student: 'Deepa Nair', admissionNo: '2024006', grade: '12th', batch: 'NEET 2024-25', physics: 82, chemistry: 85, biology: 88, mathematics: 83 }
-    ];
+    const [analysisData, setAnalysisData] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
-    // Filter data based on selected filters
-    const filteredData = allStudentData.filter(student => {
-        if (filters.grade && student.grade !== filters.grade) return false;
-        if (filters.admissionNumber && !student.admissionNo.toLowerCase().includes(filters.admissionNumber.toLowerCase())) return false;
-        if (filters.batch && student.batch !== filters.batch) return false;
-        return true;
-    });
+    const fetchAnalysis = useCallback(async () => {
+        try {
+            setLoading(true);
+            setError('');
 
-    // Get data for display (filter by subject if selected)
-    const subjectwiseData = filteredData.map(s => {
-        if (filters.subject) {
-            const subjectKey = filters.subject.toLowerCase();
-            return {
-                student: s.student,
-                [subjectKey]: s[subjectKey]
-            };
+            const params = new URLSearchParams();
+            if (filters.grade) params.append('grade', filters.grade);
+            if (filters.admissionNumber) params.append('admission_number', filters.admissionNumber);
+            if (filters.batch) params.append('batch_id', filters.batch);
+            if (filters.subject) params.append('subject', filters.subject);
+            if (filters.fromDate) params.append('from_date', filters.fromDate);
+            if (filters.toDate) params.append('to_date', filters.toDate);
+
+            const response = await fetch(`${API_BASE}/api/analysis/subjectwise?${params.toString()}`);
+            if (!response.ok) throw new Error('Failed to fetch analysis data');
+
+            const data = await response.json();
+            setAnalysisData(data);
+        } catch (err) {
+            setError(err.message);
+            console.error('Error fetching subjectwise analysis:', err);
+        } finally {
+            setLoading(false);
         }
-        return {
-            student: s.student,
-            physics: s.physics,
-            chemistry: s.chemistry,
-            biology: s.biology,
-            mathematics: s.mathematics
-        };
-    });
+    }, [filters]);
 
-    // Calculate statistics based on filtered data
-    const calculateStats = () => {
-        if (filteredData.length === 0) {
-            return {
-                physics: { average: 0, topScore: 0, lowest: 0 },
-                chemistry: { average: 0, topScore: 0, lowest: 0 },
-                biology: { average: 0, topScore: 0, lowest: 0 },
-                mathematics: { average: 0, topScore: 0, lowest: 0 }
-            };
-        }
-
-        const subjects = ['physics', 'chemistry', 'biology', 'mathematics'];
-        const stats = {};
-
-        subjects.forEach(subject => {
-            const scores = filteredData.map(s => s[subject]);
-            stats[subject] = {
-                average: (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1),
-                topScore: Math.max(...scores),
-                lowest: Math.min(...scores)
-            };
-        });
-
-        return stats;
-    };
-
-    const subjectStats = filters.subject
-        ? { [filters.subject.toLowerCase()]: calculateStats()[filters.subject.toLowerCase()] }
-        : calculateStats();
+    // Fetch on mount
+    useEffect(() => {
+        fetchAnalysis();
+    }, []);
 
     const handleFilterChange = (field, value) => {
         setFilters(prev => ({ ...prev, [field]: value }));
     };
+
+    // Build chart data from API response
+    const buildChartData = () => {
+        if (!analysisData || !analysisData.students) return [];
+
+        return analysisData.students.map(student => {
+            const chartEntry = { student: student.student_name };
+
+            // Add daily test averages per subject
+            if (student.daily_tests) {
+                Object.entries(student.daily_tests).forEach(([subject, data]) => {
+                    const avg = data.count > 0 ? (data.total_marks / data.count) : 0;
+                    chartEntry[subject.toLowerCase()] = Math.round(avg);
+                });
+            }
+
+            // Add mock test averages if available
+            if (student.mock_averages) {
+                if (!chartEntry.maths && !chartEntry.mathematics) chartEntry.mathematics = student.mock_averages.maths;
+                if (!chartEntry.physics) chartEntry.physics = student.mock_averages.physics;
+                if (!chartEntry.chemistry) chartEntry.chemistry = student.mock_averages.chemistry;
+                if (!chartEntry.biology) chartEntry.biology = student.mock_averages.biology;
+            }
+
+            return chartEntry;
+        });
+    };
+
+    // Get all subjects that appear in the data
+    const getSubjectKeys = () => {
+        const keys = new Set();
+        if (!analysisData || !analysisData.students) return [];
+
+        analysisData.students.forEach(student => {
+            if (student.daily_tests) {
+                Object.keys(student.daily_tests).forEach(s => keys.add(s.toLowerCase()));
+            }
+            if (student.mock_averages) {
+                Object.keys(student.mock_averages).forEach(s => keys.add(s));
+            }
+        });
+        return Array.from(keys);
+    };
+
+    const subjectColors = {
+        physics: '#FF6B9D',
+        chemistry: '#4A90E2',
+        biology: '#00D9C0',
+        mathematics: '#FFA500',
+        maths: '#FFA500'
+    };
+
+    const chartData = buildChartData();
+    const subjectKeys = getSubjectKeys();
 
     return (
         <div className="subjectwise-analysis">
             <AnalysisFilters
                 filters={filters}
                 onFilterChange={handleFilterChange}
+                onApplyFilters={fetchAnalysis}
                 showFilters={{
                     grade: true,
                     admissionNumber: true,
@@ -100,80 +126,128 @@ const SubjectwiseAnalysis = () => {
                 }}
             />
 
-            {/* Statistics Cards */}
-            <div className="stats-grid">
-                {Object.entries(subjectStats).map(([subject, stats]) => (
-                    <div key={subject} className="stat-card">
-                        <h4>{subject.charAt(0).toUpperCase() + subject.slice(1)}</h4>
-                        <div className="stat-values">
-                            <div className="stat-item">
-                                <span className="stat-label">Average</span>
-                                <span className="stat-value">{stats.average}%</span>
-                            </div>
-                            <div className="stat-item">
-                                <span className="stat-label">Top Score</span>
-                                <span className="stat-value top">{stats.topScore}%</span>
-                            </div>
-                            <div className="stat-item">
-                                <span className="stat-label">Lowest</span>
-                                <span className="stat-value low">{stats.lowest}%</span>
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            {/* Performance Chart */}
-            <div className="analysis-section">
-                <h3>Student Performance Comparison</h3>
-                <ResponsiveContainer width="100%" height={400}>
-                    <BarChart data={subjectwiseData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="student" angle={-45} textAnchor="end" height={100} />
-                        <YAxis domain={[0, 100]} />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="physics" fill="#FF6B9D" name="Physics" />
-                        <Bar dataKey="chemistry" fill="#4A90E2" name="Chemistry" />
-                        <Bar dataKey="biology" fill="#00D9C0" name="Biology" />
-                        <Bar dataKey="mathematics" fill="#FFA500" name="Mathematics" />
-                    </BarChart>
-                </ResponsiveContainer>
-            </div>
-
-            {/* Detailed Table */}
-            <div className="analysis-section">
-                <h3>Detailed Marks</h3>
-                <div className="marks-table">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Student Name</th>
-                                <th>Physics</th>
-                                <th>Chemistry</th>
-                                <th>Biology</th>
-                                <th>Mathematics</th>
-                                <th>Average</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {subjectwiseData.map((student, index) => {
-                                const avg = ((student.physics + student.chemistry + student.biology + student.mathematics) / 4).toFixed(1);
-                                return (
-                                    <tr key={index}>
-                                        <td className="student-name">{student.student}</td>
-                                        <td>{student.physics}</td>
-                                        <td>{student.chemistry}</td>
-                                        <td>{student.biology}</td>
-                                        <td>{student.mathematics}</td>
-                                        <td><strong>{avg}</strong></td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+            {loading && (
+                <div className="analysis-loading">
+                    <div className="loading-spinner"></div>
+                    <p>Loading analysis data...</p>
                 </div>
-            </div>
+            )}
+
+            {error && (
+                <div className="analysis-error">
+                    <p>⚠️ {error}</p>
+                    <button onClick={fetchAnalysis}>Retry</button>
+                </div>
+            )}
+
+            {!loading && !error && analysisData && (
+                <>
+                    {/* Subject Statistics Cards */}
+                    {analysisData.subject_stats && Object.keys(analysisData.subject_stats).length > 0 && (
+                        <div className="stats-grid">
+                            {Object.entries(analysisData.subject_stats).map(([subject, stats]) => (
+                                <div key={subject} className="stat-card">
+                                    <h4>{subject.charAt(0).toUpperCase() + subject.slice(1)}</h4>
+                                    <div className="stat-values">
+                                        <div className="stat-item">
+                                            <span className="stat-label">Average</span>
+                                            <span className="stat-value">{stats.average}</span>
+                                        </div>
+                                        <div className="stat-item">
+                                            <span className="stat-label">Top Score</span>
+                                            <span className="stat-value top">{stats.top_score}</span>
+                                        </div>
+                                        <div className="stat-item">
+                                            <span className="stat-label">Lowest</span>
+                                            <span className="stat-value low">{stats.lowest}</span>
+                                        </div>
+                                        <div className="stat-item">
+                                            <span className="stat-label">Tests</span>
+                                            <span className="stat-value">{stats.total_tests}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Performance Chart */}
+                    {chartData.length > 0 && (
+                        <div className="analysis-section">
+                            <h3>📊 Student Performance Comparison</h3>
+                            <ResponsiveContainer width="100%" height={400}>
+                                <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="student" angle={-45} textAnchor="end" height={100} interval={0} />
+                                    <YAxis />
+                                    <Tooltip />
+                                    <Legend />
+                                    {subjectKeys.map(key => (
+                                        <Bar
+                                            key={key}
+                                            dataKey={key}
+                                            fill={subjectColors[key] || '#8884d8'}
+                                            name={key.charAt(0).toUpperCase() + key.slice(1)}
+                                        />
+                                    ))}
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    )}
+
+                    {/* Detailed Table */}
+                    <div className="analysis-section">
+                        <h3>📋 Detailed Student Marks</h3>
+                        {analysisData.students && analysisData.students.length > 0 ? (
+                            <div className="marks-table">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Admission No</th>
+                                            <th>Student Name</th>
+                                            <th>Grade</th>
+                                            <th>Batch</th>
+                                            {subjectKeys.map(key => (
+                                                <th key={key}>{key.charAt(0).toUpperCase() + key.slice(1)}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {analysisData.students.map((student, index) => {
+                                            const row = chartData.find(d => d.student === student.student_name) || {};
+                                            return (
+                                                <tr key={index}>
+                                                    <td>{student.student_id}</td>
+                                                    <td className="student-name">{student.student_name}</td>
+                                                    <td>{student.grade || '-'}</td>
+                                                    <td>{student.batch || '-'}</td>
+                                                    {subjectKeys.map(key => (
+                                                        <td key={key}>{row[key] !== undefined ? row[key] : '-'}</td>
+                                                    ))}
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="no-data">
+                                <p>📭 No data found for the selected filters. Try adjusting your filter criteria.</p>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="analysis-summary">
+                        <span>Total Students: <strong>{analysisData.total_students || 0}</strong></span>
+                    </div>
+                </>
+            )}
+
+            {!loading && !error && !analysisData && (
+                <div className="no-data">
+                    <p>Click "Apply Filters" to load analysis data.</p>
+                </div>
+            )}
         </div>
     );
 };

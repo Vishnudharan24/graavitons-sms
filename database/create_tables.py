@@ -25,6 +25,7 @@ def create_tables():
         # Drop tables if they exist (in reverse order due to foreign keys)
         print("\nDropping existing tables (if any)...")
         cursor.execute("""
+            DROP TABLE IF EXISTS feedback CASCADE;
             DROP TABLE IF EXISTS achievers CASCADE;
             DROP TABLE IF EXISTS mock_test CASCADE;
             DROP TABLE IF EXISTS daily_test CASCADE;
@@ -221,6 +222,22 @@ def create_tables():
                 biology_unit_names TEXT[],
                 physics_unit_names TEXT[],
                 total_marks INT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        # Create feedback table
+        print("Creating feedback table...")
+        cursor.execute("""
+            CREATE TABLE feedback (
+                feedback_id SERIAL PRIMARY KEY,
+                student_id VARCHAR(50) REFERENCES student(student_id) ON DELETE CASCADE,
+                feedback_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                teacher_feedback TEXT,
+                suggestions TEXT,
+                academic_director_signature VARCHAR(255),
+                student_signature VARCHAR(255),
+                parent_signature VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)

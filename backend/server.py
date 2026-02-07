@@ -25,6 +25,7 @@ app.add_middleware(
 from api.batch import app as batch_app
 from api.student import app as student_app
 from api.exam import app as exam_app
+from api.analysis import app as analysis_app
 
 # Mount the routes from sub-applications
 for route in batch_app.routes:
@@ -34,6 +35,9 @@ for route in student_app.routes:
     app.router.routes.append(route)
 
 for route in exam_app.routes:
+    app.router.routes.append(route)
+
+for route in analysis_app.routes:
     app.router.routes.append(route)
 
 @app.get("/")
@@ -52,6 +56,13 @@ async def root():
             "mock_test_template": "GET /api/exam/template/mock-test/{batch_id}",
             "student_daily_tests": "GET /api/exam/daily-test/student/{student_id}",
             "student_mock_tests": "GET /api/exam/mock-test/student/{student_id}",
+            "analysis_filter_options": "GET /api/analysis/filter-options",
+            "analysis_subjectwise": "GET /api/analysis/subjectwise",
+            "analysis_branchwise": "GET /api/analysis/branchwise",
+            "analysis_individual_students": "GET /api/analysis/individual/students",
+            "analysis_individual": "GET /api/analysis/individual/{student_id}",
+            "feedback_create": "POST /api/analysis/feedback",
+            "feedback_get": "GET /api/analysis/feedback/{student_id}",
             "docs": "/docs"
         }
     }

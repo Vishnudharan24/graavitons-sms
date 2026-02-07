@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import AnalysisFilters from './AnalysisFilters';
 import './Analysis.css';
+
+const API_BASE = 'http://localhost:8000';
 
 const IndividualAnalysis = () => {
     const [filters, setFilters] = useState({
@@ -11,117 +13,196 @@ const IndividualAnalysis = () => {
         batch: ''
     });
 
-    const [selectedStudent, setSelectedStudent] = useState(null);
+    const [studentsList, setStudentsList] = useState([]);
+    const [selectedStudentId, setSelectedStudentId] = useState('');
+    const [studentData, setStudentData] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [studentsLoading, setStudentsLoading] = useState(false);
+    const [error, setError] = useState('');
 
-    // Sample student database
-    const allStudents = [
-        {
-            id: 1,
-            name: 'Rajesh Kumar',
-            admissionNo: '2024001',
-            course: 'NEET Preparation',
-            branch: 'Medical',
-            batch: 'NEET 2024-25',
-            grade: '12th',
-            photo: 'https://via.placeholder.com/100',
-            dailyTests: [
-                { subject: 'Physics', unit: 'Thermodynamics', test1: 25, test2: 28, test3: 27, classAvg: 22, topScore: 30 },
-                { subject: 'Chemistry', unit: 'Organic Chemistry', test1: 28, test2: 29, test3: 30, classAvg: 24, topScore: 30 },
-                { subject: 'Biology', unit: 'Cell Biology', test1: 27, test2: 29, test3: 28, classAvg: 25, topScore: 30 },
-                { subject: 'Mathematics', unit: 'Calculus', test1: 24, test2: 26, test3: 28, classAvg: 23, topScore: 30 }
-            ],
-            mockTests: [
-                { exam: 'Mock Test 1', physics: 85, chemistry: 88, biology: 90, mathematics: 82, total: 345 },
-                { exam: 'Mock Test 2', physics: 88, chemistry: 90, biology: 92, mathematics: 85, total: 355 },
-                { exam: 'Mock Test 3', physics: 90, chemistry: 92, biology: 94, mathematics: 88, total: 364 }
-            ]
-        },
-        {
-            id: 2,
-            name: 'Priya Sharma',
-            admissionNo: '2024002',
-            course: 'NEET Preparation',
-            branch: 'Medical',
-            batch: 'NEET 2024-25',
-            grade: '12th',
-            photo: 'https://via.placeholder.com/100',
-            dailyTests: [
-                { subject: 'Physics', unit: 'Thermodynamics', test1: 22, test2: 24, test3: 25, classAvg: 22, topScore: 30 },
-                { subject: 'Chemistry', unit: 'Organic Chemistry', test1: 25, test2: 26, test3: 27, classAvg: 24, topScore: 30 },
-                { subject: 'Biology', unit: 'Cell Biology', test1: 26, test2: 27, test3: 28, classAvg: 25, topScore: 30 },
-                { subject: 'Mathematics', unit: 'Calculus', test1: 23, test2: 24, test3: 25, classAvg: 23, topScore: 30 }
-            ],
-            mockTests: [
-                { exam: 'Mock Test 1', physics: 78, chemistry: 82, biology: 85, mathematics: 80, total: 325 },
-                { exam: 'Mock Test 2', physics: 80, chemistry: 84, biology: 87, mathematics: 82, total: 333 },
-                { exam: 'Mock Test 3', physics: 82, chemistry: 86, biology: 89, mathematics: 84, total: 341 }
-            ]
-        },
-        {
-            id: 3,
-            name: 'Amit Patel',
-            admissionNo: '2024003',
-            course: 'JEE Preparation',
-            branch: 'Engineering',
-            batch: 'JEE 2024-25',
-            grade: '11th',
-            photo: 'https://via.placeholder.com/100',
-            dailyTests: [
-                { subject: 'Physics', unit: 'Mechanics', test1: 28, test2: 29, test3: 30, classAvg: 24, topScore: 30 },
-                { subject: 'Chemistry', unit: 'Physical Chemistry', test1: 27, test2: 28, test3: 29, classAvg: 23, topScore: 30 },
-                { subject: 'Mathematics', unit: 'Algebra', test1: 29, test2: 30, test3: 30, classAvg: 25, topScore: 30 }
-            ],
-            mockTests: [
-                { exam: 'Mock Test 1', physics: 92, chemistry: 89, mathematics: 94, total: 275 },
-                { exam: 'Mock Test 2', physics: 94, chemistry: 91, mathematics: 96, total: 281 },
-                { exam: 'Mock Test 3', physics: 95, chemistry: 93, mathematics: 97, total: 285 }
-            ]
-        }
-    ];
-
-    // Filter students based on filters
-    const filteredStudents = allStudents.filter(student => {
-        if (filters.name && !student.name.toLowerCase().includes(filters.name.toLowerCase())) return false;
-        if (filters.course && student.course !== filters.course) return false;
-        if (filters.branch && student.branch !== filters.branch) return false;
-        if (filters.batch && student.batch !== filters.batch) return false;
-        return true;
+    // Feedback form state
+    const [feedbackForm, setFeedbackForm] = useState({
+        date: new Date().toISOString().split('T')[0],
+        teacherFeedback: '',
+        suggestions: '',
+        academicDirectorSignature: '',
+        studentSignature: '',
+        parentSignature: ''
     });
+    const [savingFeedback, setSavingFeedback] = useState(false);
 
-    // Use first filtered student or first student as default
-    const currentStudent = selectedStudent || filteredStudents[0] || allStudents[0];
+    // Fetch students list based on filters
+    const fetchStudents = useCallback(async () => {
+        try {
+            setStudentsLoading(true);
+            const params = new URLSearchParams();
+            if (filters.name) params.append('name', filters.name);
+            if (filters.batch) params.append('batch_id', filters.batch);
+            if (filters.course) params.append('course', filters.course);
+            if (filters.branch) params.append('branch', filters.branch);
 
-    // Calculate performance trend
-    const calculatePerformanceTrend = () => {
-        if (!currentStudent.dailyTests) return [];
-        const tests = ['test1', 'test2', 'test3'];
-        return tests.map((test, idx) => {
-            const scores = currentStudent.dailyTests.map(dt => dt[test]);
-            const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-            return { test: `Test ${idx + 1}`, score: ((avg / 30) * 100).toFixed(1) };
-        });
-    };
+            const response = await fetch(`${API_BASE}/api/analysis/individual/students?${params.toString()}`);
+            if (response.ok) {
+                const data = await response.json();
+                setStudentsList(data.students || []);
+            }
+        } catch (err) {
+            console.error('Error fetching students:', err);
+        } finally {
+            setStudentsLoading(false);
+        }
+    }, [filters]);
 
-    const dailyTestData = currentStudent.dailyTests || [];
-    const mockTestData = currentStudent.mockTests || [];
-    const performanceTrend = calculatePerformanceTrend();
+    // Fetch individual student analysis
+    const fetchStudentAnalysis = useCallback(async (studentId) => {
+        if (!studentId) return;
+
+        try {
+            setLoading(true);
+            setError('');
+
+            const response = await fetch(`${API_BASE}/api/analysis/individual/${studentId}`);
+            if (!response.ok) throw new Error('Failed to fetch student analysis');
+
+            const data = await response.json();
+            setStudentData(data);
+        } catch (err) {
+            setError(err.message);
+            console.error('Error fetching individual analysis:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    // Load students on mount and when filters change
+    useEffect(() => {
+        fetchStudents();
+    }, []);
+
+    // When student is selected, fetch their analysis
+    useEffect(() => {
+        if (selectedStudentId) {
+            fetchStudentAnalysis(selectedStudentId);
+        }
+    }, [selectedStudentId, fetchStudentAnalysis]);
 
     const handleFilterChange = (field, value) => {
         setFilters(prev => ({ ...prev, [field]: value }));
-        setSelectedStudent(null); // Reset selection when filters change
     };
 
     const handleStudentSelect = (e) => {
-        const studentId = parseInt(e.target.value);
-        const student = allStudents.find(s => s.id === studentId);
-        setSelectedStudent(student);
+        setSelectedStudentId(e.target.value);
     };
+
+    // Save feedback
+    const handleSaveFeedback = async () => {
+        if (!selectedStudentId) return;
+        if (!feedbackForm.teacherFeedback && !feedbackForm.suggestions) {
+            alert('Please enter feedback or suggestions');
+            return;
+        }
+
+        try {
+            setSavingFeedback(true);
+            const response = await fetch(`${API_BASE}/api/analysis/feedback`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    student_id: selectedStudentId,
+                    feedback_date: feedbackForm.date,
+                    teacher_feedback: feedbackForm.teacherFeedback,
+                    suggestions: feedbackForm.suggestions,
+                    academic_director_signature: feedbackForm.academicDirectorSignature,
+                    student_signature: feedbackForm.studentSignature,
+                    parent_signature: feedbackForm.parentSignature
+                })
+            });
+
+            if (response.ok) {
+                alert('Feedback saved successfully!');
+                // Reset form
+                setFeedbackForm({
+                    date: new Date().toISOString().split('T')[0],
+                    teacherFeedback: '',
+                    suggestions: '',
+                    academicDirectorSignature: '',
+                    studentSignature: '',
+                    parentSignature: ''
+                });
+                // Refresh student data to get updated feedback
+                fetchStudentAnalysis(selectedStudentId);
+            } else {
+                throw new Error('Failed to save feedback');
+            }
+        } catch (err) {
+            alert('Error saving feedback: ' + err.message);
+        } finally {
+            setSavingFeedback(false);
+        }
+    };
+
+    // Build daily test performance trend
+    const buildDailyTestTrend = () => {
+        if (!studentData?.daily_tests) return [];
+
+        return studentData.daily_tests.map(test => ({
+            date: test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '',
+            subject: test.subject,
+            label: `${test.subject} - ${test.unit_name || ''}`,
+            marks: test.marks || 0,
+            classAvg: test.class_avg || 0,
+            topScore: test.top_score || 0
+        }));
+    };
+
+    // Build mock test chart data
+    const buildMockTestChartData = () => {
+        if (!studentData?.mock_tests) return [];
+
+        return studentData.mock_tests.map((test, idx) => ({
+            exam: `Mock ${idx + 1} (${test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''})`,
+            physics: test.physics_marks || 0,
+            chemistry: test.chemistry_marks || 0,
+            biology: test.biology_marks || 0,
+            maths: test.maths_marks || 0,
+            total: test.total_marks || 0
+        }));
+    };
+
+    // Build performance trend line
+    const buildPerformanceTrend = () => {
+        if (!studentData?.daily_tests || studentData.daily_tests.length === 0) return [];
+
+        // Group by date, take average
+        const byDate = {};
+        studentData.daily_tests.forEach(test => {
+            const d = test.test_date || 'Unknown';
+            if (!byDate[d]) byDate[d] = { marks: [], classAvg: [] };
+            byDate[d].marks.push(test.marks || 0);
+            byDate[d].classAvg.push(test.class_avg || 0);
+        });
+
+        return Object.entries(byDate).sort().map(([date, data]) => ({
+            date: new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+            score: Math.round(data.marks.reduce((a, b) => a + b, 0) / data.marks.length),
+            classAvg: Math.round(data.classAvg.reduce((a, b) => a + b, 0) / data.classAvg.length)
+        }));
+    };
+
+    const student = studentData?.student;
+    const dailyTests = studentData?.daily_tests || [];
+    const mockTests = studentData?.mock_tests || [];
+    const feedbackList = studentData?.feedback || [];
+    const dailyTestTrend = buildDailyTestTrend();
+    const mockTestChartData = buildMockTestChartData();
+    const performanceTrend = buildPerformanceTrend();
 
     return (
         <div className="individual-analysis">
             <AnalysisFilters
                 filters={filters}
                 onFilterChange={handleFilterChange}
+                onApplyFilters={fetchStudents}
                 showFilters={{
                     grade: false,
                     admissionNumber: false,
@@ -134,137 +215,366 @@ const IndividualAnalysis = () => {
                 }}
             />
 
-            {/* Student Selection Dropdown */}
+            {/* Student Selection */}
             <div className="analysis-section">
-                <h3>Select Student</h3>
-                <div className="filter-group">
-                    <select
-                        value={currentStudent?.id || ''}
-                        onChange={handleStudentSelect}
-                        style={{ padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid #ddd', minWidth: '300px' }}
-                    >
-                        {filteredStudents.map(student => (
-                            <option key={student.id} value={student.id}>
-                                {student.name} ({student.admissionNo}) - {student.branch}
-                            </option>
-                        ))}
-                    </select>
-                </div>
-            </div>
-
-            {/* Student Info Card */}
-            <div className="analysis-section">
-                <h3>Student Information</h3>
-                <div className="student-info-card">
-                    <div className="student-photo">
-                        <img src={currentStudent.photo} alt="Student" />
-                    </div>
-                    <div className="student-details">
-                        <h4>{currentStudent.name}</h4>
-                        <p><strong>Admission Number:</strong> {currentStudent.admissionNo}</p>
-                        <p><strong>Course:</strong> {currentStudent.course}</p>
-                        <p><strong>Branch:</strong> {currentStudent.branch}</p>
-                        <p><strong>Batch:</strong> {currentStudent.batch}</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Daily Test Performance */}
-            <div className="analysis-section">
-                <h3>Daily Test Performance</h3>
-                <div className="marks-table">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Subject</th>
-                                <th>Unit Name</th>
-                                <th>Test-1</th>
-                                <th>Test-2</th>
-                                <th>Test-3</th>
-                                <th>Class Avg</th>
-                                <th>Top Score</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {dailyTestData.map((test, index) => (
-                                <tr key={index}>
-                                    <td className="exam-name">{test.subject}</td>
-                                    <td>{test.unit}</td>
-                                    <td>{test.test1}</td>
-                                    <td>{test.test2}</td>
-                                    <td>{test.test3}</td>
-                                    <td><strong>{test.classAvg}</strong></td>
-                                    <td className="top-score"><strong>{test.topScore}</strong></td>
-                                </tr>
+                <h3>👤 Select Student</h3>
+                <div className="student-selector">
+                    {studentsLoading ? (
+                        <p className="loading-text">Loading students...</p>
+                    ) : (
+                        <select
+                            value={selectedStudentId}
+                            onChange={handleStudentSelect}
+                            className="student-select"
+                        >
+                            <option value="">-- Select a Student --</option>
+                            {studentsList.map(s => (
+                                <option key={s.student_id} value={s.student_id}>
+                                    {s.student_name} ({s.student_id}) - {s.branch || 'N/A'} | {s.batch_name || 'N/A'}
+                                </option>
                             ))}
-                        </tbody>
-                    </table>
+                        </select>
+                    )}
+                    {studentsList.length === 0 && !studentsLoading && (
+                        <p className="no-students-text">No students found. Try adjusting filters.</p>
+                    )}
                 </div>
             </div>
 
-            {/* Performance Trend Chart */}
-            <div className="analysis-section">
-                <h3>Performance Trend</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={performanceTrend} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="test" />
-                        <YAxis domain={[0, 100]} />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="score" stroke="#5b5fc7" strokeWidth={3} name="Your Score (%)" />
-                    </LineChart>
-                </ResponsiveContainer>
-            </div>
-
-            {/* Mock Test Performance */}
-            <div className="analysis-section">
-                <h3>Mock Test Performance</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={mockTestData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="exam" />
-                        <YAxis domain={[0, 100]} />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="physics" fill="#FF6B9D" name="Physics" />
-                        <Bar dataKey="chemistry" fill="#4A90E2" name="Chemistry" />
-                        <Bar dataKey="biology" fill="#00D9C0" name="Biology" />
-                        <Bar dataKey="mathematics" fill="#FFA500" name="Mathematics" />
-                    </BarChart>
-                </ResponsiveContainer>
-            </div>
-
-            {/* Mock Test Details Table */}
-            <div className="analysis-section">
-                <h3>Mock Test Details</h3>
-                <div className="marks-table">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Exam</th>
-                                <th>Physics</th>
-                                <th>Chemistry</th>
-                                <th>Biology</th>
-                                <th>Mathematics</th>
-                                <th>Total (400)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {mockTestData.map((exam, index) => (
-                                <tr key={index}>
-                                    <td className="exam-name">{exam.exam}</td>
-                                    <td>{exam.physics}</td>
-                                    <td>{exam.chemistry}</td>
-                                    <td>{exam.biology}</td>
-                                    <td>{exam.mathematics}</td>
-                                    <td><strong>{exam.total}</strong></td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+            {loading && (
+                <div className="analysis-loading">
+                    <div className="loading-spinner"></div>
+                    <p>Loading student analysis...</p>
                 </div>
-            </div>
+            )}
+
+            {error && (
+                <div className="analysis-error">
+                    <p>⚠️ {error}</p>
+                </div>
+            )}
+
+            {!loading && !error && student && (
+                <>
+                    {/* Student Info Card */}
+                    <div className="analysis-section">
+                        <h3>📝 Student Information</h3>
+                        <div className="student-info-card">
+                            <div className="student-photo-section">
+                                <img
+                                    src={student.photo_url || 'https://via.placeholder.com/120?text=Photo'}
+                                    alt={student.student_name}
+                                    className="student-photo-img"
+                                />
+                            </div>
+                            <div className="student-details-grid">
+                                <div className="detail-pair">
+                                    <label>Name</label>
+                                    <span>{student.student_name}</span>
+                                </div>
+                                <div className="detail-pair">
+                                    <label>Admission No</label>
+                                    <span>{student.student_id}</span>
+                                </div>
+                                <div className="detail-pair">
+                                    <label>Course</label>
+                                    <span>{student.course || 'N/A'}</span>
+                                </div>
+                                <div className="detail-pair">
+                                    <label>Branch</label>
+                                    <span>{student.branch || 'N/A'}</span>
+                                </div>
+                                <div className="detail-pair">
+                                    <label>Batch</label>
+                                    <span>{student.batch_name || 'N/A'}</span>
+                                </div>
+                                <div className="detail-pair">
+                                    <label>Grade</label>
+                                    <span>{student.grade || 'N/A'}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Daily Test Performance Table */}
+                    <div className="analysis-section">
+                        <h3>📚 Daily Test Performance</h3>
+                        {dailyTests.length > 0 ? (
+                            <>
+                                <div className="marks-table">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Subject</th>
+                                                <th>Unit Name</th>
+                                                <th>Marks</th>
+                                                <th>Class Avg</th>
+                                                <th>Top Score</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {dailyTests.map((test, index) => (
+                                                <tr key={index}>
+                                                    <td>{test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN') : '-'}</td>
+                                                    <td className="exam-name">{test.subject}</td>
+                                                    <td>{test.unit_name || '-'}</td>
+                                                    <td>
+                                                        <strong>{test.marks || 0}</strong>
+                                                    </td>
+                                                    <td>{test.class_avg || 0}</td>
+                                                    <td className="top-score">{test.top_score || 0}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Performance Trend Chart */}
+                                {performanceTrend.length > 1 && (
+                                    <div className="chart-container">
+                                        <h4>Performance Trend</h4>
+                                        <ResponsiveContainer width="100%" height={300}>
+                                            <LineChart data={performanceTrend} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                                <CartesianGrid strokeDasharray="3 3" />
+                                                <XAxis dataKey="date" />
+                                                <YAxis />
+                                                <Tooltip />
+                                                <Legend />
+                                                <Line type="monotone" dataKey="score" stroke="#5b5fc7" strokeWidth={3} name="Your Score" dot={{ r: 5 }} />
+                                                <Line type="monotone" dataKey="classAvg" stroke="#a0aec0" strokeWidth={2} strokeDasharray="5 5" name="Class Average" dot={{ r: 3 }} />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <div className="no-data">
+                                <p>No daily test data available for this student.</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Mock Test Performance */}
+                    <div className="analysis-section">
+                        <h3>🎯 Mock Test Performance</h3>
+                        {mockTests.length > 0 ? (
+                            <>
+                                {/* Mock Test Bar Chart */}
+                                <ResponsiveContainer width="100%" height={350}>
+                                    <BarChart data={mockTestChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="exam" />
+                                        <YAxis />
+                                        <Tooltip />
+                                        <Legend />
+                                        <Bar dataKey="physics" fill="#FF6B9D" name="Physics" />
+                                        <Bar dataKey="chemistry" fill="#4A90E2" name="Chemistry" />
+                                        <Bar dataKey="biology" fill="#00D9C0" name="Biology" />
+                                        <Bar dataKey="maths" fill="#FFA500" name="Maths" />
+                                    </BarChart>
+                                </ResponsiveContainer>
+
+                                {/* Mock Test Details Table */}
+                                <div className="marks-table" style={{ marginTop: '20px' }}>
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Maths</th>
+                                                <th>Physics</th>
+                                                <th>Chemistry</th>
+                                                <th>Biology</th>
+                                                <th>Total</th>
+                                                <th>Class Avg</th>
+                                                <th>Top Score</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {mockTests.map((test, index) => (
+                                                <tr key={index}>
+                                                    <td>{test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN') : '-'}</td>
+                                                    <td>{test.maths_marks || 0}</td>
+                                                    <td>{test.physics_marks || 0}</td>
+                                                    <td>{test.chemistry_marks || 0}</td>
+                                                    <td>{test.biology_marks || 0}</td>
+                                                    <td><strong>{test.total_marks || 0}</strong></td>
+                                                    <td>{test.class_avg_total || 0}</td>
+                                                    <td className="top-score">{test.top_score_total || 0}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="no-data">
+                                <p>No mock test data available for this student.</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Teachers Feedback & Suggestions */}
+                    <div className="analysis-section">
+                        <h3>✍️ Teachers Feedback & Suggestions</h3>
+                        <div className="feedback-form">
+                            <div className="feedback-form-row">
+                                <div className="feedback-field">
+                                    <label>Date</label>
+                                    <input
+                                        type="date"
+                                        value={feedbackForm.date}
+                                        onChange={(e) => setFeedbackForm({ ...feedbackForm, date: e.target.value })}
+                                        className="feedback-date-input"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="feedback-field">
+                                <label>Teachers Feedback</label>
+                                <textarea
+                                    className="feedback-textarea"
+                                    placeholder="Enter teacher's feedback about the student's performance, behavior, and progress..."
+                                    rows="4"
+                                    value={feedbackForm.teacherFeedback}
+                                    onChange={(e) => setFeedbackForm({ ...feedbackForm, teacherFeedback: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="feedback-field">
+                                <label>Suggestions</label>
+                                <textarea
+                                    className="feedback-textarea"
+                                    placeholder="Enter suggestions for improvement, areas to focus on..."
+                                    rows="4"
+                                    value={feedbackForm.suggestions}
+                                    onChange={(e) => setFeedbackForm({ ...feedbackForm, suggestions: e.target.value })}
+                                />
+                            </div>
+
+                            {/* Signature Section */}
+                            <div className="signatures-section">
+                                <h4>Signatures</h4>
+                                <div className="signature-grid">
+                                    <div className="signature-box">
+                                        <label>Academic Director's Signature</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Type name as signature"
+                                            value={feedbackForm.academicDirectorSignature}
+                                            onChange={(e) => setFeedbackForm({ ...feedbackForm, academicDirectorSignature: e.target.value })}
+                                            className="signature-input"
+                                        />
+                                        <div className="signature-preview">
+                                            {feedbackForm.academicDirectorSignature && (
+                                                <span className="signature-text">{feedbackForm.academicDirectorSignature}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="signature-box">
+                                        <label>Student Signature</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Type name as signature"
+                                            value={feedbackForm.studentSignature}
+                                            onChange={(e) => setFeedbackForm({ ...feedbackForm, studentSignature: e.target.value })}
+                                            className="signature-input"
+                                        />
+                                        <div className="signature-preview">
+                                            {feedbackForm.studentSignature && (
+                                                <span className="signature-text">{feedbackForm.studentSignature}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="signature-box">
+                                        <label>Parents Signature</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Type name as signature"
+                                            value={feedbackForm.parentSignature}
+                                            onChange={(e) => setFeedbackForm({ ...feedbackForm, parentSignature: e.target.value })}
+                                            className="signature-input"
+                                        />
+                                        <div className="signature-preview">
+                                            {feedbackForm.parentSignature && (
+                                                <span className="signature-text">{feedbackForm.parentSignature}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button
+                                className="btn-save-feedback"
+                                onClick={handleSaveFeedback}
+                                disabled={savingFeedback}
+                            >
+                                {savingFeedback ? 'Saving...' : '💾 Save Feedback'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Feedback History */}
+                    {feedbackList.length > 0 && (
+                        <div className="analysis-section">
+                            <h3>📜 Feedback History</h3>
+                            <div className="feedback-history">
+                                {feedbackList.map((feedback) => (
+                                    <div key={feedback.feedback_id} className="feedback-card">
+                                        <div className="feedback-card-header">
+                                            <span className="feedback-date-badge">
+                                                {feedback.feedback_date
+                                                    ? new Date(feedback.feedback_date).toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })
+                                                    : 'Unknown Date'}
+                                            </span>
+                                        </div>
+                                        <div className="feedback-card-body">
+                                            {feedback.teacher_feedback && (
+                                                <div className="feedback-entry">
+                                                    <h4>Teachers Feedback</h4>
+                                                    <p>{feedback.teacher_feedback}</p>
+                                                </div>
+                                            )}
+                                            {feedback.suggestions && (
+                                                <div className="feedback-entry">
+                                                    <h4>Suggestions</h4>
+                                                    <p>{feedback.suggestions}</p>
+                                                </div>
+                                            )}
+                                            <div className="feedback-signatures">
+                                                {feedback.academic_director_signature && (
+                                                    <div className="feedback-sig">
+                                                        <span className="sig-label">Academic Director:</span>
+                                                        <span className="sig-value">{feedback.academic_director_signature}</span>
+                                                    </div>
+                                                )}
+                                                {feedback.student_signature && (
+                                                    <div className="feedback-sig">
+                                                        <span className="sig-label">Student:</span>
+                                                        <span className="sig-value">{feedback.student_signature}</span>
+                                                    </div>
+                                                )}
+                                                {feedback.parent_signature && (
+                                                    <div className="feedback-sig">
+                                                        <span className="sig-label">Parent:</span>
+                                                        <span className="sig-value">{feedback.parent_signature}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </>
+            )}
+
+            {!loading && !error && !student && selectedStudentId && (
+                <div className="no-data">
+                    <p>Could not load student data. Please try again.</p>
+                </div>
+            )}
         </div>
     );
 };
