@@ -13,6 +13,37 @@
   flex-direction: column;
 }
 
+.profile-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.btn-download-report {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(56, 161, 105, 0.3);
+}
+
+.btn-download-report:hover {
+  background: linear-gradient(135deg, #2f855a 0%, #276749 100%);
+  box-shadow: 0 4px 12px rgba(56, 161, 105, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-download-report:active {
+  transform: translateY(0);
+}
+
 .profile-title-section {
   display: flex;
   align-items: center;
@@ -538,4 +569,102 @@
     line-height: 1.6;
     margin: 0;
     white-space: pre-wrap;
+}
+
+/* Signature Input */
+.signature-input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+    margin-top: 8px;
+}
+
+.signature-input:focus {
+    outline: none;
+    border-color: #5b5fc7;
+    box-shadow: 0 0 0 3px rgba(91, 95, 199, 0.1);
+}
+
+.signature-preview {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: #f7fafc;
+    border-radius: 6px;
+    min-height: 30px;
+}
+
+.signature-text {
+    font-family: 'Brush Script MT', 'Segoe Script', cursive;
+    font-size: 20px;
+    color: #2d3748;
+}
+
+/* Top Score highlight */
+.top-score {
+    color: #38a169;
+    font-weight: 600;
+}
+
+/* Date Filter Row */
+.date-filter-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    margin-bottom: 20px;
+    padding: 14px 18px;
+    background: #f7fafc;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    flex-wrap: wrap;
+}
+
+.date-filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.date-filter-field label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #718096;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.date-filter-input {
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #2d3748;
+    background: white;
+    transition: border-color 0.2s;
+    min-width: 160px;
+}
+
+.date-filter-input:focus {
+    outline: none;
+    border-color: #5b5fc7;
+    box-shadow: 0 0 0 3px rgba(91, 95, 199, 0.1);
+}
+
+.date-filter-clear {
+    padding: 8px 16px;
+    background: #fed7d7;
+    color: #c53030;
+    border: 1px solid #feb2b2;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.date-filter-clear:hover {
+    background: #feb2b2;
 }

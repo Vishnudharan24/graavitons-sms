@@ -160,6 +160,13 @@
   transform: translateY(-1px);
 }
 
+.btn-report:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 /* Exam Upload Section */
 .exam-upload-section {
   background: white;

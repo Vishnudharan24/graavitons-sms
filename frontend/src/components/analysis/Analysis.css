@@ -650,3 +650,64 @@
         padding: 20px;
     }
 }
+
+/* Date Filter Row */
+.date-filter-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    margin-bottom: 20px;
+    padding: 14px 18px;
+    background: #f7fafc;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    flex-wrap: wrap;
+}
+
+.date-filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.date-filter-field label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #718096;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.date-filter-input {
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #2d3748;
+    background: white;
+    transition: border-color 0.2s;
+    min-width: 160px;
+}
+
+.date-filter-input:focus {
+    outline: none;
+    border-color: #5b5fc7;
+    box-shadow: 0 0 0 3px rgba(91, 95, 199, 0.1);
+}
+
+.date-filter-clear {
+    padding: 8px 16px;
+    background: #fed7d7;
+    color: #c53030;
+    border: 1px solid #feb2b2;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.date-filter-clear:hover {
+    background: #feb2b2;
+}

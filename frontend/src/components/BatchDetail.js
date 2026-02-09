@@ -150,83 +150,113 @@ const BatchDetail = ({ batch, onBack }) => {
     // Here you would typically send the data to your backend API
   };
 
-  const handleGenerateReport = () => {
-    // Create workbook
-    const wb = XLSX.utils.book_new();
+  const [reportLoading, setReportLoading] = useState(false);
 
-    // Batch Information Sheet
-    const batchInfo = [
-      ['Batch Report'],
-      ['Batch Name:', batch.batch_name || batch.name],
-      ['Batch Type:', batch.type || 'N/A'],
-      ['Academic Year:', `${batch.start_year}-${batch.end_year}`],
-      ['Total Students:', analyticsData.totalStudents],
-      ['Boys:', analyticsData.boys],
-      ['Girls:', analyticsData.girls],
-      ['Total Exams:', analyticsData.totalExams],
-      [''],
-      ['Batch Subjects:', batch.subjects ? batch.subjects.join(', ') : 'N/A']
-    ];
-    const wsInfo = XLSX.utils.aoa_to_sheet(batchInfo);
-    XLSX.utils.book_append_sheet(wb, wsInfo, 'Batch Information');
+  const handleGenerateReport = async () => {
+    setReportLoading(true);
+    try {
+      const response = await fetch(`http://localhost:8000/api/exam/batch-report/${batch.batch_id}`);
+      if (!response.ok) throw new Error('Failed to fetch batch report data');
+      const data = await response.json();
 
-    // Student List Sheet
-    const studentHeaders = ['Admission Number', 'Student Name', 'Gender', 'Latest Marks'];
-    const studentRows = filteredStudents.map(student => [
-      student.rollNo,
-      student.name,
-      student.gender,
-      student.marks
-    ]);
-    const wsStudents = XLSX.utils.aoa_to_sheet([studentHeaders, ...studentRows]);
-    XLSX.utils.book_append_sheet(wb, wsStudents, 'Student List');
+      const wb = XLSX.utils.book_new();
 
-    // Exam Performance Sheet
-    const examHeaders = ['Exam Name', 'Average Score'];
-    const examRows = examPerformanceData.map(exam => [
-      exam.name,
-      exam.average
-    ]);
-    const wsExams = XLSX.utils.aoa_to_sheet([examHeaders, ...examRows]);
-    XLSX.utils.book_append_sheet(wb, wsExams, 'Exam Performance');
+      // ── Sheet 1: Batch Summary ──
+      const batchSummary = [
+        ['BATCH REPORT'],
+        [''],
+        ['Batch Name', data.batch.batch_name],
+        ['Batch Type', data.batch.type || 'N/A'],
+        ['Academic Year', `${data.batch.start_year} - ${data.batch.end_year}`],
+        [''],
+        ['Total Students', data.total_students],
+        ['Boys', data.students.filter(s => s.gender === 'Male').length],
+        ['Girls', data.students.filter(s => s.gender === 'Female').length],
+        [''],
+        ['Total Daily Tests Conducted', data.total_daily_tests_conducted],
+        ['Total Mock Tests Conducted', data.total_mock_tests_conducted],
+        [''],
+        ['Report Generated On', new Date().toLocaleString()],
+      ];
+      const wsSummary = XLSX.utils.aoa_to_sheet(batchSummary);
+      wsSummary['!cols'] = [{ wch: 30 }, { wch: 30 }];
+      XLSX.utils.book_append_sheet(wb, wsSummary, 'Batch Summary');
 
-    // Subject Analysis Sheet
-    const subjectHeaders = ['Subject', 'Average Score'];
-    const subjectRows = subjectAnalysisData.map(subject => [
-      subject.name,
-      subject.average
-    ]);
-    const wsSubjects = XLSX.utils.aoa_to_sheet([subjectHeaders, ...subjectRows]);
-    XLSX.utils.book_append_sheet(wb, wsSubjects, 'Subject Analysis');
+      // ── Sheet 2: Student Details ──
+      const studentHeaders = [
+        'S.No', 'Admission No', 'Student Name', 'Gender', 'Date of Birth',
+        'Community', 'Grade', 'Enrollment Year', 'Course', 'Branch',
+        'Mobile', 'Email', 'Daily Tests Attended', 'Mock Tests Attended'
+      ];
+      const studentRows = data.students.map((s, i) => [
+        i + 1,
+        s.student_id,
+        s.student_name,
+        s.gender || 'N/A',
+        s.dob || 'N/A',
+        s.community || 'N/A',
+        s.grade || 'N/A',
+        s.enrollment_year || 'N/A',
+        s.course || 'N/A',
+        s.branch || 'N/A',
+        s.student_mobile || 'N/A',
+        s.email || 'N/A',
+        s.daily_test_count,
+        s.mock_test_count,
+      ]);
+      const wsStudents = XLSX.utils.aoa_to_sheet([studentHeaders, ...studentRows]);
+      wsStudents['!cols'] = studentHeaders.map(() => ({ wch: 18 }));
+      XLSX.utils.book_append_sheet(wb, wsStudents, 'Student Details');
 
-    // Statistics Sheet
-    const marks = students.map(s => s.marks);
-    const topMark = Math.max(...marks);
-    const averageMark = (marks.reduce((a, b) => a + b, 0) / marks.length).toFixed(2);
-    const lowestMark = Math.min(...marks);
+      // ── Sheet 3: Daily Tests ──
+      const dailyHeaders = [
+        'S.No', 'Admission No', 'Student Name', 'Test Date',
+        'Subject', 'Unit Name', 'Marks Obtained'
+      ];
+      const dailyRows = (data.daily_tests || []).map((t, i) => [
+        i + 1,
+        t.student_id,
+        t.student_name,
+        t.test_date || 'N/A',
+        t.subject || 'N/A',
+        t.unit_name || 'N/A',
+        t.total_marks != null ? t.total_marks : 'N/A',
+      ]);
+      const wsDaily = XLSX.utils.aoa_to_sheet([dailyHeaders, ...dailyRows]);
+      wsDaily['!cols'] = dailyHeaders.map(() => ({ wch: 18 }));
+      XLSX.utils.book_append_sheet(wb, wsDaily, 'Daily Tests');
 
-    const statistics = [
-      ['Batch Statistics'],
-      [''],
-      ['Metric', 'Value'],
-      ['Highest Score', topMark],
-      ['Average Score', averageMark],
-      ['Lowest Score', lowestMark],
-      ['Total Students', analyticsData.totalStudents],
-      ['Pass Percentage', '85%'], // You can calculate this based on your criteria
-    ];
-    const wsStats = XLSX.utils.aoa_to_sheet(statistics);
-    XLSX.utils.book_append_sheet(wb, wsStats, 'Statistics');
+      // ── Sheet 4: Mock Tests ──
+      const mockHeaders = [
+        'S.No', 'Admission No', 'Student Name', 'Test Date',
+        'Maths', 'Physics', 'Chemistry', 'Biology', 'Total Marks'
+      ];
+      const mockRows = (data.mock_tests || []).map((t, i) => [
+        i + 1,
+        t.student_id,
+        t.student_name,
+        t.test_date || 'N/A',
+        t.maths_marks != null ? t.maths_marks : 'N/A',
+        t.physics_marks != null ? t.physics_marks : 'N/A',
+        t.chemistry_marks != null ? t.chemistry_marks : 'N/A',
+        t.biology_marks != null ? t.biology_marks : 'N/A',
+        t.total_marks != null ? t.total_marks : 'N/A',
+      ]);
+      const wsMock = XLSX.utils.aoa_to_sheet([mockHeaders, ...mockRows]);
+      wsMock['!cols'] = mockHeaders.map(() => ({ wch: 16 }));
+      XLSX.utils.book_append_sheet(wb, wsMock, 'Mock Tests');
 
-    // Generate filename with current date
-    const date = new Date().toISOString().split('T')[0];
-    const batchName = batch.batch_name || batch.name || 'Batch';
-    const filename = `${batchName.replace(/\s+/g, '_')}_Report_${date}.xlsx`;
+      // ── Download ──
+      const dateStr = new Date().toISOString().split('T')[0];
+      const batchName = (data.batch.batch_name || 'Batch').replace(/\s+/g, '_');
+      XLSX.writeFile(wb, `${batchName}_Report_${dateStr}.xlsx`);
 
-    // Download file
-    XLSX.writeFile(wb, filename);
-
-    alert('Report generated successfully!');
+    } catch (err) {
+      console.error('Report generation failed:', err);
+      alert('Failed to generate report. Please try again.');
+    } finally {
+      setReportLoading(false);
+    }
   };
 
   if (showAddExam) {
@@ -333,7 +363,9 @@ const BatchDetail = ({ batch, onBack }) => {
       <div className="management-buttons">
         <button className="btn btn-primary" onClick={handleAddStudent}>+ Add New Student</button>
         <button className="btn btn-secondary" onClick={handleAddExam}>+ New Exam</button>
-        <button className="btn btn-report" onClick={handleGenerateReport}>📊 Generate Report</button>
+        <button className="btn btn-report" onClick={handleGenerateReport} disabled={reportLoading}>
+          {reportLoading ? '⏳ Generating...' : '📊 Generate Batch Report'}
+        </button>
       </div>
 
       {/* Student List */}

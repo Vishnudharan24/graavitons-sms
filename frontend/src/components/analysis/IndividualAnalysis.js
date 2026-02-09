@@ -31,6 +31,12 @@ const IndividualAnalysis = () => {
     });
     const [savingFeedback, setSavingFeedback] = useState(false);
 
+    // Date filter state
+    const [dailyDateFrom, setDailyDateFrom] = useState('');
+    const [dailyDateTo, setDailyDateTo] = useState('');
+    const [mockDateFrom, setMockDateFrom] = useState('');
+    const [mockDateTo, setMockDateTo] = useState('');
+
     // Fetch students list based on filters
     const fetchStudents = useCallback(async () => {
         try {
@@ -141,11 +147,31 @@ const IndividualAnalysis = () => {
         }
     };
 
-    // Build daily test performance trend
-    const buildDailyTestTrend = () => {
-        if (!studentData?.daily_tests) return [];
+    const student = studentData?.student;
+    const dailyTestsAll = studentData?.daily_tests || [];
+    const mockTestsAll = studentData?.mock_tests || [];
+    const feedbackList = studentData?.feedback || [];
 
-        return studentData.daily_tests.map(test => ({
+    // Apply date filters
+    const dailyTests = dailyTestsAll.filter(test => {
+        if (!test.test_date) return true;
+        const d = test.test_date;
+        if (dailyDateFrom && d < dailyDateFrom) return false;
+        if (dailyDateTo && d > dailyDateTo) return false;
+        return true;
+    });
+
+    const mockTests = mockTestsAll.filter(test => {
+        if (!test.test_date) return true;
+        const d = test.test_date;
+        if (mockDateFrom && d < mockDateFrom) return false;
+        if (mockDateTo && d > mockDateTo) return false;
+        return true;
+    });
+
+    const dailyTestTrend = (() => {
+        if (!dailyTests.length) return [];
+        return dailyTests.map(test => ({
             date: test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '',
             subject: test.subject,
             label: `${test.subject} - ${test.unit_name || ''}`,
@@ -153,13 +179,11 @@ const IndividualAnalysis = () => {
             classAvg: test.class_avg || 0,
             topScore: test.top_score || 0
         }));
-    };
+    })();
 
-    // Build mock test chart data
-    const buildMockTestChartData = () => {
-        if (!studentData?.mock_tests) return [];
-
-        return studentData.mock_tests.map((test, idx) => ({
+    const mockTestChartData = (() => {
+        if (!mockTests.length) return [];
+        return mockTests.map((test, idx) => ({
             exam: `Mock ${idx + 1} (${test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''})`,
             physics: test.physics_marks || 0,
             chemistry: test.chemistry_marks || 0,
@@ -167,35 +191,23 @@ const IndividualAnalysis = () => {
             maths: test.maths_marks || 0,
             total: test.total_marks || 0
         }));
-    };
+    })();
 
-    // Build performance trend line
-    const buildPerformanceTrend = () => {
-        if (!studentData?.daily_tests || studentData.daily_tests.length === 0) return [];
-
-        // Group by date, take average
+    const performanceTrend = (() => {
+        if (!dailyTests.length) return [];
         const byDate = {};
-        studentData.daily_tests.forEach(test => {
+        dailyTests.forEach(test => {
             const d = test.test_date || 'Unknown';
             if (!byDate[d]) byDate[d] = { marks: [], classAvg: [] };
             byDate[d].marks.push(test.marks || 0);
             byDate[d].classAvg.push(test.class_avg || 0);
         });
-
         return Object.entries(byDate).sort().map(([date, data]) => ({
             date: new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
             score: Math.round(data.marks.reduce((a, b) => a + b, 0) / data.marks.length),
             classAvg: Math.round(data.classAvg.reduce((a, b) => a + b, 0) / data.classAvg.length)
         }));
-    };
-
-    const student = studentData?.student;
-    const dailyTests = studentData?.daily_tests || [];
-    const mockTests = studentData?.mock_tests || [];
-    const feedbackList = studentData?.feedback || [];
-    const dailyTestTrend = buildDailyTestTrend();
-    const mockTestChartData = buildMockTestChartData();
-    const performanceTrend = buildPerformanceTrend();
+    })();
 
     return (
         <div className="individual-analysis">
@@ -299,6 +311,19 @@ const IndividualAnalysis = () => {
                     {/* Daily Test Performance Table */}
                     <div className="analysis-section">
                         <h3>📚 Daily Test Performance</h3>
+                        <div className="date-filter-row">
+                            <div className="date-filter-field">
+                                <label>From</label>
+                                <input type="date" value={dailyDateFrom} onChange={e => setDailyDateFrom(e.target.value)} className="date-filter-input" />
+                            </div>
+                            <div className="date-filter-field">
+                                <label>To</label>
+                                <input type="date" value={dailyDateTo} onChange={e => setDailyDateTo(e.target.value)} className="date-filter-input" />
+                            </div>
+                            {(dailyDateFrom || dailyDateTo) && (
+                                <button className="date-filter-clear" onClick={() => { setDailyDateFrom(''); setDailyDateTo(''); }}>✕ Clear</button>
+                            )}
+                        </div>
                         {dailyTests.length > 0 ? (
                             <>
                                 <div className="marks-table">
@@ -358,6 +383,19 @@ const IndividualAnalysis = () => {
                     {/* Mock Test Performance */}
                     <div className="analysis-section">
                         <h3>🎯 Mock Test Performance</h3>
+                        <div className="date-filter-row">
+                            <div className="date-filter-field">
+                                <label>From</label>
+                                <input type="date" value={mockDateFrom} onChange={e => setMockDateFrom(e.target.value)} className="date-filter-input" />
+                            </div>
+                            <div className="date-filter-field">
+                                <label>To</label>
+                                <input type="date" value={mockDateTo} onChange={e => setMockDateTo(e.target.value)} className="date-filter-input" />
+                            </div>
+                            {(mockDateFrom || mockDateTo) && (
+                                <button className="date-filter-clear" onClick={() => { setMockDateFrom(''); setMockDateTo(''); }}>✕ Clear</button>
+                            )}
+                        </div>
                         {mockTests.length > 0 ? (
                             <>
                                 {/* Mock Test Bar Chart */}

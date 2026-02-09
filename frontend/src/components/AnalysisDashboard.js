@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import SubjectwiseAnalysis from './analysis/SubjectwiseAnalysis';
 import BranchwiseAnalysis from './analysis/BranchwiseAnalysis';
-import IndividualAnalysis from './analysis/IndividualAnalysis';
 import './AnalysisDashboard.css';
 
 const AnalysisDashboard = ({ onBack }) => {
@@ -28,19 +27,12 @@ const AnalysisDashboard = ({ onBack }) => {
                 >
                     Branch-wise Analysis
                 </button>
-                <button
-                    className={`tab-button ${activeTab === 'individual' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('individual')}
-                >
-                    Individual Analysis
-                </button>
             </div>
 
             {/* Tab Content */}
             <div className="tab-content">
                 {activeTab === 'subjectwise' && <SubjectwiseAnalysis />}
                 {activeTab === 'branchwise' && <BranchwiseAnalysis />}
-                {activeTab === 'individual' && <IndividualAnalysis />}
             </div>
         </div>
     );

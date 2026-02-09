@@ -56,6 +56,7 @@ async def root():
             "mock_test_template": "GET /api/exam/template/mock-test/{batch_id}",
             "student_daily_tests": "GET /api/exam/daily-test/student/{student_id}",
             "student_mock_tests": "GET /api/exam/mock-test/student/{student_id}",
+            "batch_report": "GET /api/exam/batch-report/{batch_id}",
             "analysis_filter_options": "GET /api/analysis/filter-options",
             "analysis_subjectwise": "GET /api/analysis/subjectwise",
             "analysis_branchwise": "GET /api/analysis/branchwise",

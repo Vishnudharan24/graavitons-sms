@@ -548,16 +548,23 @@ async def upload_students_excel(
                     counselling_year_of_completion=int(row['counselling_year_of_completion']) if 'counselling_year_of_completion' in row and pd.notna(row['counselling_year_of_completion']) else None
                 )
                 
-                # Insert student data
+                # Use SAVEPOINT so a single row failure doesn't abort the whole transaction
+                cursor.execute("SAVEPOINT student_row")
                 insert_student_data(student_data, conn)
+                cursor.execute("RELEASE SAVEPOINT student_row")
                 success_count += 1
                 
             except Exception as e:
+                # Rollback only this row's changes, keep the transaction alive
+                cursor.execute("ROLLBACK TO SAVEPOINT student_row")
                 error_count += 1
+                error_msg = str(e)
+                if "student_pkey" in error_msg or "unique constraint" in error_msg.lower() or "already exists" in error_msg.lower():
+                    error_msg = f"Student {row.get('student_id', 'N/A')} already exists in the database"
                 errors.append({
                     'row': index + 2,  # +2 because Excel is 1-indexed and has header
                     'student_id': str(row.get('student_id', 'N/A')),
-                    'error': str(e)
+                    'error': error_msg
                 })
         
         # Commit all successful insertions

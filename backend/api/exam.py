@@ -729,3 +729,191 @@ async def get_student_mock_tests(student_id: str):
             cursor.close()
         if conn:
             conn.close()
+
+
+@app.get("/api/exam/batch-report/{batch_id}")
+async def get_batch_report(batch_id: int):
+    """
+    Get batch report data: all students with basic details,
+    per-student daily/mock test counts, and batch-level totals.
+    """
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 1. Fetch batch info
+        cursor.execute("""
+            SELECT batch_id, batch_name, start_year, end_year, type
+            FROM batch WHERE batch_id = %s
+        """, (batch_id,))
+        batch_row = cursor.fetchone()
+        if not batch_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Batch with ID {batch_id} not found"
+            )
+
+        batch_info = {
+            "batch_id": batch_row[0],
+            "batch_name": batch_row[1],
+            "start_year": batch_row[2],
+            "end_year": batch_row[3],
+            "type": batch_row[4],
+        }
+
+        # 2. Fetch all students in the batch with basic details
+        cursor.execute("""
+            SELECT
+                s.student_id,
+                s.student_name,
+                s.gender,
+                s.dob,
+                s.community,
+                s.grade,
+                s.enrollment_year,
+                s.course,
+                s.branch,
+                s.student_mobile,
+                s.email
+            FROM student s
+            WHERE s.batch_id = %s
+            ORDER BY s.student_name
+        """, (batch_id,))
+        student_rows = cursor.fetchall()
+
+        student_ids = [r[0] for r in student_rows]
+
+        # 3. Per-student daily test counts
+        daily_counts = {}
+        if student_ids:
+            cursor.execute("""
+                SELECT student_id, COUNT(*) as cnt
+                FROM daily_test
+                WHERE student_id = ANY(%s)
+                GROUP BY student_id
+            """, (student_ids,))
+            for row in cursor.fetchall():
+                daily_counts[row[0]] = row[1]
+
+        # 4. Per-student mock test counts
+        mock_counts = {}
+        if student_ids:
+            cursor.execute("""
+                SELECT student_id, COUNT(*) as cnt
+                FROM mock_test
+                WHERE student_id = ANY(%s)
+                GROUP BY student_id
+            """, (student_ids,))
+            for row in cursor.fetchall():
+                mock_counts[row[0]] = row[1]
+
+        # 5. Total distinct daily tests conducted for this batch
+        total_daily_tests = 0
+        if student_ids:
+            cursor.execute("""
+                SELECT COUNT(DISTINCT (test_date, subject, unit_name))
+                FROM daily_test
+                WHERE student_id = ANY(%s)
+            """, (student_ids,))
+            total_daily_tests = cursor.fetchone()[0] or 0
+
+        # 6. Total distinct mock tests conducted for this batch
+        total_mock_tests = 0
+        if student_ids:
+            cursor.execute("""
+                SELECT COUNT(DISTINCT test_date)
+                FROM mock_test
+                WHERE student_id = ANY(%s)
+            """, (student_ids,))
+            total_mock_tests = cursor.fetchone()[0] or 0
+
+        # 7. Fetch all daily test records for batch students
+        daily_tests = []
+        if student_ids:
+            cursor.execute("""
+                SELECT dt.student_id, s.student_name, dt.test_date,
+                       dt.subject, dt.unit_name, dt.total_marks
+                FROM daily_test dt
+                JOIN student s ON s.student_id = dt.student_id
+                WHERE dt.student_id = ANY(%s)
+                ORDER BY dt.test_date, s.student_name
+            """, (student_ids,))
+            for r in cursor.fetchall():
+                daily_tests.append({
+                    "student_id": r[0],
+                    "student_name": r[1],
+                    "test_date": r[2].isoformat() if r[2] else None,
+                    "subject": r[3],
+                    "unit_name": r[4],
+                    "total_marks": r[5],
+                })
+
+        # 8. Fetch all mock test records for batch students
+        mock_tests = []
+        if student_ids:
+            cursor.execute("""
+                SELECT mt.student_id, s.student_name, mt.test_date,
+                       mt.maths_marks, mt.physics_marks,
+                       mt.chemistry_marks, mt.biology_marks, mt.total_marks
+                FROM mock_test mt
+                JOIN student s ON s.student_id = mt.student_id
+                WHERE mt.student_id = ANY(%s)
+                ORDER BY mt.test_date, s.student_name
+            """, (student_ids,))
+            for r in cursor.fetchall():
+                mock_tests.append({
+                    "student_id": r[0],
+                    "student_name": r[1],
+                    "test_date": r[2].isoformat() if r[2] else None,
+                    "maths_marks": r[3],
+                    "physics_marks": r[4],
+                    "chemistry_marks": r[5],
+                    "biology_marks": r[6],
+                    "total_marks": r[7],
+                })
+
+        # Build student list
+        students = []
+        for row in student_rows:
+            sid = row[0]
+            students.append({
+                "student_id": sid,
+                "student_name": row[1],
+                "gender": row[2],
+                "dob": row[3].isoformat() if row[3] else None,
+                "community": row[4],
+                "grade": row[5],
+                "enrollment_year": row[6],
+                "course": row[7],
+                "branch": row[8],
+                "student_mobile": row[9],
+                "email": row[10],
+                "daily_test_count": daily_counts.get(sid, 0),
+                "mock_test_count": mock_counts.get(sid, 0),
+            })
+
+        return {
+            "batch": batch_info,
+            "total_students": len(students),
+            "total_daily_tests_conducted": total_daily_tests,
+            "total_mock_tests_conducted": total_mock_tests,
+            "students": students,
+            "daily_tests": daily_tests,
+            "mock_tests": mock_tests,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate batch report: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()

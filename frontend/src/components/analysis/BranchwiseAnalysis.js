@@ -10,7 +10,6 @@ const BranchwiseAnalysis = () => {
         grade: '',
         admissionNumber: '',
         batch: '',
-        subject: '',
         fromDate: '',
         toDate: ''
     });
@@ -28,7 +27,6 @@ const BranchwiseAnalysis = () => {
             if (filters.grade) params.append('grade', filters.grade);
             if (filters.admissionNumber) params.append('admission_number', filters.admissionNumber);
             if (filters.batch) params.append('batch_id', filters.batch);
-            if (filters.subject) params.append('subject', filters.subject);
             if (filters.fromDate) params.append('from_date', filters.fromDate);
             if (filters.toDate) params.append('to_date', filters.toDate);
 
@@ -185,7 +183,7 @@ const BranchwiseAnalysis = () => {
                     grade: true,
                     admissionNumber: true,
                     batch: true,
-                    subject: true,
+                    subject: false,
                     dateRange: true,
                     name: false,
                     course: false,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import './AddStudent.css';
 
 const AddStudent = ({ batch, onBack, onSave, editMode = false, studentId = null }) => {
@@ -283,27 +284,72 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentId = null 
     }
   };
 
-  const handleDownloadTemplate = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/student/template');
-      const data = await response.json();
-      
-      // Show template info
-      const allColumns = [
-        ...data.columns.required,
-        ...data.columns.optional_student_info,
-        ...data.columns.optional_parent_info,
-        ...data.columns.optional_10th_marks,
-        ...data.columns.optional_12th_marks,
-        ...data.columns.optional_entrance_exam,
-        ...data.columns.optional_counselling
-      ];
-      
-      alert(`Excel Template Columns:\n\nRequired: ${data.columns.required.join(', ')}\n\nTotal columns available: ${allColumns.length}\n\nGenerate template using: python backend/generate_excel_template.py`);
-    } catch (err) {
-      console.error('Error fetching template info:', err);
-      alert('Could not fetch template info. Generate template using:\npython backend/generate_excel_template.py');
-    }
+  const handleDownloadTemplate = () => {
+    const wb = XLSX.utils.book_new();
+
+    // All column headers matching the backend upload API
+    const headers = [
+      'student_id', 'student_name', 'dob', 'grade', 'community',
+      'enrollment_year', 'course', 'branch', 'gender',
+      'student_mobile', 'aadhar_no', 'apaar_id', 'email', 'school_name',
+      // Parent info
+      'guardian_name', 'guardian_occupation', 'guardian_mobile', 'guardian_email',
+      'father_name', 'father_occupation', 'father_mobile', 'father_email',
+      'mother_name', 'mother_occupation', 'mother_mobile', 'mother_email',
+      'sibling_name', 'sibling_grade', 'sibling_school', 'sibling_college',
+      // 10th marks
+      'tenth_school_name', 'tenth_year_of_passing', 'tenth_board_of_study',
+      'tenth_english', 'tenth_tamil', 'tenth_hindi', 'tenth_maths',
+      'tenth_science', 'tenth_social_science', 'tenth_total_marks',
+      // 12th marks
+      'twelfth_school_name', 'twelfth_year_of_passing', 'twelfth_board_of_study',
+      'twelfth_english', 'twelfth_tamil', 'twelfth_physics', 'twelfth_chemistry',
+      'twelfth_maths', 'twelfth_biology', 'twelfth_computer_science', 'twelfth_total_marks',
+      // Entrance exam
+      'entrance_exam_name', 'entrance_physics_marks', 'entrance_chemistry_marks',
+      'entrance_maths_marks', 'entrance_biology_marks', 'entrance_total_marks',
+      'entrance_overall_rank', 'entrance_community_rank',
+      // Counselling
+      'counselling_forum', 'counselling_round', 'counselling_college_alloted',
+      'counselling_year_of_completion'
+    ];
+
+    // Create sheet with headers only
+    const wsData = [headers];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Set column widths
+    ws['!cols'] = headers.map(h => ({ wch: Math.max(h.length + 2, 16) }));
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Student Data');
+
+    // Instructions sheet
+    const instrData = [
+      ['STUDENT UPLOAD TEMPLATE - INSTRUCTIONS'],
+      [],
+      ['REQUIRED FIELDS (must be filled for every student):'],
+      ['  • student_id  — Unique admission number'],
+      ['  • student_name — Full name of the student'],
+      [],
+      ['ALL OTHER FIELDS ARE OPTIONAL — leave blank if not available.'],
+      [],
+      ['DATE FORMAT:'],
+      ['  • dob — Use YYYY-MM-DD format (e.g. 2005-06-15)'],
+      [],
+      ['NOTES:'],
+      ['  • Row 1 in "Student Data" sheet contains column headers — do NOT modify them.'],
+      ['  • Start adding student data from Row 2 onwards.'],
+      ['  • batch_id is NOT in this file — it is auto-assigned from the batch you upload into.'],
+      ['  • For entrance exams, only one exam per row is supported.'],
+      ['  • Numeric fields (marks, year, rank) should contain numbers only.'],
+      ['  • If a student already exists in the database, that row will be skipped (others will still be added).'],
+    ];
+    const wsInstr = XLSX.utils.aoa_to_sheet(instrData);
+    wsInstr['!cols'] = [{ wch: 90 }];
+    XLSX.utils.book_append_sheet(wb, wsInstr, 'Instructions');
+
+    const batchLabel = batch?.batch_name ? `_${batch.batch_name.replace(/\s+/g, '_')}` : '';
+    XLSX.writeFile(wb, `Student_Upload_Template${batchLabel}.xlsx`);
   };
 
   const handleSubmit = async (e) => {
@@ -505,9 +551,9 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentId = null 
               }}>
                 <h4 style={{ margin: '0 0 10px 0' }}>📋 Instructions:</h4>
                 <ol style={{ margin: '0', paddingLeft: '20px' }}>
-                  <li>Download the Excel template by clicking "View Template Info" below</li>
-                  <li>Fill in your student data (only student_id and student_name are required)</li>
-                  <li>Upload the completed Excel file using the file input below</li>
+                  <li>Click "Download Excel Template" below to get the template file</li>
+                  <li>Open the file and fill in student data from Row 2 (only student_id and student_name are required)</li>
+                  <li>Save the file and upload it using the file input below</li>
                   <li>Click "Upload Students" to process the file</li>
                 </ol>
                 <button
@@ -515,16 +561,19 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentId = null 
                   onClick={handleDownloadTemplate}
                   style={{
                     marginTop: '15px',
-                    padding: '8px 16px',
-                    backgroundColor: '#17a2b8',
+                    padding: '10px 20px',
+                    background: 'linear-gradient(135deg, #38a169 0%, #2f855a 100%)',
                     color: 'white',
                     border: 'none',
-                    borderRadius: '6px',
+                    borderRadius: '8px',
                     cursor: 'pointer',
-                    fontWeight: '600'
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    boxShadow: '0 2px 6px rgba(56, 161, 105, 0.3)',
+                    transition: 'all 0.2s'
                   }}
                 >
-                  📄 View Template Info
+                  📥 Download Excel Template
                 </button>
               </div>
 

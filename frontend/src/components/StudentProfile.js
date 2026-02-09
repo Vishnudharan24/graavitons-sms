@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import React, { useState, useEffect, useCallback } from 'react';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import * as XLSX from 'xlsx';
 import './StudentProfile.css';
 
 const StudentProfile = ({ student, batchStats, onBack }) => {
@@ -10,10 +11,19 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
   const [dailyTests, setDailyTests] = useState([]);
   const [mockTests, setMockTests] = useState([]);
   const [feedbackList, setFeedbackList] = useState([]);
+  const [analysisData, setAnalysisData] = useState(null);
+  const [savingFeedback, setSavingFeedback] = useState(false);
+  const [dailyDateFrom, setDailyDateFrom] = useState('');
+  const [dailyDateTo, setDailyDateTo] = useState('');
+  const [mockDateFrom, setMockDateFrom] = useState('');
+  const [mockDateTo, setMockDateTo] = useState('');
   const [currentFeedback, setCurrentFeedback] = useState({
     date: new Date().toISOString().split('T')[0],
     teacherFeedback: '',
-    suggestions: ''
+    suggestions: '',
+    academicDirectorSignature: '',
+    studentSignature: '',
+    parentSignature: ''
   });
 
   // Fetch complete student data from API
@@ -37,26 +47,18 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       const data = await response.json();
       setStudentData(data);
       
-      // Fetch daily tests
+      // Fetch analysis data (includes daily tests, mock tests with class avg/top scores, and feedback)
       try {
-        const dailyTestsResponse = await fetch(`http://localhost:8000/api/exam/daily-test/student/${student.rollNo}`);
-        if (dailyTestsResponse.ok) {
-          const dailyTestsData = await dailyTestsResponse.json();
-          setDailyTests(dailyTestsData.daily_tests || []);
+        const analysisResponse = await fetch(`http://localhost:8000/api/analysis/individual/${student.rollNo}`);
+        if (analysisResponse.ok) {
+          const analysisResult = await analysisResponse.json();
+          setAnalysisData(analysisResult);
+          setDailyTests(analysisResult.daily_tests || []);
+          setMockTests(analysisResult.mock_tests || []);
+          setFeedbackList(analysisResult.feedback || []);
         }
       } catch (err) {
-        console.error('Error fetching daily tests:', err);
-      }
-      
-      // Fetch mock tests
-      try {
-        const mockTestsResponse = await fetch(`http://localhost:8000/api/exam/mock-test/student/${student.rollNo}`);
-        if (mockTestsResponse.ok) {
-          const mockTestsData = await mockTestsResponse.json();
-          setMockTests(mockTestsData.mock_tests || []);
-        }
-      } catch (err) {
-        console.error('Error fetching mock tests:', err);
+        console.error('Error fetching analysis data:', err);
       }
       
     } catch (err) {
@@ -189,10 +191,272 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     }
   };
 
+  // Apply date filters to tests
+  const filteredDailyTests = dailyTests.filter(test => {
+    if (!test.test_date) return true;
+    const d = test.test_date;
+    if (dailyDateFrom && d < dailyDateFrom) return false;
+    if (dailyDateTo && d > dailyDateTo) return false;
+    return true;
+  });
+
+  const filteredMockTests = mockTests.filter(test => {
+    if (!test.test_date) return true;
+    const d = test.test_date;
+    if (mockDateFrom && d < mockDateFrom) return false;
+    if (mockDateTo && d > mockDateTo) return false;
+    return true;
+  });
+
+  // Build performance trend from filtered daily tests
+  const buildPerformanceTrend = () => {
+    if (!filteredDailyTests || filteredDailyTests.length === 0) return [];
+    const byDate = {};
+    filteredDailyTests.forEach(test => {
+      const d = test.test_date || 'Unknown';
+      if (!byDate[d]) byDate[d] = { marks: [], classAvg: [] };
+      byDate[d].marks.push(test.marks || 0);
+      byDate[d].classAvg.push(test.class_avg || 0);
+    });
+    return Object.entries(byDate).sort().map(([date, data]) => ({
+      date: new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+      score: Math.round(data.marks.reduce((a, b) => a + b, 0) / data.marks.length),
+      classAvg: Math.round(data.classAvg.reduce((a, b) => a + b, 0) / data.classAvg.length)
+    }));
+  };
+
+  // Build mock test chart data from filtered mock tests
+  const buildMockTestChartData = () => {
+    if (!filteredMockTests || filteredMockTests.length === 0) return [];
+    return filteredMockTests.map((test, idx) => ({
+      exam: `Mock ${idx + 1} (${test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''})`,
+      physics: test.physics_marks || 0,
+      chemistry: test.chemistry_marks || 0,
+      biology: test.biology_marks || 0,
+      maths: test.maths_marks || 0,
+      total: test.total_marks || 0
+    }));
+  };
+
+  const performanceTrend = buildPerformanceTrend();
+  const mockTestChartData = buildMockTestChartData();
+
+  // Save feedback to backend API
+  const handleSaveFeedback = async () => {
+    if (!student?.rollNo) return;
+    if (!currentFeedback.teacherFeedback && !currentFeedback.suggestions) {
+      alert('Please enter feedback or suggestions');
+      return;
+    }
+    try {
+      setSavingFeedback(true);
+      const response = await fetch('http://localhost:8000/api/analysis/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student_id: student.rollNo,
+          feedback_date: currentFeedback.date,
+          teacher_feedback: currentFeedback.teacherFeedback,
+          suggestions: currentFeedback.suggestions,
+          academic_director_signature: currentFeedback.academicDirectorSignature,
+          student_signature: currentFeedback.studentSignature,
+          parent_signature: currentFeedback.parentSignature
+        })
+      });
+      if (response.ok) {
+        alert('Feedback saved successfully!');
+        setCurrentFeedback({
+          date: new Date().toISOString().split('T')[0],
+          teacherFeedback: '',
+          suggestions: '',
+          academicDirectorSignature: '',
+          studentSignature: '',
+          parentSignature: ''
+        });
+        // Refresh data to get updated feedback
+        fetchStudentData();
+      } else {
+        throw new Error('Failed to save feedback');
+      }
+    } catch (err) {
+      alert('Error saving feedback: ' + err.message);
+    } finally {
+      setSavingFeedback(false);
+    }
+  };
+
+  // Generate Excel report for the student
+  const generateExcelReport = () => {
+    const wb = XLSX.utils.book_new();
+
+    // ===== Sheet 1: Personal Information =====
+    const personalRows = [
+      ['STUDENT REPORT'],
+      ['Generated on', new Date().toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })],
+      [],
+      ['PERSONAL INFORMATION'],
+      ['Admission Number', displayData.rollNo],
+      ['Student Name', displayData.name],
+      ['Date of Birth', displayData.dob],
+      ['Gender', displayData.gender],
+      ['Grade', displayData.grade],
+      ['Community', displayData.community],
+      ['Academic Year', displayData.academicYear],
+      ['Course', displayData.course],
+      ['Branch', displayData.branch],
+      ['Student Mobile', displayData.studentMobile],
+      ['Aadhar Number', displayData.aadharNumber],
+      ['APAAR ID', displayData.aasarId],
+      ['Email', displayData.emailId],
+      ['School Name', displayData.schoolName],
+      [],
+      ['FAMILY DETAILS'],
+      ['Guardian Name', displayData.guardianName],
+      ['Guardian Occupation', displayData.guardianOccupation],
+      ['Guardian Contact', displayData.guardianContact],
+      ['Guardian Email', displayData.guardianEmail],
+      ['Father Name', displayData.fatherName],
+      ['Father Occupation', displayData.fatherOccupation],
+      ['Father Contact', displayData.fatherContact],
+      ['Father Email', displayData.fatherEmail],
+      ['Mother Name', displayData.motherName],
+      ['Mother Occupation', displayData.motherOccupation],
+      ['Mother Contact', displayData.motherContact],
+      ['Mother Email', displayData.motherEmail],
+      ['Sibling Name', displayData.siblingName],
+      ['Sibling Grade', displayData.siblingGrade],
+      ['Sibling School', displayData.siblingSchool],
+      ['Sibling College', displayData.siblingCollege],
+      [],
+      ['COUNSELLING DETAILS'],
+      ['Forum', displayData.counselling.forum],
+      ['Round', displayData.counselling.round],
+      ['College Alloted', displayData.counselling.collegeAlloted],
+      ['Year of Completion', displayData.counselling.yearOfCompletion],
+    ];
+    const wsPersonal = XLSX.utils.aoa_to_sheet(personalRows);
+    wsPersonal['!cols'] = [{ wch: 22 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(wb, wsPersonal, 'Personal Info');
+
+    // ===== Sheet 2: Academic Marks (10th, 12th, Entrance) =====
+    const academicRows = [
+      ['ACADEMIC MARKS'],
+      [],
+      ['10TH STANDARD'],
+      ['School Name', displayData.std10Marks.schoolName],
+      ['Year of Passing', displayData.std10Marks.yearOfPassing],
+      ['Board of Study', displayData.std10Marks.boardOfStudy],
+      [],
+      ['Subject', 'Marks'],
+      ['English', displayData.std10Marks.english],
+      ['Tamil', displayData.std10Marks.tamil],
+      ['Hindi', displayData.std10Marks.hindi],
+      ['Mathematics', displayData.std10Marks.maths],
+      ['Science', displayData.std10Marks.science],
+      ['Social Science', displayData.std10Marks.socialScience],
+      ['Total', displayData.std10Marks.total],
+      [],
+      ['12TH STANDARD'],
+      ['School Name', displayData.std12Marks.schoolName],
+      ['Year of Passing', displayData.std12Marks.yearOfPassing],
+      ['Board of Study', displayData.std12Marks.boardOfStudy],
+      [],
+      ['Subject', 'Marks'],
+      ['English', displayData.std12Marks.english],
+      ['Tamil', displayData.std12Marks.tamil],
+      ['Physics', displayData.std12Marks.physics],
+      ['Chemistry', displayData.std12Marks.chemistry],
+      ['Mathematics', displayData.std12Marks.mathematics],
+      ['Biology', displayData.std12Marks.biology],
+      ['Computer Science', displayData.std12Marks.computerScience],
+      ['Total', displayData.std12Marks.total],
+    ];
+
+    if (displayData.entranceExams.length > 0) {
+      academicRows.push([], ['ENTRANCE EXAMS']);
+      academicRows.push(['Exam Name', 'Physics', 'Chemistry', 'Maths', 'Biology', 'Total', 'Overall Rank', 'Community Rank']);
+      displayData.entranceExams.forEach(exam => {
+        academicRows.push([
+          exam.exam_name || '-',
+          exam.physics_marks || '-',
+          exam.chemistry_marks || '-',
+          exam.maths_marks || '-',
+          exam.biology_marks || '-',
+          exam.total_marks || '-',
+          exam.overall_rank || '-',
+          exam.community_rank || '-'
+        ]);
+      });
+    }
+
+    const wsAcademic = XLSX.utils.aoa_to_sheet(academicRows);
+    wsAcademic['!cols'] = [{ wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, wsAcademic, 'Academic Marks');
+
+    // ===== Sheet 3: Daily Test Performance =====
+    if (dailyTests.length > 0) {
+      const dailyHeader = ['Date', 'Subject', 'Unit Name', 'Marks', 'Class Avg', 'Top Score'];
+      const dailyRows = dailyTests.map(test => [
+        test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN') : '-',
+        test.subject || '-',
+        test.unit_name || '-',
+        test.marks || 0,
+        test.class_avg || 0,
+        test.top_score || 0
+      ]);
+      const wsDaily = XLSX.utils.aoa_to_sheet([['DAILY TEST PERFORMANCE'], [], dailyHeader, ...dailyRows]);
+      wsDaily['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 28 }, { wch: 10 }, { wch: 12 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, wsDaily, 'Daily Tests');
+    }
+
+    // ===== Sheet 4: Mock Test Performance =====
+    if (mockTests.length > 0) {
+      const mockHeader = ['Date', 'Maths', 'Physics', 'Chemistry', 'Biology', 'Total', 'Class Avg', 'Top Score'];
+      const mockRows = mockTests.map(test => [
+        test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN') : '-',
+        test.maths_marks || 0,
+        test.physics_marks || 0,
+        test.chemistry_marks || 0,
+        test.biology_marks || 0,
+        test.total_marks || 0,
+        test.class_avg_total || 0,
+        test.top_score_total || 0
+      ]);
+      const wsMock = XLSX.utils.aoa_to_sheet([['MOCK TEST PERFORMANCE'], [], mockHeader, ...mockRows]);
+      wsMock['!cols'] = [{ wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, wsMock, 'Mock Tests');
+    }
+
+    // ===== Sheet 5: Feedback History =====
+    if (feedbackList.length > 0) {
+      const fbHeader = ['Date', 'Teacher Feedback', 'Suggestions', 'Academic Director', 'Student', 'Parent'];
+      const fbRows = feedbackList.map(fb => [
+        (fb.feedback_date || fb.date) ? new Date(fb.feedback_date || fb.date).toLocaleDateString('en-IN') : '-',
+        fb.teacher_feedback || '-',
+        fb.suggestions || '-',
+        fb.academic_director_signature || '-',
+        fb.student_signature || '-',
+        fb.parent_signature || '-'
+      ]);
+      const wsFeedback = XLSX.utils.aoa_to_sheet([['FEEDBACK HISTORY'], [], fbHeader, ...fbRows]);
+      wsFeedback['!cols'] = [{ wch: 14 }, { wch: 40 }, { wch: 40 }, { wch: 20 }, { wch: 16 }, { wch: 16 }];
+      XLSX.utils.book_append_sheet(wb, wsFeedback, 'Feedback');
+    }
+
+    // Generate and download
+    const fileName = `${displayData.name.replace(/\s+/g, '_')}_${displayData.rollNo}_Report.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
+
   return (
     <div className="student-profile">
       <div className="profile-header">
-        <button className="back-button" onClick={onBack}>← Back to Students</button>
+        <div className="profile-header-actions">
+          <button className="back-button" onClick={onBack}>← Back to Students</button>
+          <button className="btn-download-report" onClick={generateExcelReport}>
+            📊 Download Report
+          </button>
+        </div>
         <div className="profile-title-section">
           <h2>Student Profile - {displayData.name}</h2>
           <div className="student-photo">
@@ -519,32 +783,67 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
         <div className="tab-content">
           {/* Daily Test Performance */}
           <div className="profile-section">
-            <h3>Daily Test Performance</h3>
-            {dailyTests.length > 0 ? (
-              <div className="marks-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Subject</th>
-                      <th>Unit Covered</th>
-                      <th>Marks Obtained</th>
-                      <th>Grade</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dailyTests.map((test, index) => (
-                      <tr key={test.test_id || index}>
-                        <td>{test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN') : 'N/A'}</td>
-                        <td className="exam-name">{test.subject || 'N/A'}</td>
-                        <td>{test.unit_name || 'N/A'}</td>
-                        <td><strong>{test.total_marks || 0}</strong></td>
-                        <td>{test.grade || 'N/A'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <h3>📚 Daily Test Performance</h3>
+            <div className="date-filter-row">
+              <div className="date-filter-field">
+                <label>From</label>
+                <input type="date" value={dailyDateFrom} onChange={e => setDailyDateFrom(e.target.value)} className="date-filter-input" />
               </div>
+              <div className="date-filter-field">
+                <label>To</label>
+                <input type="date" value={dailyDateTo} onChange={e => setDailyDateTo(e.target.value)} className="date-filter-input" />
+              </div>
+              {(dailyDateFrom || dailyDateTo) && (
+                <button className="date-filter-clear" onClick={() => { setDailyDateFrom(''); setDailyDateTo(''); }}>✕ Clear</button>
+              )}
+            </div>
+            {filteredDailyTests.length > 0 ? (
+              <>
+                <div className="marks-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Subject</th>
+                        <th>Unit Covered</th>
+                        <th>Marks</th>
+                        <th>Class Avg</th>
+                        <th>Top Score</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredDailyTests.map((test, index) => (
+                        <tr key={test.test_id || index}>
+                          <td>{test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN') : 'N/A'}</td>
+                          <td className="exam-name">{test.subject || 'N/A'}</td>
+                          <td>{test.unit_name || 'N/A'}</td>
+                          <td><strong>{test.marks || 0}</strong></td>
+                          <td>{test.class_avg || 0}</td>
+                          <td className="top-score">{test.top_score || 0}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Performance Trend Chart */}
+                {performanceTrend.length > 1 && (
+                  <div className="profile-section" style={{ marginTop: '20px' }}>
+                    <h4>Performance Trend</h4>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={performanceTrend} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="score" stroke="#5b5fc7" strokeWidth={3} name="Your Score" dot={{ r: 5 }} />
+                        <Line type="monotone" dataKey="classAvg" stroke="#a0aec0" strokeWidth={2} strokeDasharray="5 5" name="Class Average" dot={{ r: 3 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </>
             ) : (
               <p style={{ color: '#666', fontStyle: 'italic', padding: '20px', textAlign: 'center' }}>
                 No daily test data available
@@ -554,51 +853,69 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
 
           {/* Mock Test Performance */}
           <div className="profile-section">
-            <h3>Mock Test Performance</h3>
-            {mockTests.length > 0 ? (
-              <div className="marks-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Maths</th>
-                      <th>Physics</th>
-                      <th>Chemistry</th>
-                      <th>Biology</th>
-                      <th>Total</th>
-                      <th>Grade</th>
-                      <th>Units Covered</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mockTests.map((exam, index) => (
-                      <tr key={exam.test_id || index}>
-                        <td>{exam.test_date ? new Date(exam.test_date).toLocaleDateString('en-IN') : 'N/A'}</td>
-                        <td>{exam.maths_marks || 0}</td>
-                        <td>{exam.physics_marks || 0}</td>
-                        <td>{exam.chemistry_marks || 0}</td>
-                        <td>{exam.biology_marks || 0}</td>
-                        <td><strong>{exam.total_marks || 0}</strong></td>
-                        <td>{exam.grade || 'N/A'}</td>
-                        <td style={{ fontSize: '12px', lineHeight: '1.4' }}>
-                          {exam.maths_unit_names && (
-                            <div><strong>M:</strong> {Array.isArray(exam.maths_unit_names) ? exam.maths_unit_names.join(', ') : exam.maths_unit_names}</div>
-                          )}
-                          {exam.physics_unit_names && (
-                            <div><strong>P:</strong> {Array.isArray(exam.physics_unit_names) ? exam.physics_unit_names.join(', ') : exam.physics_unit_names}</div>
-                          )}
-                          {exam.chemistry_unit_names && (
-                            <div><strong>C:</strong> {Array.isArray(exam.chemistry_unit_names) ? exam.chemistry_unit_names.join(', ') : exam.chemistry_unit_names}</div>
-                          )}
-                          {exam.biology_unit_names && (
-                            <div><strong>B:</strong> {Array.isArray(exam.biology_unit_names) ? exam.biology_unit_names.join(', ') : exam.biology_unit_names}</div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <h3>🎯 Mock Test Performance</h3>
+            <div className="date-filter-row">
+              <div className="date-filter-field">
+                <label>From</label>
+                <input type="date" value={mockDateFrom} onChange={e => setMockDateFrom(e.target.value)} className="date-filter-input" />
               </div>
+              <div className="date-filter-field">
+                <label>To</label>
+                <input type="date" value={mockDateTo} onChange={e => setMockDateTo(e.target.value)} className="date-filter-input" />
+              </div>
+              {(mockDateFrom || mockDateTo) && (
+                <button className="date-filter-clear" onClick={() => { setMockDateFrom(''); setMockDateTo(''); }}>✕ Clear</button>
+              )}
+            </div>
+            {filteredMockTests.length > 0 ? (
+              <>
+                {/* Mock Test Bar Chart */}
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart data={mockTestChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="exam" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="physics" fill="#FF6B9D" name="Physics" />
+                    <Bar dataKey="chemistry" fill="#4A90E2" name="Chemistry" />
+                    <Bar dataKey="biology" fill="#00D9C0" name="Biology" />
+                    <Bar dataKey="maths" fill="#FFA500" name="Maths" />
+                  </BarChart>
+                </ResponsiveContainer>
+
+                {/* Mock Test Details Table */}
+                <div className="marks-table" style={{ marginTop: '20px' }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Maths</th>
+                        <th>Physics</th>
+                        <th>Chemistry</th>
+                        <th>Biology</th>
+                        <th>Total</th>
+                        <th>Class Avg</th>
+                        <th>Top Score</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredMockTests.map((exam, index) => (
+                        <tr key={exam.test_id || index}>
+                          <td>{exam.test_date ? new Date(exam.test_date).toLocaleDateString('en-IN') : 'N/A'}</td>
+                          <td>{exam.maths_marks || 0}</td>
+                          <td>{exam.physics_marks || 0}</td>
+                          <td>{exam.chemistry_marks || 0}</td>
+                          <td>{exam.biology_marks || 0}</td>
+                          <td><strong>{exam.total_marks || 0}</strong></td>
+                          <td>{exam.class_avg_total || 0}</td>
+                          <td className="top-score">{exam.top_score_total || 0}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             ) : (
               <p style={{ color: '#666', fontStyle: 'italic', padding: '20px', textAlign: 'center' }}>
                 No mock test data available
@@ -606,49 +923,9 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
             )}
           </div>
 
-          {/* Performance Graph Section */}
-          {batchStats && (
-            <div className="profile-section performance-graph-section">
-              <h3>Performance Comparison</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart
-                  data={[
-                    { name: 'Top Mark', topMark: batchStats.topMark },
-                    { name: 'Batch Average', batchAverage: Math.round(batchStats.averageMark * 10) / 10 },
-                    { name: 'Your Mark', yourMark: batchStats.studentMark }
-                  ]}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis domain={[0, 100]} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="topMark" fill="#FF6B9D" name="Top Mark (%)" />
-                  <Bar dataKey="batchAverage" fill="#4A90E2" name="Batch Average (%)" />
-                  <Bar dataKey="yourMark" fill="#00D9C0" name="Your Mark (%)" />
-                </BarChart>
-              </ResponsiveContainer>
-              <div className="performance-stats">
-                <div className="stat-item">
-                  <span className="stat-label">Top Mark in Batch:</span>
-                  <span className="stat-value">{batchStats.topMark}%</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-label">Batch Average:</span>
-                  <span className="stat-value">{Math.round(batchStats.averageMark * 10) / 10}%</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-label">Your Mark:</span>
-                  <span className="stat-value">{batchStats.studentMark}%</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Teachers Feedback & Signatures */}
+          {/* Teachers Feedback & Suggestions */}
           <div className="profile-section">
-            <h3>Feedback & Signatures</h3>
+            <h3>✍️ Teachers Feedback & Suggestions</h3>
             <div className="feedback-section">
               <div className="feedback-item">
                 <label>Date:</label>
@@ -663,7 +940,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                 <label>Teachers Feedback:</label>
                 <textarea
                   className="feedback-textarea"
-                  placeholder="Enter teacher's feedback here..."
+                  placeholder="Enter teacher's feedback about the student's performance, behavior, and progress..."
                   rows="4"
                   value={currentFeedback.teacherFeedback}
                   onChange={(e) => setCurrentFeedback({ ...currentFeedback, teacherFeedback: e.target.value })}
@@ -673,48 +950,60 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                 <label>Suggestions:</label>
                 <textarea
                   className="feedback-textarea"
-                  placeholder="Enter suggestions here..."
+                  placeholder="Enter suggestions for improvement, areas to focus on..."
                   rows="4"
                   value={currentFeedback.suggestions}
                   onChange={(e) => setCurrentFeedback({ ...currentFeedback, suggestions: e.target.value })}
                 ></textarea>
               </div>
-              <button
-                className="btn-save-feedback"
-                onClick={() => {
-                  if (currentFeedback.teacherFeedback || currentFeedback.suggestions) {
-                    setFeedbackList([
-                      {
-                        id: feedbackList.length + 1,
-                        ...currentFeedback
-                      },
-                      ...feedbackList
-                    ]);
-                    setCurrentFeedback({
-                      date: new Date().toISOString().split('T')[0],
-                      teacherFeedback: '',
-                      suggestions: ''
-                    });
-                    alert('Feedback saved successfully!');
-                  }
-                }}
-              >
-                Save Feedback
-              </button>
               <div className="signature-grid">
                 <div className="signature-box">
                   <label>Academic Director's Signature</label>
-                  <div className="signature-area"></div>
+                  <input
+                    type="text"
+                    placeholder="Type name as signature"
+                    value={currentFeedback.academicDirectorSignature}
+                    onChange={(e) => setCurrentFeedback({ ...currentFeedback, academicDirectorSignature: e.target.value })}
+                    className="signature-input"
+                  />
+                  {currentFeedback.academicDirectorSignature && (
+                    <div className="signature-preview"><span className="signature-text">{currentFeedback.academicDirectorSignature}</span></div>
+                  )}
                 </div>
                 <div className="signature-box">
                   <label>Student Signature</label>
-                  <div className="signature-area"></div>
+                  <input
+                    type="text"
+                    placeholder="Type name as signature"
+                    value={currentFeedback.studentSignature}
+                    onChange={(e) => setCurrentFeedback({ ...currentFeedback, studentSignature: e.target.value })}
+                    className="signature-input"
+                  />
+                  {currentFeedback.studentSignature && (
+                    <div className="signature-preview"><span className="signature-text">{currentFeedback.studentSignature}</span></div>
+                  )}
                 </div>
                 <div className="signature-box">
                   <label>Parents Signature</label>
-                  <div className="signature-area"></div>
+                  <input
+                    type="text"
+                    placeholder="Type name as signature"
+                    value={currentFeedback.parentSignature}
+                    onChange={(e) => setCurrentFeedback({ ...currentFeedback, parentSignature: e.target.value })}
+                    className="signature-input"
+                  />
+                  {currentFeedback.parentSignature && (
+                    <div className="signature-preview"><span className="signature-text">{currentFeedback.parentSignature}</span></div>
+                  )}
                 </div>
               </div>
+              <button
+                className="btn-save-feedback"
+                onClick={handleSaveFeedback}
+                disabled={savingFeedback}
+              >
+                {savingFeedback ? 'Saving...' : '💾 Save Feedback'}
+              </button>
             </div>
           </div>
         </div>
@@ -724,7 +1013,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       {activeTab === 'feedback' && (
         <div className="tab-content">
           <div className="profile-section">
-            <h3>Feedback History</h3>
+            <h3>📜 Feedback History</h3>
             {feedbackList.length === 0 ? (
               <p style={{ color: '#666', fontStyle: 'italic', textAlign: 'center', padding: '40px' }}>
                 No feedback entries yet.
@@ -732,21 +1021,47 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
             ) : (
               <div className="feedback-history">
                 {feedbackList.map((feedback) => (
-                  <div key={feedback.id} className="feedback-card">
+                  <div key={feedback.feedback_id || feedback.id} className="feedback-card">
                     <div className="feedback-card-header">
-                      <span className="feedback-date-badge">{new Date(feedback.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                      <span className="feedback-date-badge">
+                        {(feedback.feedback_date || feedback.date)
+                          ? new Date(feedback.feedback_date || feedback.date).toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })
+                          : 'Unknown Date'}
+                      </span>
                     </div>
                     <div className="feedback-card-body">
-                      <div className="feedback-entry">
-                        <h4>Teachers Feedback:</h4>
-                        <p>{feedback.teacherFeedback}</p>
-                      </div>
+                      {feedback.teacher_feedback && (
+                        <div className="feedback-entry">
+                          <h4>Teachers Feedback</h4>
+                          <p>{feedback.teacher_feedback}</p>
+                        </div>
+                      )}
                       {feedback.suggestions && (
                         <div className="feedback-entry">
-                          <h4>Suggestions:</h4>
+                          <h4>Suggestions</h4>
                           <p>{feedback.suggestions}</p>
                         </div>
                       )}
+                      <div className="feedback-signatures" style={{ display: 'flex', gap: '20px', marginTop: '10px', flexWrap: 'wrap' }}>
+                        {feedback.academic_director_signature && (
+                          <div>
+                            <span style={{ fontWeight: 600, color: '#718096', fontSize: '13px' }}>Academic Director: </span>
+                            <span style={{ fontStyle: 'italic', color: '#5b5fc7' }}>{feedback.academic_director_signature}</span>
+                          </div>
+                        )}
+                        {feedback.student_signature && (
+                          <div>
+                            <span style={{ fontWeight: 600, color: '#718096', fontSize: '13px' }}>Student: </span>
+                            <span style={{ fontStyle: 'italic', color: '#5b5fc7' }}>{feedback.student_signature}</span>
+                          </div>
+                        )}
+                        {feedback.parent_signature && (
+                          <div>
+                            <span style={{ fontWeight: 600, color: '#718096', fontSize: '13px' }}>Parent: </span>
+                            <span style={{ fontStyle: 'italic', color: '#5b5fc7' }}>{feedback.parent_signature}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
