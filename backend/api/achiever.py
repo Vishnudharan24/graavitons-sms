@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status, Depends
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -6,7 +6,6 @@ import psycopg2
 from psycopg2 import sql
 from datetime import date
 from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
-from middleware import get_current_user
 
 app = FastAPI(title=APP_TITLE)
 
@@ -51,7 +50,7 @@ def get_db_connection():
 # ── Routes ──
 
 @app.get("/api/achiever")
-async def get_all_achievers(current_user: dict = Depends(get_current_user)):
+async def get_all_achievers():
     """Fetch all achievers with joined student + batch info."""
     conn = None
     try:
@@ -137,7 +136,7 @@ async def get_all_achievers(current_user: dict = Depends(get_current_user)):
 
 
 @app.get("/api/achiever/{achievement_id}")
-async def get_achiever(achievement_id: int, current_user: dict = Depends(get_current_user)):
+async def get_achiever(achievement_id: int):
     """Fetch a single achiever by achievement_id."""
     conn = None
     try:
@@ -196,7 +195,7 @@ async def get_achiever(achievement_id: int, current_user: dict = Depends(get_cur
 
 
 @app.post("/api/achiever", status_code=status.HTTP_201_CREATED)
-async def create_achiever(achiever: AchieverCreate, current_user: dict = Depends(get_current_user)):
+async def create_achiever(achiever: AchieverCreate):
     """Create a new achiever record. The student_id must already exist in the student table."""
     conn = None
     try:
@@ -249,7 +248,7 @@ async def create_achiever(achiever: AchieverCreate, current_user: dict = Depends
 
 
 @app.put("/api/achiever/{achievement_id}")
-async def update_achiever(achievement_id: int, data: AchieverUpdate, current_user: dict = Depends(get_current_user)):
+async def update_achiever(achievement_id: int, data: AchieverUpdate):
     """Update an existing achiever record."""
     conn = None
     try:
@@ -296,7 +295,7 @@ async def update_achiever(achievement_id: int, data: AchieverUpdate, current_use
 
 
 @app.delete("/api/achiever/{achievement_id}")
-async def delete_achiever(achievement_id: int, current_user: dict = Depends(get_current_user)):
+async def delete_achiever(achievement_id: int):
     """Delete an achiever record."""
     conn = None
     try:

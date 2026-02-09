@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status, Depends
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, validator
@@ -10,7 +10,6 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from io import BytesIO
 from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
-from middleware import get_current_user
 
 app = FastAPI(title=APP_TITLE)
 
@@ -75,7 +74,7 @@ def get_db_connection():
 
 
 @app.post("/api/exam/daily-test", status_code=status.HTTP_201_CREATED)
-async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Depends(get_current_user)):
+async def create_daily_test(exam_data: DailyTestCreate):
     """
     Create daily test marks for students
     """
@@ -202,7 +201,7 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
 
 
 @app.post("/api/exam/mock-test", status_code=status.HTTP_201_CREATED)
-async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depends(get_current_user)):
+async def create_mock_test(exam_data: MockTestCreate):
     """
     Create mock test marks for students
     """
@@ -359,7 +358,7 @@ async def health_check():
 
 
 @app.get("/api/exam/template/daily-test/{batch_id}")
-async def get_daily_test_template(batch_id: int, total_marks: int = 100, current_user: dict = Depends(get_current_user)):
+async def get_daily_test_template(batch_id: int, total_marks: int = 100):
     """
     Generate and download Excel template for daily test marks entry
     """
@@ -471,7 +470,7 @@ async def get_daily_test_template(batch_id: int, total_marks: int = 100, current
 
 
 @app.get("/api/exam/template/mock-test/{batch_id}")
-async def get_mock_test_template(batch_id: int, current_user: dict = Depends(get_current_user)):
+async def get_mock_test_template(batch_id: int):
     """
     Generate and download Excel template for mock test marks entry
     """
@@ -590,7 +589,7 @@ async def get_mock_test_template(batch_id: int, current_user: dict = Depends(get
 
 
 @app.get("/api/exam/daily-test/student/{student_id}")
-async def get_student_daily_tests(student_id: str, current_user: dict = Depends(get_current_user)):
+async def get_student_daily_tests(student_id: str):
     """
     Get all daily test marks for a specific student
     """
@@ -652,7 +651,7 @@ async def get_student_daily_tests(student_id: str, current_user: dict = Depends(
 
 
 @app.get("/api/exam/mock-test/student/{student_id}")
-async def get_student_mock_tests(student_id: str, current_user: dict = Depends(get_current_user)):
+async def get_student_mock_tests(student_id: str):
     """
     Get all mock test marks for a specific student
     """
@@ -726,7 +725,7 @@ async def get_student_mock_tests(student_id: str, current_user: dict = Depends(g
 
 
 @app.get("/api/exam/batch-report/{batch_id}")
-async def get_batch_report(batch_id: int, current_user: dict = Depends(get_current_user)):
+async def get_batch_report(batch_id: int):
     """
     Get batch report data: all students with basic details,
     per-student daily/mock test counts, and batch-level totals.

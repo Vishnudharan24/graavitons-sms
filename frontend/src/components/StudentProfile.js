@@ -3,7 +3,6 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, L
 import * as XLSX from 'xlsx';
 import './StudentProfile.css';
 import { API_BASE, DEFAULT_AVATAR } from '../config';
-import { authFetch, authJsonFetch } from '../utils/auth';
 
 const StudentProfile = ({ student, batchStats, onBack }) => {
   const [activeTab, setActiveTab] = useState('personal');
@@ -43,7 +42,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     setError('');
     
     try {
-      const response = await authFetch(`/api/student/${studentId}`);
+      const response = await fetch(`${API_BASE}/api/student/${studentId}`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch student data: ${response.statusText}`);
@@ -54,7 +53,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       
       // Fetch analysis data (includes daily tests, mock tests with class avg/top scores, and feedback)
       try {
-        const analysisResponse = await authFetch(`/api/analysis/individual/${studentId}`);
+        const analysisResponse = await fetch(`${API_BASE}/api/analysis/individual/${studentId}`);
         if (analysisResponse.ok) {
           const analysisResult = await analysisResponse.json();
           setAnalysisData(analysisResult);
@@ -81,7 +80,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
 
   const fetchFeedback = async () => {
     try {
-      const response = await authFetch(`/api/analysis/feedback/${studentId}`);
+      const response = await fetch(`${API_BASE}/api/analysis/feedback/${studentId}`);
       if (response.ok) {
         const data = await response.json();
         setFeedbackList(data.feedback || []);
@@ -272,9 +271,10 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     }
     try {
       setSavingFeedback(true);
-      const response = await authJsonFetch('/api/analysis/feedback', {
+      const response = await fetch(`${API_BASE}/api/analysis/feedback`, {
         method: 'POST',
-        body: {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           student_id: studentId,
           feedback_date: currentFeedback.date,
           teacher_feedback: currentFeedback.teacherFeedback,
@@ -282,7 +282,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
           academic_director_signature: currentFeedback.academicDirectorSignature,
           student_signature: currentFeedback.studentSignature,
           parent_signature: currentFeedback.parentSignature
-        },
+        })
       });
       if (response.ok) {
         alert('Feedback saved successfully!');

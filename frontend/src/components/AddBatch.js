@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import './AddBatch.css';
 import { API_BASE } from '../config';
-import { authJsonFetch } from '../utils/auth';
 
 const AddBatch = ({ onBack, onSave }) => {
     const [formData, setFormData] = useState({
@@ -53,9 +52,12 @@ const AddBatch = ({ onBack, onSave }) => {
         setLoading(true);
         
         try {
-            const response = await authJsonFetch('/api/batch', {
+            const response = await fetch(`${API_BASE}/api/batch`, {
                 method: 'POST',
-                body: formData,
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(formData)
             });
 
             if (!response.ok) {

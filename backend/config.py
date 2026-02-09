@@ -31,8 +31,3 @@ CORS_ORIGINS = [origin.strip() for origin in _cors_origins.split(",")]
 # ── App Configuration ──
 APP_TITLE = os.getenv("APP_TITLE", "GRAAVITONS SMS API")
 DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
-
-# ── JWT Configuration ──
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-me")
-JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-JWT_EXPIRY_MINUTES = int(os.getenv("JWT_EXPIRY_MINUTES", "1440"))

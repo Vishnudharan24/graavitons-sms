@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status, Query, Depends
+from fastapi import FastAPI, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -6,7 +6,6 @@ import psycopg2
 from psycopg2 import sql
 from datetime import date
 from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
-from middleware import get_current_user
 
 app = FastAPI(title=APP_TITLE)
 
@@ -35,7 +34,7 @@ def get_db_connection():
 # ==================== FILTER OPTIONS ENDPOINTS ====================
 
 @app.get("/api/analysis/filter-options")
-async def get_filter_options(current_user: dict = Depends(get_current_user)):
+async def get_filter_options():
     """
     Get all available filter options (grades, batches, subjects, branches, courses)
     from actual database data
@@ -109,8 +108,7 @@ async def get_subjectwise_analysis(
     batch_id: Optional[int] = None,
     subject: Optional[str] = None,
     from_date: Optional[str] = None,
-    to_date: Optional[str] = None,
-    current_user: dict = Depends(get_current_user),
+    to_date: Optional[str] = None
 ):
     """
     Get subjectwise analysis data with filters.
@@ -341,8 +339,7 @@ async def get_branchwise_analysis(
     batch_id: Optional[int] = None,
     subject: Optional[str] = None,
     from_date: Optional[str] = None,
-    to_date: Optional[str] = None,
-    current_user: dict = Depends(get_current_user),
+    to_date: Optional[str] = None
 ):
     """
     Get branchwise analysis data with filters.
@@ -585,8 +582,7 @@ async def get_students_for_analysis(
     name: Optional[str] = None,
     batch_id: Optional[int] = None,
     course: Optional[str] = None,
-    branch: Optional[str] = None,
-    current_user: dict = Depends(get_current_user),
+    branch: Optional[str] = None
 ):
     """
     Get list of students for the individual analysis dropdown,
@@ -665,7 +661,7 @@ async def get_students_for_analysis(
 
 
 @app.get("/api/analysis/individual/{student_id}")
-async def get_individual_analysis(student_id: str, current_user: dict = Depends(get_current_user)):
+async def get_individual_analysis(student_id: str):
     """
     Get complete individual analysis for a student:
     - Student info (name, photo, course, branch, batch)
@@ -878,7 +874,7 @@ class FeedbackCreate(BaseModel):
 
 
 @app.post("/api/analysis/feedback", status_code=status.HTTP_201_CREATED)
-async def create_feedback(feedback: FeedbackCreate, current_user: dict = Depends(get_current_user)):
+async def create_feedback(feedback: FeedbackCreate):
     """
     Create a feedback entry for a student
     """
@@ -939,7 +935,7 @@ async def create_feedback(feedback: FeedbackCreate, current_user: dict = Depends
 
 
 @app.get("/api/analysis/feedback/{student_id}")
-async def get_student_feedback(student_id: str, current_user: dict = Depends(get_current_user)):
+async def get_student_feedback(student_id: str):
     """
     Get all feedback entries for a student
     """
