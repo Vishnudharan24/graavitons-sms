@@ -26,19 +26,22 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     parentSignature: ''
   });
 
+  // Resolve student ID from various possible props (BatchDetail uses rollNo, AchieversSection uses admissionNo)
+  const studentId = student?.rollNo || student?.admissionNo || student?.student_id || null;
+
   // Fetch complete student data from API
   useEffect(() => {
-    if (student && student.rollNo) {
+    if (studentId) {
       fetchStudentData();
     }
-  }, [student?.rollNo]);
+  }, [studentId]);
 
   const fetchStudentData = async () => {
     setLoading(true);
     setError('');
     
     try {
-      const response = await fetch(`http://localhost:8000/api/student/${student.rollNo}`);
+      const response = await fetch(`http://localhost:8000/api/student/${studentId}`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch student data: ${response.statusText}`);
@@ -49,16 +52,21 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       
       // Fetch analysis data (includes daily tests, mock tests with class avg/top scores, and feedback)
       try {
-        const analysisResponse = await fetch(`http://localhost:8000/api/analysis/individual/${student.rollNo}`);
+        const analysisResponse = await fetch(`http://localhost:8000/api/analysis/individual/${studentId}`);
         if (analysisResponse.ok) {
           const analysisResult = await analysisResponse.json();
           setAnalysisData(analysisResult);
           setDailyTests(analysisResult.daily_tests || []);
           setMockTests(analysisResult.mock_tests || []);
           setFeedbackList(analysisResult.feedback || []);
+        } else {
+          // Fallback: fetch feedback separately if analysis endpoint fails
+          await fetchFeedback();
         }
       } catch (err) {
         console.error('Error fetching analysis data:', err);
+        // Fallback: fetch feedback separately
+        await fetchFeedback();
       }
       
     } catch (err) {
@@ -66,6 +74,18 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchFeedback = async () => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/analysis/feedback/${studentId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setFeedbackList(data.feedback || []);
+      }
+    } catch (err) {
+      console.error('Error fetching feedback:', err);
     }
   };
 
@@ -243,7 +263,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
 
   // Save feedback to backend API
   const handleSaveFeedback = async () => {
-    if (!student?.rollNo) return;
+    if (!studentId) return;
     if (!currentFeedback.teacherFeedback && !currentFeedback.suggestions) {
       alert('Please enter feedback or suggestions');
       return;
@@ -254,7 +274,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          student_id: student.rollNo,
+          student_id: studentId,
           feedback_date: currentFeedback.date,
           teacher_feedback: currentFeedback.teacherFeedback,
           suggestions: currentFeedback.suggestions,
@@ -273,10 +293,11 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
           studentSignature: '',
           parentSignature: ''
         });
-        // Refresh data to get updated feedback
-        fetchStudentData();
+        // Refresh only feedback list from DB
+        await fetchFeedback();
       } else {
-        throw new Error('Failed to save feedback');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to save feedback');
       }
     } catch (err) {
       alert('Error saving feedback: ' + err.message);
