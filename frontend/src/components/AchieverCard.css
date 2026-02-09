@@ -142,8 +142,8 @@
 }
 
 .view-profile-btn {
-    width: 100%;
-    padding: 12px 24px;
+    flex: 1;
+    padding: 10px 16px;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     border: none;
@@ -157,6 +157,29 @@
 .view-profile-btn:hover {
     transform: scale(1.02);
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.achiever-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.delete-achiever-btn {
+    padding: 10px 14px;
+    background: #fff;
+    color: #e53e3e;
+    border: 2px solid #e53e3e;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.delete-achiever-btn:hover {
+    background: #e53e3e;
+    color: #fff;
 }
 
 /* Responsive */

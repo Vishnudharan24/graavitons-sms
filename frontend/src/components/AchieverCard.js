@@ -1,7 +1,12 @@
 import React from 'react';
 import './AchieverCard.css';
 
-const AchieverCard = ({ achiever, onClick }) => {
+const AchieverCard = ({ achiever, onClick, onDelete }) => {
+    const handleDelete = (e) => {
+        e.stopPropagation(); // Prevent card click
+        if (onDelete) onDelete(achiever.id);
+    };
+
     return (
         <div className="achiever-card" onClick={() => onClick(achiever)}>
             <div className="achiever-photo">
@@ -39,9 +44,14 @@ const AchieverCard = ({ achiever, onClick }) => {
                     </div>
                 </div>
 
-                <button className="view-profile-btn">
-                    View Full Profile →
-                </button>
+                <div className="achiever-card-actions">
+                    <button className="view-profile-btn">
+                        View Full Profile →
+                    </button>
+                    <button className="delete-achiever-btn" onClick={handleDelete}>
+                        🗑️ Remove
+                    </button>
+                </div>
             </div>
         </div>
     );

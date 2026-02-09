@@ -1,32 +1,60 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './AddAchiever.css';
 
-const AddAchiever = ({ onBack, onSave }) => {
-    const [formData, setFormData] = useState({
-        // Basic Info
-        name: '',
-        admissionNo: '',
-        batch: '',
-        grade: '',
-        photo: '',
+const API_BASE = 'http://localhost:8000';
 
-        // Achievement Details
+const AddAchiever = ({ onBack, onSave }) => {
+    const [batches, setBatches] = useState([]);
+    const [students, setStudents] = useState([]);
+    const [submitLoading, setSubmitLoading] = useState(false);
+    const [submitError, setSubmitError] = useState('');
+
+    const [formData, setFormData] = useState({
+        student_id: '',
+        batch_id: '',
         achievement: '',
-        achievementDetails: '',
+        achievement_details: '',
         rank: '',
         score: '',
-
-        // Additional Student Info
-        dob: '',
-        community: '',
-        academicYear: '',
-        course: '',
-        branch: '',
-        studentMobile: '',
-        aadharNumber: '',
-        emailId: '',
-        gender: ''
+        photo_url: '',
+        achieved_date: ''
     });
+
+    // Fetch batches on mount
+    useEffect(() => {
+        const fetchBatches = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/api/batch`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setBatches(data.batches || []);
+                }
+            } catch (err) {
+                console.error('Error fetching batches:', err);
+            }
+        };
+        fetchBatches();
+    }, []);
+
+    // Fetch students when batch changes
+    useEffect(() => {
+        if (!formData.batch_id) {
+            setStudents([]);
+            return;
+        }
+        const fetchStudents = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/api/student/batch/${formData.batch_id}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setStudents(data.students || []);
+                }
+            } catch (err) {
+                console.error('Error fetching students:', err);
+            }
+        };
+        fetchStudents();
+    }, [formData.batch_id]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -36,18 +64,42 @@ const AddAchiever = ({ onBack, onSave }) => {
         }));
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        setSubmitLoading(true);
+        setSubmitError('');
 
-        // Generate ID
-        const newAchiever = {
-            id: Date.now(),
-            ...formData,
-            score: parseFloat(formData.score)
-        };
+        try {
+            const payload = {
+                student_id: formData.student_id,
+                batch_id: formData.batch_id ? parseInt(formData.batch_id) : null,
+                achievement: formData.achievement,
+                achievement_details: formData.achievement_details || null,
+                rank: formData.rank || null,
+                score: formData.score ? parseFloat(formData.score) : null,
+                photo_url: formData.photo_url || null,
+                achieved_date: formData.achieved_date || null,
+            };
 
-        onSave(newAchiever);
-        alert('Achiever added successfully!');
+            const response = await fetch(`${API_BASE}/api/achiever`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.detail || 'Failed to add achiever');
+            }
+
+            alert('Achiever added successfully!');
+            onSave();
+        } catch (err) {
+            console.error('Error adding achiever:', err);
+            setSubmitError(err.message);
+        } finally {
+            setSubmitLoading(false);
+        }
     };
 
     return (
@@ -57,69 +109,52 @@ const AddAchiever = ({ onBack, onSave }) => {
                 <h2>Add New Achiever</h2>
             </div>
 
+            {submitError && (
+                <div style={{
+                    padding: '15px',
+                    backgroundColor: '#fee',
+                    color: '#c00',
+                    borderRadius: '8px',
+                    margin: '20px 0',
+                    border: '1px solid #fcc'
+                }}>
+                    <strong>Error:</strong> {submitError}
+                </div>
+            )}
+
             <form onSubmit={handleSubmit}>
-                {/* Basic Information */}
+                {/* Student Selection */}
                 <div className="form-section">
-                    <h3>Basic Information</h3>
+                    <h3>Select Student</h3>
                     <div className="form-grid">
                         <div className="form-group">
-                            <label>Student Name *</label>
-                            <input
-                                type="text"
-                                name="name"
-                                value={formData.name}
-                                onChange={handleChange}
-                                required
-                                placeholder="Enter student name"
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Admission Number *</label>
-                            <input
-                                type="text"
-                                name="admissionNo"
-                                value={formData.admissionNo}
-                                onChange={handleChange}
-                                required
-                                placeholder="e.g., 2024001"
-                            />
-                        </div>
-                        <div className="form-group">
                             <label>Batch *</label>
-                            <input
-                                type="text"
-                                name="batch"
-                                value={formData.batch}
-                                onChange={handleChange}
-                                required
-                                placeholder="e.g., NEET 2024-25"
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Grade *</label>
-                            <select name="grade" value={formData.grade} onChange={handleChange} required>
-                                <option value="">Select Grade</option>
-                                <option value="11th">11th</option>
-                                <option value="12th">12th</option>
+                            <select name="batch_id" value={formData.batch_id} onChange={handleChange} required>
+                                <option value="">Select Batch</option>
+                                {batches.map(b => (
+                                    <option key={b.batch_id} value={b.batch_id}>
+                                        {b.batch_name} ({b.start_year}-{b.end_year})
+                                    </option>
+                                ))}
                             </select>
                         </div>
                         <div className="form-group">
-                            <label>Photo URL</label>
-                            <input
-                                type="url"
-                                name="photo"
-                                value={formData.photo}
+                            <label>Student *</label>
+                            <select
+                                name="student_id"
+                                value={formData.student_id}
                                 onChange={handleChange}
-                                placeholder="https://example.com/photo.jpg"
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Gender *</label>
-                            <select name="gender" value={formData.gender} onChange={handleChange} required>
-                                <option value="">Select Gender</option>
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                                <option value="Other">Other</option>
+                                required
+                                disabled={!formData.batch_id}
+                            >
+                                <option value="">
+                                    {formData.batch_id ? 'Select Student' : 'Select a batch first'}
+                                </option>
+                                {students.map(s => (
+                                    <option key={s.student_id} value={s.student_id}>
+                                        {s.student_name} ({s.student_id})
+                                    </option>
+                                ))}
                             </select>
                         </div>
                     </div>
@@ -141,124 +176,55 @@ const AddAchiever = ({ onBack, onSave }) => {
                             />
                         </div>
                         <div className="form-group">
-                            <label>Achievement Description *</label>
+                            <label>Achievement Description</label>
                             <input
                                 type="text"
-                                name="achievementDetails"
-                                value={formData.achievementDetails}
+                                name="achievement_details"
+                                value={formData.achievement_details}
                                 onChange={handleChange}
-                                required
                                 placeholder="e.g., Secured AIR 125 in NEET 2024"
                             />
                         </div>
                         <div className="form-group">
-                            <label>Rank *</label>
+                            <label>Rank</label>
                             <input
                                 type="text"
                                 name="rank"
                                 value={formData.rank}
                                 onChange={handleChange}
-                                required
                                 placeholder="e.g., AIR 125 or State 1"
                             />
                         </div>
                         <div className="form-group">
-                            <label>Score (%) *</label>
+                            <label>Score (%)</label>
                             <input
                                 type="number"
                                 name="score"
                                 value={formData.score}
                                 onChange={handleChange}
-                                required
                                 min="0"
                                 max="100"
                                 step="0.1"
                                 placeholder="e.g., 98.5"
                             />
                         </div>
-                    </div>
-                </div>
-
-                {/* Additional Information */}
-                <div className="form-section">
-                    <h3>Additional Information</h3>
-                    <div className="form-grid">
                         <div className="form-group">
-                            <label>Date of Birth</label>
+                            <label>Photo URL</label>
+                            <input
+                                type="url"
+                                name="photo_url"
+                                value={formData.photo_url}
+                                onChange={handleChange}
+                                placeholder="https://example.com/photo.jpg"
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>Date of Achievement</label>
                             <input
                                 type="date"
-                                name="dob"
-                                value={formData.dob}
+                                name="achieved_date"
+                                value={formData.achieved_date}
                                 onChange={handleChange}
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Community</label>
-                            <input
-                                type="text"
-                                name="community"
-                                value={formData.community}
-                                onChange={handleChange}
-                                placeholder="e.g., OC, BC, MBC"
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Academic Year</label>
-                            <input
-                                type="text"
-                                name="academicYear"
-                                value={formData.academicYear}
-                                onChange={handleChange}
-                                placeholder="e.g., 2024-2025"
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Course</label>
-                            <input
-                                type="text"
-                                name="course"
-                                value={formData.course}
-                                onChange={handleChange}
-                                placeholder="e.g., NEET Preparation"
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Branch</label>
-                            <select name="branch" value={formData.branch} onChange={handleChange}>
-                                <option value="">Select Branch</option>
-                                <option value="Medical">Medical</option>
-                                <option value="Engineering">Engineering</option>
-                                <option value="Commerce">Commerce</option>
-                            </select>
-                        </div>
-                        <div className="form-group">
-                            <label>Student Mobile</label>
-                            <input
-                                type="tel"
-                                name="studentMobile"
-                                value={formData.studentMobile}
-                                onChange={handleChange}
-                                placeholder="+91 XXXXXXXXXX"
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Aadhar Number</label>
-                            <input
-                                type="text"
-                                name="aadharNumber"
-                                value={formData.aadharNumber}
-                                onChange={handleChange}
-                                placeholder="XXXX-XXXX-XXXX"
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Email ID</label>
-                            <input
-                                type="email"
-                                name="emailId"
-                                value={formData.emailId}
-                                onChange={handleChange}
-                                placeholder="student@example.com"
                             />
                         </div>
                     </div>
@@ -269,8 +235,8 @@ const AddAchiever = ({ onBack, onSave }) => {
                     <button type="button" className="btn-cancel" onClick={onBack}>
                         Cancel
                     </button>
-                    <button type="submit" className="btn-submit">
-                        Add Achiever
+                    <button type="submit" className="btn-submit" disabled={submitLoading}>
+                        {submitLoading ? 'Adding...' : 'Add Achiever'}
                     </button>
                 </div>
             </form>

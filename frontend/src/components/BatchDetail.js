@@ -11,6 +11,7 @@ import './BatchDetail.css';
 const BatchDetail = ({ batch, onBack }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
+  const [selectedCommunity, setSelectedCommunity] = useState('all');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [showEditStudent, setShowEditStudent] = useState(false);
@@ -92,13 +93,17 @@ const BatchDetail = ({ batch, onBack }) => {
     }
   };
 
+  // Extract unique communities for the filter dropdown
+  const uniqueCommunities = [...new Set(students.map(s => s.community).filter(Boolean))];
+
   const filteredStudents = students.filter(student => {
     const matchesSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.rollNo.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = selectedFilter === 'all' ||
       (selectedFilter === 'male' && student.gender === 'Male') ||
       (selectedFilter === 'female' && student.gender === 'Female');
-    return matchesSearch && matchesFilter;
+    const matchesCommunity = selectedCommunity === 'all' || student.community === selectedCommunity;
+    return matchesSearch && matchesFilter && matchesCommunity;
   });
 
   const handleDownloadFormat = () => {
@@ -388,6 +393,16 @@ const BatchDetail = ({ batch, onBack }) => {
               <option value="all">All Students</option>
               <option value="male">Boys</option>
               <option value="female">Girls</option>
+            </select>
+            <select
+              value={selectedCommunity}
+              onChange={(e) => setSelectedCommunity(e.target.value)}
+              className="filter-select"
+            >
+              <option value="all">All Communities</option>
+              {uniqueCommunities.map((community, index) => (
+                <option key={index} value={community}>{community}</option>
+              ))}
             </select>
           </div>
         </div>
