@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from typing import Optional
@@ -7,6 +7,7 @@ import bcrypt
 from datetime import datetime
 import uuid
 from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
+from middleware import create_access_token, get_current_user
 
 app = FastAPI(title=APP_TITLE)
 
@@ -49,11 +50,21 @@ def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
 
+def _build_user_dict(row):
+    """Build a user dict from a DB row (id, email, role, created_at)."""
+    return {
+        "id": row[0],
+        "email": row[1],
+        "role": row[2],
+        "created_at": str(row[3]) if row[3] else None,
+    }
+
+
 # ── Routes ──
 
 @app.post("/api/auth/login")
 async def login(credentials: UserLogin):
-    """Authenticate a user with email and password."""
+    """Authenticate a user and return a JWT access token."""
     conn = None
     try:
         conn = get_db_connection()
@@ -78,14 +89,18 @@ async def login(credentials: UserLogin):
                 detail="Invalid email or password"
             )
 
+        user_dict = _build_user_dict((user[0], user[1], user[3], user[4]))
+        token = create_access_token({
+            "sub": user[0],
+            "email": user[1],
+            "role": user[3],
+        })
+
         return {
             "message": "Login successful",
-            "user": {
-                "id": user[0],
-                "email": user[1],
-                "role": user[3],
-                "created_at": str(user[4]) if user[4] else None
-            }
+            "access_token": token,
+            "token_type": "bearer",
+            "user": user_dict,
         }
 
     except HTTPException:
@@ -130,12 +145,7 @@ async def register(user_data: UserRegister):
 
         return {
             "message": "Registration successful",
-            "user": {
-                "id": result[0],
-                "email": result[1],
-                "role": result[2],
-                "created_at": str(result[3]) if result[3] else None
-            }
+            "user": _build_user_dict(result),
         }
 
     except HTTPException:
@@ -152,9 +162,40 @@ async def register(user_data: UserRegister):
             conn.close()
 
 
+@app.get("/api/auth/me")
+async def get_current_user_info(current_user: dict = Depends(get_current_user)):
+    """Get the currently authenticated user's info from their JWT."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT id, email, role, created_at FROM users WHERE id = %s;",
+            (current_user["sub"],)
+        )
+        user = cursor.fetchone()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return _build_user_dict(user)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+    finally:
+        if conn:
+            conn.close()
+
+
 @app.get("/api/auth/user/{user_id}")
-async def get_user(user_id: str):
-    """Get user info by ID (excludes password)."""
+async def get_user(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Get user info by ID (excludes password). Requires authentication."""
     conn = None
     try:
         conn = get_db_connection()
@@ -169,12 +210,7 @@ async def get_user(user_id: str):
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        return {
-            "id": user[0],
-            "email": user[1],
-            "role": user[2],
-            "created_at": str(user[3]) if user[3] else None
-        }
+        return _build_user_dict(user)
 
     except HTTPException:
         raise

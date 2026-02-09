@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './AddAchiever.css';
 import { API_BASE } from '../config';
+import { authFetch, authJsonFetch } from '../utils/auth';
 
 const AddAchiever = ({ onBack, onSave }) => {
     const [batches, setBatches] = useState([]);
@@ -23,7 +24,7 @@ const AddAchiever = ({ onBack, onSave }) => {
     useEffect(() => {
         const fetchBatches = async () => {
             try {
-                const res = await fetch(`${API_BASE}/api/batch`);
+                const res = await authFetch('/api/batch');
                 if (res.ok) {
                     const data = await res.json();
                     setBatches(data.batches || []);
@@ -43,7 +44,7 @@ const AddAchiever = ({ onBack, onSave }) => {
         }
         const fetchStudents = async () => {
             try {
-                const res = await fetch(`${API_BASE}/api/student/batch/${formData.batch_id}`);
+                const res = await authFetch(`/api/student/batch/${formData.batch_id}`);
                 if (res.ok) {
                     const data = await res.json();
                     setStudents(data.students || []);
@@ -80,10 +81,9 @@ const AddAchiever = ({ onBack, onSave }) => {
                 achieved_date: formData.achieved_date || null,
             };
 
-            const response = await fetch(`${API_BASE}/api/achiever`, {
+            const response = await authJsonFetch('/api/achiever', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
+                body: payload,
             });
 
             if (!response.ok) {

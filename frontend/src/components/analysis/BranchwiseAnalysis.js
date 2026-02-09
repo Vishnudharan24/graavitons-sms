@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import AnalysisFilters from './AnalysisFilters';
 import './Analysis.css';
 import { API_BASE } from '../../config';
+import { authFetch } from '../../utils/auth';
 
 const BranchwiseAnalysis = () => {
     const [filters, setFilters] = useState({
@@ -29,7 +30,7 @@ const BranchwiseAnalysis = () => {
             if (filters.fromDate) params.append('from_date', filters.fromDate);
             if (filters.toDate) params.append('to_date', filters.toDate);
 
-            const response = await fetch(`${API_BASE}/api/analysis/branchwise?${params.toString()}`);
+            const response = await authFetch(`/api/analysis/branchwise?${params.toString()}`);
             if (!response.ok) throw new Error('Failed to fetch branchwise analysis data');
 
             const data = await response.json();

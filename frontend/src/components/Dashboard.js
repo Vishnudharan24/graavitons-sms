@@ -6,6 +6,7 @@ import AnalysisDashboard from './AnalysisDashboard';
 import AchieversSection from './AchieversSection';
 import './Dashboard.css';
 import { API_BASE } from '../config';
+import { authFetch } from '../utils/auth';
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('courses');
@@ -28,7 +29,7 @@ const Dashboard = () => {
   const fetchBatches = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE}/api/batch`);
+      const response = await authFetch('/api/batch');
       
       if (!response.ok) {
         throw new Error('Failed to fetch batches');

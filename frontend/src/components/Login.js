@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import './Login.css';
 import { API_BASE } from '../config';
+import { setToken, setUser } from '../utils/auth';
 
 const Login = ({ onLogin }) => {
   const [isRegister, setIsRegister] = useState(false);
@@ -67,8 +68,9 @@ const Login = ({ onLogin }) => {
         setError('');
         alert('Registration successful! Please log in.');
       } else {
-        // Save user to localStorage and notify parent
-        localStorage.setItem('graavitons_user', JSON.stringify(data.user));
+        // Save JWT token and user info, then notify parent
+        setToken(data.access_token);
+        setUser(data.user);
         onLogin(data.user);
       }
     } catch (err) {

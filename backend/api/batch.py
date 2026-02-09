@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, validator
 from typing import List, Optional
@@ -6,6 +6,7 @@ import psycopg2
 from psycopg2 import sql
 from datetime import datetime
 from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
+from middleware import get_current_user
 
 app = FastAPI(title=APP_TITLE)
 
@@ -65,7 +66,7 @@ def get_db_connection():
 
 
 @app.post("/api/batch", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
-async def create_batch(batch: BatchCreate):
+async def create_batch(batch: BatchCreate, current_user: dict = Depends(get_current_user)):
     """
     Create a new batch
     """
@@ -147,7 +148,7 @@ async def create_batch(batch: BatchCreate):
 
 
 @app.get("/api/batch", response_model=BatchListResponse)
-async def get_batches():
+async def get_batches(current_user: dict = Depends(get_current_user)):
     """Get all batches"""
     conn = None
     try:

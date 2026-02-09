@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './AnalysisFilters.css';
 import { API_BASE } from '../../config';
+import { authFetch } from '../../utils/auth';
 
 const AnalysisFilters = ({
     filters,
@@ -30,7 +31,7 @@ const AnalysisFilters = ({
         const fetchFilterOptions = async () => {
             try {
                 setLoading(true);
-                const response = await fetch(`${API_BASE}/api/analysis/filter-options`);
+                const response = await authFetch('/api/analysis/filter-options');
                 if (response.ok) {
                     const data = await response.json();
                     setFilterOptions({

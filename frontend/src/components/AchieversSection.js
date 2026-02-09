@@ -4,6 +4,7 @@ import StudentProfile from './StudentProfile';
 import AddAchiever from './AddAchiever';
 import './AchieversSection.css';
 import { API_BASE } from '../config';
+import { authFetch } from '../utils/auth';
 
 const AchieversSection = ({ onBack }) => {
     const [selectedStudent, setSelectedStudent] = useState(null);
@@ -21,7 +22,7 @@ const AchieversSection = ({ onBack }) => {
         setLoading(true);
         setError('');
         try {
-            const response = await fetch(`${API_BASE}/api/achiever`);
+            const response = await authFetch('/api/achiever');
             if (!response.ok) throw new Error(`Failed to fetch achievers: ${response.statusText}`);
             const data = await response.json();
             setAchieversList(data.achievers || []);
@@ -58,7 +59,7 @@ const AchieversSection = ({ onBack }) => {
     const handleDeleteAchiever = async (achieverId) => {
         if (!window.confirm('Are you sure you want to remove this achiever?')) return;
         try {
-            const response = await fetch(`${API_BASE}/api/achiever/${achieverId}`, {
+            const response = await authFetch(`/api/achiever/${achieverId}`, {
                 method: 'DELETE',
             });
             if (!response.ok) throw new Error('Failed to delete achiever');

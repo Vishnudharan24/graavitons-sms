@@ -3,20 +3,28 @@ import './App.css';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import Login from './components/Login';
+import { getUser, getToken, clearAuth, setOnUnauthorized } from './utils/auth';
 
 function App() {
   const [user, setUser] = useState(null);
 
   // Check localStorage for existing session on mount
   useEffect(() => {
-    const savedUser = localStorage.getItem('graavitons_user');
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch {
-        localStorage.removeItem('graavitons_user');
-      }
+    const savedUser = getUser();
+    const savedToken = getToken();
+    if (savedUser && savedToken) {
+      setUser(savedUser);
+    } else {
+      // If either is missing, clear both
+      clearAuth();
     }
+  }, []);
+
+  // Register the global 401 handler so any authFetch 401 triggers logout
+  useEffect(() => {
+    setOnUnauthorized(() => {
+      setUser(null);
+    });
   }, []);
 
   const handleLogin = (userData) => {
@@ -25,7 +33,7 @@ function App() {
 
   const handleLogout = () => {
     setUser(null);
-    localStorage.removeItem('graavitons_user');
+    clearAuth();
   };
 
   // Show login page if not authenticated

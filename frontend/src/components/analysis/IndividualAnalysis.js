@@ -3,6 +3,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, L
 import AnalysisFilters from './AnalysisFilters';
 import './Analysis.css';
 import { API_BASE, DEFAULT_AVATAR } from '../../config';
+import { authFetch, authJsonFetch } from '../../utils/auth';
 
 const IndividualAnalysis = () => {
     const [filters, setFilters] = useState({
@@ -46,7 +47,7 @@ const IndividualAnalysis = () => {
             if (filters.course) params.append('course', filters.course);
             if (filters.branch) params.append('branch', filters.branch);
 
-            const response = await fetch(`${API_BASE}/api/analysis/individual/students?${params.toString()}`);
+            const response = await authFetch(`/api/analysis/individual/students?${params.toString()}`);
             if (response.ok) {
                 const data = await response.json();
                 setStudentsList(data.students || []);
@@ -66,7 +67,7 @@ const IndividualAnalysis = () => {
             setLoading(true);
             setError('');
 
-            const response = await fetch(`${API_BASE}/api/analysis/individual/${studentId}`);
+            const response = await authFetch(`/api/analysis/individual/${studentId}`);
             if (!response.ok) throw new Error('Failed to fetch student analysis');
 
             const data = await response.json();
@@ -109,10 +110,9 @@ const IndividualAnalysis = () => {
 
         try {
             setSavingFeedback(true);
-            const response = await fetch(`${API_BASE}/api/analysis/feedback`, {
+            const response = await authJsonFetch('/api/analysis/feedback', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+                body: {
                     student_id: selectedStudentId,
                     feedback_date: feedbackForm.date,
                     teacher_feedback: feedbackForm.teacherFeedback,
@@ -120,7 +120,7 @@ const IndividualAnalysis = () => {
                     academic_director_signature: feedbackForm.academicDirectorSignature,
                     student_signature: feedbackForm.studentSignature,
                     parent_signature: feedbackForm.parentSignature
-                })
+                },
             });
 
             if (response.ok) {
