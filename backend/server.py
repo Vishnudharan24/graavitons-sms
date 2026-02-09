@@ -7,14 +7,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+from config import APP_TITLE, CORS_ORIGINS, SERVER_HOST, SERVER_PORT, DEBUG
 
 # Create main FastAPI app
-app = FastAPI(title="GRAAVITONS SMS API")
+app = FastAPI(title=APP_TITLE)
 
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -88,7 +89,7 @@ if __name__ == '__main__':
     # Run the FastAPI application
     uvicorn.run(
         app, 
-        host="0.0.0.0", 
-        port=8000,
-        reload=True  # Enable auto-reload during development
+        host=SERVER_HOST, 
+        port=SERVER_PORT,
+        reload=DEBUG
     )

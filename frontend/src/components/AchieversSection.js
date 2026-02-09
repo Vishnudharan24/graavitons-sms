@@ -3,8 +3,7 @@ import AchieverCard from './AchieverCard';
 import StudentProfile from './StudentProfile';
 import AddAchiever from './AddAchiever';
 import './AchieversSection.css';
-
-const API_BASE = 'http://localhost:8000';
+import { API_BASE } from '../config';
 
 const AchieversSection = ({ onBack }) => {
     const [selectedStudent, setSelectedStudent] = useState(null);

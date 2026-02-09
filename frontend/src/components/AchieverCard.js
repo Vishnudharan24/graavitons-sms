@@ -1,5 +1,6 @@
 import React from 'react';
 import './AchieverCard.css';
+import { DEFAULT_AVATAR } from '../config';
 
 const AchieverCard = ({ achiever, onClick, onDelete }) => {
     const handleDelete = (e) => {
@@ -10,7 +11,7 @@ const AchieverCard = ({ achiever, onClick, onDelete }) => {
     return (
         <div className="achiever-card" onClick={() => onClick(achiever)}>
             <div className="achiever-photo">
-                <img src={achiever.photo || 'https://via.placeholder.com/150'} alt={achiever.name} />
+                <img src={achiever.photo || DEFAULT_AVATAR} alt={achiever.name} />
                 <div className="achievement-badge">
                     <span className="trophy-icon">🏆</span>
                 </div>

@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import AnalysisFilters from './AnalysisFilters';
 import './Analysis.css';
-
-const API_BASE = 'http://localhost:8000';
+import { API_BASE } from '../../config';
 
 const SubjectwiseAnalysis = () => {
     const [filters, setFilters] = useState({

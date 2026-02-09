@@ -1,12 +1,20 @@
 import psycopg2
 from psycopg2 import sql
+import os
+from dotenv import load_dotenv
+from pathlib import Path
+
+# Load .env from backend directory
+env_path = Path(__file__).resolve().parent.parent / "backend" / ".env"
+load_dotenv(dotenv_path=env_path)
 
 # Database connection parameters
 DB_CONFIG = {
-    'host': 'localhost',
-    'database': 'graavitons_db',
-    'user': 'graav_user',
-    'password': '123456'
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'port': int(os.getenv('DB_PORT', '5432')),
+    'database': os.getenv('DB_NAME', 'graavitons_db'),
+    'user': os.getenv('DB_USER', 'graav_user'),
+    'password': os.getenv('DB_PASSWORD', ''),
 }
 
 

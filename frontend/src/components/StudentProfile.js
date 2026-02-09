@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import * as XLSX from 'xlsx';
 import './StudentProfile.css';
+import { API_BASE, DEFAULT_AVATAR } from '../config';
 
 const StudentProfile = ({ student, batchStats, onBack }) => {
   const [activeTab, setActiveTab] = useState('personal');
@@ -41,7 +42,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     setError('');
     
     try {
-      const response = await fetch(`http://localhost:8000/api/student/${studentId}`);
+      const response = await fetch(`${API_BASE}/api/student/${studentId}`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch student data: ${response.statusText}`);
@@ -52,7 +53,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       
       // Fetch analysis data (includes daily tests, mock tests with class avg/top scores, and feedback)
       try {
-        const analysisResponse = await fetch(`http://localhost:8000/api/analysis/individual/${studentId}`);
+        const analysisResponse = await fetch(`${API_BASE}/api/analysis/individual/${studentId}`);
         if (analysisResponse.ok) {
           const analysisResult = await analysisResponse.json();
           setAnalysisData(analysisResult);
@@ -79,7 +80,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
 
   const fetchFeedback = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/api/analysis/feedback/${studentId}`);
+      const response = await fetch(`${API_BASE}/api/analysis/feedback/${studentId}`);
       if (response.ok) {
         const data = await response.json();
         setFeedbackList(data.feedback || []);
@@ -270,7 +271,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     }
     try {
       setSavingFeedback(true);
-      const response = await fetch('http://localhost:8000/api/analysis/feedback', {
+      const response = await fetch(`${API_BASE}/api/analysis/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -481,7 +482,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
         <div className="profile-title-section">
           <h2>Student Profile - {displayData.name}</h2>
           <div className="student-photo">
-            <img src="https://via.placeholder.com/150" alt={studentData.name} />
+            <img src={DEFAULT_AVATAR} alt={studentData.name} />
           </div>
         </div>
       </div>

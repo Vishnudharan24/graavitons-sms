@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import AnalysisFilters from './AnalysisFilters';
 import './Analysis.css';
-
-const API_BASE = 'http://localhost:8000';
+import { API_BASE, DEFAULT_AVATAR } from '../../config';
 
 const IndividualAnalysis = () => {
     const [filters, setFilters] = useState({
@@ -274,7 +273,7 @@ const IndividualAnalysis = () => {
                         <div className="student-info-card">
                             <div className="student-photo-section">
                                 <img
-                                    src={student.photo_url || 'https://via.placeholder.com/120?text=Photo'}
+                                    src={student.photo_url || DEFAULT_AVATAR}
                                     alt={student.student_name}
                                     className="student-photo-img"
                                 />

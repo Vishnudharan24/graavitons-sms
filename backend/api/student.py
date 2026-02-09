@@ -7,25 +7,18 @@ from psycopg2 import sql
 from datetime import datetime, date
 import pandas as pd
 import io
+from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
 
-app = FastAPI(title="GRAAVITONS SMS - Student API")
+app = FastAPI(title=APP_TITLE)
 
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Database connection parameters
-DB_CONFIG = {
-    'host': 'localhost',
-    'database': 'graavitons_db',
-    'user': 'graav_user',
-    'password': '123456'
-}
 
 
 # Pydantic models

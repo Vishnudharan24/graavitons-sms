@@ -6,25 +6,18 @@ import psycopg2
 import bcrypt
 from datetime import datetime
 import uuid
+from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
 
-app = FastAPI(title="GRAAVITONS SMS - Auth API")
+app = FastAPI(title=APP_TITLE)
 
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Database connection parameters
-DB_CONFIG = {
-    'host': 'localhost',
-    'database': 'graavitons_db',
-    'user': 'graav_user',
-    'password': '123456'
-}
 
 
 # ── Pydantic Models ──

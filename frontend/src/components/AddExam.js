@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import './AddExam.css';
+import { API_BASE } from '../config';
 
 const AddExam = ({ batch, students, onBack, onSave }) => {
   const [examMode, setExamMode] = useState('manual'); // 'manual' or 'excel'
@@ -78,9 +79,9 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
       
       if (examData.examType === 'daily test') {
         const totalMarks = examData.totalMarks || 100;
-        apiUrl = `http://localhost:8000/api/exam/template/daily-test/${batch.batch_id}?total_marks=${totalMarks}`;
+        apiUrl = `${API_BASE}/api/exam/template/daily-test/${batch.batch_id}?total_marks=${totalMarks}`;
       } else if (examData.examType === 'mock test') {
-        apiUrl = `http://localhost:8000/api/exam/template/mock-test/${batch.batch_id}`;
+        apiUrl = `${API_BASE}/api/exam/template/mock-test/${batch.batch_id}`;
       } else {
         alert('Please select exam type first');
         return;
@@ -258,7 +259,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
       let requestData = {};
 
       if (examData.examType === 'daily test') {
-        apiUrl = 'http://localhost:8000/api/exam/daily-test';
+        apiUrl = `${API_BASE}/api/exam/daily-test`;
         requestData = {
           batch_id: batch.batch_id,
           examName: examData.examName,
@@ -273,7 +274,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
           }))
         };
       } else if (examData.examType === 'mock test') {
-        apiUrl = 'http://localhost:8000/api/exam/mock-test';
+        apiUrl = `${API_BASE}/api/exam/mock-test`;
         requestData = {
           batch_id: batch.batch_id,
           examName: examData.examName,

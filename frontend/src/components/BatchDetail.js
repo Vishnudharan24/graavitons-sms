@@ -7,6 +7,7 @@ import StudentProfile from './StudentProfile';
 import AddStudent from './AddStudent';
 import AddExam from './AddExam';
 import './BatchDetail.css';
+import { API_BASE } from '../config';
 
 const BatchDetail = ({ batch, onBack }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -59,7 +60,7 @@ const BatchDetail = ({ batch, onBack }) => {
     setError('');
     
     try {
-      const response = await fetch(`http://localhost:8000/api/student/batch/${batch.batch_id}`);
+      const response = await fetch(`${API_BASE}/api/student/batch/${batch.batch_id}`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch students: ${response.statusText}`);
@@ -160,7 +161,7 @@ const BatchDetail = ({ batch, onBack }) => {
   const handleGenerateReport = async () => {
     setReportLoading(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/exam/batch-report/${batch.batch_id}`);
+      const response = await fetch(`${API_BASE}/api/exam/batch-report/${batch.batch_id}`);
       if (!response.ok) throw new Error('Failed to fetch batch report data');
       const data = await response.json();
 

@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import AnalysisFilters from './AnalysisFilters';
 import './Analysis.css';
-
-const API_BASE = 'http://localhost:8000';
+import { API_BASE } from '../../config';
 
 const BranchwiseAnalysis = () => {
     const [filters, setFilters] = useState({

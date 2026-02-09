@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import './Login.css';
-
-const API_BASE = 'http://localhost:8000';
+import { API_BASE } from '../config';
 
 const Login = ({ onLogin }) => {
   const [isRegister, setIsRegister] = useState(false);

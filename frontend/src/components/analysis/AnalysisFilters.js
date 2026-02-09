@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './AnalysisFilters.css';
-
-const API_BASE = 'http://localhost:8000';
+import { API_BASE } from '../../config';
 
 const AnalysisFilters = ({
     filters,
