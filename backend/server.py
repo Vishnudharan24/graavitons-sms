@@ -27,6 +27,7 @@ from api.student import app as student_app
 from api.exam import app as exam_app
 from api.analysis import app as analysis_app
 from api.achiever import app as achiever_app
+from api.auth import app as auth_app
 
 # Mount the routes from sub-applications
 for route in batch_app.routes:
@@ -42,6 +43,9 @@ for route in analysis_app.routes:
     app.router.routes.append(route)
 
 for route in achiever_app.routes:
+    app.router.routes.append(route)
+
+for route in auth_app.routes:
     app.router.routes.append(route)
 
 @app.get("/")
@@ -73,6 +77,9 @@ async def root():
             "achiever_get": "GET /api/achiever/{achievement_id}",
             "achiever_update": "PUT /api/achiever/{achievement_id}",
             "achiever_delete": "DELETE /api/achiever/{achievement_id}",
+            "auth_login": "POST /api/auth/login",
+            "auth_register": "POST /api/auth/register",
+            "auth_user": "GET /api/auth/user/{user_id}",
             "docs": "/docs"
         }
     }

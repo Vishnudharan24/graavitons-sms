@@ -71,4 +71,55 @@
   .header-actions {
     gap: 12px;
   }
+
+  .header-user {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+.header-user {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-role-badge {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.user-email {
+  font-size: 14px;
+  color: #4a5568;
+  font-weight: 500;
+}
+
+.logout-btn {
+  padding: 8px 18px;
+  background: #fff;
+  color: #e53e3e;
+  border: 2px solid #e53e3e;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.logout-btn:hover {
+  background: #e53e3e;
+  color: #fff;
 }
