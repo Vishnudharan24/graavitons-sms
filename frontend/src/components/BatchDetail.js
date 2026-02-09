@@ -1,7 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
-} from 'recharts';
 import * as XLSX from 'xlsx';
 import StudentProfile from './StudentProfile';
 import AddStudent from './AddStudent';
@@ -20,17 +17,6 @@ const BatchDetail = ({ batch, onBack }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Data states - to be fetched from API
-  const [analyticsData, setAnalyticsData] = useState({
-    totalStudents: 0,
-    boys: 0,
-    girls: 0,
-    batchTopics: [],
-    totalExams: 0
-  });
-
-  const [examPerformanceData, setExamPerformanceData] = useState([]);
-  const [subjectAnalysisData, setSubjectAnalysisData] = useState([]);
   const [students, setStudents] = useState([]);
 
   // Fetch students when component mounts or when batch changes
@@ -39,21 +25,6 @@ const BatchDetail = ({ batch, onBack }) => {
       fetchStudents();
     }
   }, [batch?.batch_id]);
-
-  // Update analytics when students data changes
-  useEffect(() => {
-    if (students.length > 0) {
-      const boys = students.filter(s => s.gender === 'Male').length;
-      const girls = students.filter(s => s.gender === 'Female').length;
-      
-      setAnalyticsData(prev => ({
-        ...prev,
-        totalStudents: students.length,
-        boys: boys,
-        girls: girls
-      }));
-    }
-  }, [students]);
 
   const fetchStudents = async () => {
     setLoading(true);
@@ -74,7 +45,6 @@ const BatchDetail = ({ batch, onBack }) => {
         rollNo: student.student_id,
         name: student.student_name,
         gender: student.gender || 'N/A',
-        marks: 0, // TODO: Fetch from exam results when available
         dob: student.dob,
         community: student.community,
         grade: student.grade,
@@ -298,18 +268,7 @@ const BatchDetail = ({ batch, onBack }) => {
   }
 
   if (selectedStudent) {
-    // Calculate batch statistics for the graph
-    const marks = students.map(s => s.marks);
-    const topMark = Math.max(...marks);
-    const averageMark = marks.reduce((a, b) => a + b, 0) / marks.length;
-
-    const batchStats = {
-      topMark,
-      averageMark,
-      studentMark: selectedStudent.marks
-    };
-
-    return <StudentProfile student={selectedStudent} batchStats={batchStats} onBack={handleBackToStudents} />;
+    return <StudentProfile student={selectedStudent} onBack={handleBackToStudents} />;
   }
 
   return (
@@ -317,26 +276,6 @@ const BatchDetail = ({ batch, onBack }) => {
       <div className="batch-header">
         <button className="back-button" onClick={onBack}>← Back</button>
         <h2>{batch.batch_name || batch.name}</h2>
-      </div>
-
-      {/* Analytics Box */}
-      <div className="analytics-box">
-        <div className="analytics-card">
-          <h3>Total Students</h3>
-          <p className="analytics-value">{loading ? '...' : analyticsData.totalStudents}</p>
-        </div>
-        <div className="analytics-card">
-          <h3>Boys</h3>
-          <p className="analytics-value">{loading ? '...' : analyticsData.boys}</p>
-        </div>
-        <div className="analytics-card">
-          <h3>Girls</h3>
-          <p className="analytics-value">{loading ? '...' : analyticsData.girls}</p>
-        </div>
-        <div className="analytics-card">
-          <h3>Total Exams</h3>
-          <p className="analytics-value">{analyticsData.totalExams}</p>
-        </div>
       </div>
 
       {/* Error Message */}
@@ -415,14 +354,13 @@ const BatchDetail = ({ batch, onBack }) => {
                 <th>Admission Number</th>
                 <th>Name</th>
                 <th>Gender</th>
-                <th>Latest Marks</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="5" style={{ textAlign: 'center', padding: '20px' }}>
+                  <td colSpan="4" style={{ textAlign: 'center', padding: '20px' }}>
                     Loading students...
                   </td>
                 </tr>
@@ -432,7 +370,6 @@ const BatchDetail = ({ batch, onBack }) => {
                     <td>{student.rollNo}</td>
                     <td>{student.name}</td>
                     <td>{student.gender}</td>
-                    <td>{student.marks}%</td>
                     <td>
                       <button className="btn-action" onClick={() => handleViewStudent(student)} style={{ marginRight: '5px' }}>View</button>
                       <button className="btn-action" onClick={() => handleEditStudent(student)} style={{ backgroundColor: '#f59e0b' }}>Edit</button>
@@ -441,48 +378,13 @@ const BatchDetail = ({ batch, onBack }) => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="5" style={{ textAlign: 'center', padding: '20px', color: '#718096' }}>
+                  <td colSpan="4" style={{ textAlign: 'center', padding: '20px', color: '#718096' }}>
                     No students found. Click "Add New Student" to get started.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-        </div>
-      </div>
-
-      {/* Analytics Section */}
-      <div className="analytics-section">
-        <h3>Analytics & Performance</h3>
-        <div className="analytics-charts">
-          <div className="chart-container">
-            <h4>Exam-wise Performance (Average)</h4>
-            <div style={{ width: '100%', height: 300 }}>
-              <ResponsiveContainer>
-                <LineChart data={examPerformanceData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                  <CartesianGrid stroke="#ccc" strokeDasharray="5 5" />
-                  <XAxis dataKey="name" />
-                  <YAxis domain={[0, 100]} />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="average" stroke="#8884d8" name="Batch Average" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div className="chart-container">
-            <h4>Subject-wise Last Exam Analysis</h4>
-            <div style={{ width: '100%', height: 300 }}>
-              <ResponsiveContainer>
-                <BarChart data={subjectAnalysisData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis domain={[0, 100]} />
-                  <Tooltip />
-                  <Bar dataKey="average" name="Subject Average" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
         </div>
       </div>
     </div>
