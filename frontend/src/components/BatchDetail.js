@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import StudentProfile from './StudentProfile';
 import AddStudent from './AddStudent';
 import AddExam from './AddExam';
+import BatchPerformance from './BatchPerformance';
 import './BatchDetail.css';
 import { API_BASE } from '../config';
 
@@ -16,6 +17,7 @@ const BatchDetail = ({ batch, onBack }) => {
   const [showAddExam, setShowAddExam] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('students');
 
   const [students, setStudents] = useState([]);
 
@@ -251,18 +253,6 @@ const BatchDetail = ({ batch, onBack }) => {
     );
   }
 
-  if (showEditStudent) {
-    return (
-      <AddStudent 
-        batch={batch} 
-        onBack={() => setShowEditStudent(false)} 
-        onSave={handleSaveStudent}
-        editMode={true}
-        studentId={showEditStudent.rollNo}
-      />
-    );
-  }
-
   if (showAddStudent) {
     return <AddStudent batch={batch} onBack={handleBackFromAddStudent} onSave={handleSaveStudent} />;
   }
@@ -304,89 +294,115 @@ const BatchDetail = ({ batch, onBack }) => {
         </div>
       )}
 
-      {/* Student Management Buttons */}
-      <div className="management-buttons">
-        <button className="btn btn-primary" onClick={handleAddStudent}>+ Add New Student</button>
-        <button className="btn btn-secondary" onClick={handleAddExam}>+ New Exam</button>
-        <button className="btn btn-report" onClick={handleGenerateReport} disabled={reportLoading}>
-          {reportLoading ? '⏳ Generating...' : '📊 Generate Batch Report'}
+      {/* Tab Navigation */}
+      <div className="batch-tabs">
+        <button
+          className={`batch-tab ${activeTab === 'students' ? 'active' : ''}`}
+          onClick={() => setActiveTab('students')}
+        >
+          👥 Students
+        </button>
+        <button
+          className={`batch-tab ${activeTab === 'performance' ? 'active' : ''}`}
+          onClick={() => setActiveTab('performance')}
+        >
+          📊 Performance
         </button>
       </div>
 
-      {/* Student List */}
-      <div className="student-list-section">
-        <div className="section-header">
-          <h3>Student List</h3>
-          <div className="list-controls">
-            <input
-              type="text"
-              placeholder="Search students..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="search-input"
-            />
-            <select
-              value={selectedFilter}
-              onChange={(e) => setSelectedFilter(e.target.value)}
-              className="filter-select"
-            >
-              <option value="all">All Students</option>
-              <option value="male">Boys</option>
-              <option value="female">Girls</option>
-            </select>
-            <select
-              value={selectedCommunity}
-              onChange={(e) => setSelectedCommunity(e.target.value)}
-              className="filter-select"
-            >
-              <option value="all">All Communities</option>
-              {uniqueCommunities.map((community, index) => (
-                <option key={index} value={community}>{community}</option>
-              ))}
-            </select>
+      {/* Students Tab */}
+      {activeTab === 'students' && (
+        <>
+          {/* Student Management Buttons */}
+          <div className="management-buttons">
+            <button className="btn btn-primary" onClick={handleAddStudent}>+ Add New Student</button>
+            <button className="btn btn-secondary" onClick={handleAddExam}>+ New Exam</button>
+            <button className="btn btn-report" onClick={handleGenerateReport} disabled={reportLoading}>
+              {reportLoading ? '⏳ Generating...' : '📊 Generate Batch Report'}
+            </button>
           </div>
-        </div>
 
-        <div className="student-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Admission Number</th>
-                <th>Name</th>
-                <th>Gender</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', padding: '20px' }}>
-                    Loading students...
-                  </td>
-                </tr>
-              ) : filteredStudents.length > 0 ? (
-                filteredStudents.map(student => (
-                  <tr key={student.id}>
-                    <td>{student.rollNo}</td>
-                    <td>{student.name}</td>
-                    <td>{student.gender}</td>
-                    <td>
-                      <button className="btn-action" onClick={() => handleViewStudent(student)} style={{ marginRight: '5px' }}>View</button>
-                      <button className="btn-action" onClick={() => handleEditStudent(student)} style={{ backgroundColor: '#f59e0b' }}>Edit</button>
-                    </td>
+          {/* Student List */}
+          <div className="student-list-section">
+            <div className="section-header">
+              <h3>Student List</h3>
+              <div className="list-controls">
+                <input
+                  type="text"
+                  placeholder="Search students..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="search-input"
+                />
+                <select
+                  value={selectedFilter}
+                  onChange={(e) => setSelectedFilter(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="all">All Students</option>
+                  <option value="male">Boys</option>
+                  <option value="female">Girls</option>
+                </select>
+                <select
+                  value={selectedCommunity}
+                  onChange={(e) => setSelectedCommunity(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="all">All Communities</option>
+                  {uniqueCommunities.map((community, index) => (
+                    <option key={index} value={community}>{community}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="student-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Admission Number</th>
+                    <th>Name</th>
+                    <th>Gender</th>
+                    <th>Actions</th>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', padding: '20px', color: '#718096' }}>
-                    No students found. Click "Add New Student" to get started.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan="4" style={{ textAlign: 'center', padding: '20px' }}>
+                        Loading students...
+                      </td>
+                    </tr>
+                  ) : filteredStudents.length > 0 ? (
+                    filteredStudents.map(student => (
+                      <tr key={student.id}>
+                        <td>{student.rollNo}</td>
+                        <td>{student.name}</td>
+                        <td>{student.gender}</td>
+                        <td>
+                          <button className="btn-action" onClick={() => handleViewStudent(student)} style={{ marginRight: '5px' }}>View</button>
+                          <button className="btn-action" onClick={() => handleEditStudent(student)} style={{ backgroundColor: '#f59e0b' }}>Edit</button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="4" style={{ textAlign: 'center', padding: '20px', color: '#718096' }}>
+                        No students found. Click "Add New Student" to get started.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Performance Tab */}
+      {activeTab === 'performance' && (
+        <BatchPerformance batch={batch} />
+      )}
     </div>
   );
 };

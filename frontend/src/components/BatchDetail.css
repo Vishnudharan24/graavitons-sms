@@ -107,6 +107,49 @@
   margin-bottom: 30px;
 }
 
+/* Batch Tabs */
+.batch-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 24px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+}
+
+.batch-tab {
+  flex: 1;
+  padding: 14px 24px;
+  border: none;
+  background: white;
+  color: #718096;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.batch-tab:not(:last-child) {
+  border-right: 1px solid #e2e8f0;
+}
+
+.batch-tab:hover {
+  background: #f7f8fc;
+  color: #5b5fc7;
+}
+
+.batch-tab.active {
+  background: #5b5fc7;
+  color: white;
+}
+
+.batch-tab.active:hover {
+  background: #4a4fb8;
+}
+
 .btn {
   padding: 12px 24px;
   border: none;

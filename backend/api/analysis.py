@@ -987,6 +987,369 @@ async def get_student_feedback(student_id: str):
             conn.close()
 
 
+@app.get("/api/analysis/batch-performance/{batch_id}")
+async def get_batch_performance(
+    batch_id: int,
+    test_type: Optional[str] = Query("both", description="daily, mock, or both"),
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    subject: Optional[str] = None
+):
+    """
+    Get comprehensive batch performance analytics:
+    - Overall stats (avg, top, lowest, total tests, participation)
+    - Daily test score trend over time
+    - Mock test score trend over time
+    - Subject-wise breakdown (daily + mock)
+    - Top 5 and bottom 5 students
+    - Score distribution histogram
+    """
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Verify batch exists and get info
+        cursor.execute("""
+            SELECT batch_id, batch_name, start_year, end_year, type, subjects
+            FROM batch WHERE batch_id = %s
+        """, (batch_id,))
+        batch_row = cursor.fetchone()
+        if not batch_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Batch {batch_id} not found"
+            )
+
+        batch_info = {
+            "batch_id": batch_row[0],
+            "batch_name": batch_row[1],
+            "start_year": batch_row[2],
+            "end_year": batch_row[3],
+            "type": batch_row[4],
+            "subjects": batch_row[5] if batch_row[5] else []
+        }
+
+        # Total students in batch
+        cursor.execute("SELECT COUNT(*) FROM student WHERE batch_id = %s", (batch_id,))
+        total_students = cursor.fetchone()[0]
+
+        # ── Date filter fragments ──
+        daily_date_filter = ""
+        mock_date_filter = ""
+        daily_date_params = []
+        mock_date_params = []
+
+        if date_from:
+            daily_date_filter += " AND dt.test_date >= %s"
+            daily_date_params.append(date_from)
+            mock_date_filter += " AND mt.test_date >= %s"
+            mock_date_params.append(date_from)
+        if date_to:
+            daily_date_filter += " AND dt.test_date <= %s"
+            daily_date_params.append(date_to)
+            mock_date_filter += " AND mt.test_date <= %s"
+            mock_date_params.append(date_to)
+
+        daily_subject_filter = ""
+        daily_subject_params = []
+        if subject:
+            daily_subject_filter = " AND dt.subject = %s"
+            daily_subject_params.append(subject)
+
+        # ==================== DAILY TEST STATS ====================
+        daily_stats = {
+            "avg_score": 0, "top_score": 0, "lowest_score": 0,
+            "total_tests": 0, "students_tested": 0
+        }
+        daily_trend = []
+        daily_subject_breakdown = []
+        daily_student_avgs = []
+
+        if test_type in ("daily", "both"):
+            # Overall daily stats
+            cursor.execute(f"""
+                SELECT
+                    COALESCE(ROUND(AVG(dt.total_marks)::numeric, 1), 0),
+                    COALESCE(MAX(dt.total_marks), 0),
+                    COALESCE(MIN(dt.total_marks), 0),
+                    COUNT(*),
+                    COUNT(DISTINCT dt.student_id)
+                FROM daily_test dt
+                JOIN student s ON dt.student_id = s.student_id
+                WHERE s.batch_id = %s {daily_date_filter} {daily_subject_filter}
+            """, [batch_id] + daily_date_params + daily_subject_params)
+            row = cursor.fetchone()
+            daily_stats = {
+                "avg_score": float(row[0]),
+                "top_score": row[1],
+                "lowest_score": row[2],
+                "total_tests": row[3],
+                "students_tested": row[4]
+            }
+
+            # Daily trend (avg score per date)
+            cursor.execute(f"""
+                SELECT
+                    dt.test_date,
+                    ROUND(AVG(dt.total_marks)::numeric, 1) as avg_marks,
+                    MAX(dt.total_marks) as top_marks,
+                    MIN(dt.total_marks) as low_marks,
+                    COUNT(DISTINCT dt.student_id) as students
+                FROM daily_test dt
+                JOIN student s ON dt.student_id = s.student_id
+                WHERE s.batch_id = %s {daily_date_filter} {daily_subject_filter}
+                GROUP BY dt.test_date
+                ORDER BY dt.test_date
+            """, [batch_id] + daily_date_params + daily_subject_params)
+            for r in cursor.fetchall():
+                daily_trend.append({
+                    "date": r[0].isoformat() if r[0] else None,
+                    "avg": float(r[1]) if r[1] else 0,
+                    "top": r[2] or 0,
+                    "low": r[3] or 0,
+                    "students": r[4]
+                })
+
+            # Subject breakdown
+            cursor.execute(f"""
+                SELECT
+                    dt.subject,
+                    ROUND(AVG(dt.total_marks)::numeric, 1),
+                    MAX(dt.total_marks),
+                    MIN(dt.total_marks),
+                    COUNT(*),
+                    COUNT(DISTINCT dt.student_id)
+                FROM daily_test dt
+                JOIN student s ON dt.student_id = s.student_id
+                WHERE s.batch_id = %s {daily_date_filter}
+                GROUP BY dt.subject
+                ORDER BY dt.subject
+            """, [batch_id] + daily_date_params)
+            for r in cursor.fetchall():
+                daily_subject_breakdown.append({
+                    "subject": r[0],
+                    "avg": float(r[1]) if r[1] else 0,
+                    "top": r[2] or 0,
+                    "low": r[3] or 0,
+                    "tests": r[4],
+                    "students": r[5]
+                })
+
+            # Per-student average (for ranking + distribution)
+            cursor.execute(f"""
+                SELECT
+                    s.student_id,
+                    s.student_name,
+                    ROUND(AVG(dt.total_marks)::numeric, 1) as avg_marks,
+                    COUNT(*) as test_count
+                FROM daily_test dt
+                JOIN student s ON dt.student_id = s.student_id
+                WHERE s.batch_id = %s {daily_date_filter} {daily_subject_filter}
+                GROUP BY s.student_id, s.student_name
+                ORDER BY avg_marks DESC
+            """, [batch_id] + daily_date_params + daily_subject_params)
+            daily_student_avgs = [
+                {"student_id": r[0], "student_name": r[1], "avg": float(r[2]), "tests": r[3]}
+                for r in cursor.fetchall()
+            ]
+
+        # ==================== MOCK TEST STATS ====================
+        mock_stats = {
+            "avg_score": 0, "top_score": 0, "lowest_score": 0,
+            "total_tests": 0, "students_tested": 0
+        }
+        mock_trend = []
+        mock_subject_breakdown = []
+        mock_student_avgs = []
+
+        if test_type in ("mock", "both"):
+            # Overall mock stats
+            cursor.execute(f"""
+                SELECT
+                    COALESCE(ROUND(AVG(mt.total_marks)::numeric, 1), 0),
+                    COALESCE(MAX(mt.total_marks), 0),
+                    COALESCE(MIN(mt.total_marks), 0),
+                    COUNT(*),
+                    COUNT(DISTINCT mt.student_id)
+                FROM mock_test mt
+                JOIN student s ON mt.student_id = s.student_id
+                WHERE s.batch_id = %s {mock_date_filter}
+            """, [batch_id] + mock_date_params)
+            row = cursor.fetchone()
+            mock_stats = {
+                "avg_score": float(row[0]),
+                "top_score": row[1],
+                "lowest_score": row[2],
+                "total_tests": row[3],
+                "students_tested": row[4]
+            }
+
+            # Mock trend (avg total per date)
+            cursor.execute(f"""
+                SELECT
+                    mt.test_date,
+                    ROUND(AVG(mt.total_marks)::numeric, 1),
+                    MAX(mt.total_marks),
+                    MIN(mt.total_marks),
+                    COUNT(DISTINCT mt.student_id)
+                FROM mock_test mt
+                JOIN student s ON mt.student_id = s.student_id
+                WHERE s.batch_id = %s {mock_date_filter}
+                GROUP BY mt.test_date
+                ORDER BY mt.test_date
+            """, [batch_id] + mock_date_params)
+            for r in cursor.fetchall():
+                mock_trend.append({
+                    "date": r[0].isoformat() if r[0] else None,
+                    "avg": float(r[1]) if r[1] else 0,
+                    "top": r[2] or 0,
+                    "low": r[3] or 0,
+                    "students": r[4]
+                })
+
+            # Mock subject breakdown (per-subject averages)
+            cursor.execute(f"""
+                SELECT
+                    ROUND(AVG(mt.maths_marks)::numeric, 1),
+                    ROUND(AVG(mt.physics_marks)::numeric, 1),
+                    ROUND(AVG(mt.chemistry_marks)::numeric, 1),
+                    ROUND(AVG(mt.biology_marks)::numeric, 1),
+                    MAX(mt.maths_marks), MAX(mt.physics_marks),
+                    MAX(mt.chemistry_marks), MAX(mt.biology_marks)
+                FROM mock_test mt
+                JOIN student s ON mt.student_id = s.student_id
+                WHERE s.batch_id = %s {mock_date_filter}
+            """, [batch_id] + mock_date_params)
+            r = cursor.fetchone()
+            if r and r[0] is not None:
+                for i, subj in enumerate(["Maths", "Physics", "Chemistry", "Biology"]):
+                    mock_subject_breakdown.append({
+                        "subject": subj,
+                        "avg": float(r[i]) if r[i] else 0,
+                        "top": r[i + 4] or 0
+                    })
+
+            # Per-student mock average
+            cursor.execute(f"""
+                SELECT
+                    s.student_id,
+                    s.student_name,
+                    ROUND(AVG(mt.total_marks)::numeric, 1) as avg_marks,
+                    COUNT(*) as test_count
+                FROM mock_test mt
+                JOIN student s ON mt.student_id = s.student_id
+                WHERE s.batch_id = %s {mock_date_filter}
+                GROUP BY s.student_id, s.student_name
+                ORDER BY avg_marks DESC
+            """, [batch_id] + mock_date_params)
+            mock_student_avgs = [
+                {"student_id": r[0], "student_name": r[1], "avg": float(r[2]), "tests": r[3]}
+                for r in cursor.fetchall()
+            ]
+
+        # ==================== COMBINED RANKINGS ====================
+        # Merge daily + mock student averages for overall ranking
+        student_scores = {}
+        for s in daily_student_avgs:
+            sid = s["student_id"]
+            student_scores[sid] = {
+                "student_id": sid,
+                "student_name": s["student_name"],
+                "daily_avg": s["avg"],
+                "daily_tests": s["tests"],
+                "mock_avg": 0,
+                "mock_tests": 0
+            }
+        for s in mock_student_avgs:
+            sid = s["student_id"]
+            if sid in student_scores:
+                student_scores[sid]["mock_avg"] = s["avg"]
+                student_scores[sid]["mock_tests"] = s["tests"]
+            else:
+                student_scores[sid] = {
+                    "student_id": sid,
+                    "student_name": s["student_name"],
+                    "daily_avg": 0,
+                    "daily_tests": 0,
+                    "mock_avg": s["avg"],
+                    "mock_tests": s["tests"]
+                }
+
+        # Calculate overall average
+        for sid, data in student_scores.items():
+            total = 0
+            count = 0
+            if data["daily_tests"] > 0:
+                total += data["daily_avg"]
+                count += 1
+            if data["mock_tests"] > 0:
+                total += data["mock_avg"]
+                count += 1
+            data["overall_avg"] = round(total / count, 1) if count > 0 else 0
+
+        ranked = sorted(student_scores.values(), key=lambda x: x["overall_avg"], reverse=True)
+        top_students = ranked[:5]
+        bottom_students = list(reversed(ranked[-5:])) if len(ranked) >= 5 else list(reversed(ranked))
+
+        # ==================== SCORE DISTRIBUTION ====================
+        # Buckets: 0-25, 26-50, 51-75, 76-100
+        def build_distribution(student_avgs):
+            buckets = {"0-25": 0, "26-50": 0, "51-75": 0, "76-100": 0}
+            for s in student_avgs:
+                avg = s["avg"]
+                if avg <= 25:
+                    buckets["0-25"] += 1
+                elif avg <= 50:
+                    buckets["26-50"] += 1
+                elif avg <= 75:
+                    buckets["51-75"] += 1
+                else:
+                    buckets["76-100"] += 1
+            return [{"range": k, "count": v} for k, v in buckets.items()]
+
+        daily_distribution = build_distribution(daily_student_avgs) if daily_student_avgs else []
+        mock_distribution = build_distribution(mock_student_avgs) if mock_student_avgs else []
+
+        # ==================== PARTICIPATION ====================
+        participation = {
+            "total_students": total_students,
+            "daily_tested": daily_stats["students_tested"],
+            "mock_tested": mock_stats["students_tested"],
+            "daily_rate": round(daily_stats["students_tested"] / total_students * 100, 1) if total_students > 0 else 0,
+            "mock_rate": round(mock_stats["students_tested"] / total_students * 100, 1) if total_students > 0 else 0
+        }
+
+        return {
+            "batch": batch_info,
+            "daily_stats": daily_stats,
+            "mock_stats": mock_stats,
+            "daily_trend": daily_trend,
+            "mock_trend": mock_trend,
+            "daily_subject_breakdown": daily_subject_breakdown,
+            "mock_subject_breakdown": mock_subject_breakdown,
+            "top_students": top_students,
+            "bottom_students": bottom_students,
+            "daily_distribution": daily_distribution,
+            "mock_distribution": mock_distribution,
+            "participation": participation
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch batch performance: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
 @app.get("/api/analysis/health")
 async def health_check():
     """Health check endpoint"""

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import CourseCard from './CourseCard';
 import BatchDetail from './BatchDetail';
 import AddBatch from './AddBatch';
-import AnalysisDashboard from './AnalysisDashboard';
 import AchieversSection from './AchieversSection';
 import './Dashboard.css';
 import { API_BASE } from '../config';
@@ -13,7 +12,6 @@ const Dashboard = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedYear, setSelectedYear] = useState('2024-2025');
   const [showAddBatch, setShowAddBatch] = useState(false);
-  const [showAnalysis, setShowAnalysis] = useState(false);
   const [showAchievers, setShowAchievers] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -90,10 +88,6 @@ const Dashboard = () => {
     return <AddBatch onBack={handleBackFromAddBatch} onSave={handleSaveBatch} />;
   }
 
-  if (showAnalysis) {
-    return <AnalysisDashboard onBack={() => setShowAnalysis(false)} />;
-  }
-
   if (showAchievers) {
     return <AchieversSection onBack={() => setShowAchievers(false)} />;
   }
@@ -145,7 +139,6 @@ const Dashboard = () => {
 
         <div className="action-buttons">
           <button className="btn-achievers" onClick={() => setShowAchievers(true)}>🌟 Achievers</button>
-          <button className="btn-analysis" onClick={() => setShowAnalysis(true)}>📊 Analysis</button>
           <button className="btn-add-batch" onClick={handleAddBatch}>+ Add Batch</button>
         </div>
       </div>
