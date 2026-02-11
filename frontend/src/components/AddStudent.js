@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import './AddStudent.css';
 import { API_BASE } from '../config';
+import { authFetch } from '../utils/api';
 
 const AddStudent = ({ batch, onBack, onSave, editMode = false, studentId = null }) => {
   const [loading, setLoading] = useState(false);
@@ -97,7 +98,7 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentId = null 
     setError('');
     
     try {
-      const response = await fetch(`${API_BASE}/api/student/${studentId}`);
+      const response = await authFetch(`${API_BASE}/api/student/${studentId}`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch student data: ${response.statusText}`);
@@ -252,7 +253,7 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentId = null 
       formData.append('file', uploadFile);
       formData.append('batch_id', batch.batch_id);
 
-      const response = await fetch(`${API_BASE}/api/student/upload`, {
+      const response = await authFetch(`${API_BASE}/api/student/upload`, {
         method: 'POST',
         body: formData
       });
@@ -393,7 +394,7 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentId = null 
       const method = editMode ? 'PUT' : 'POST';
 
       // Make API call
-      const response = await fetch(url, {
+      const response = await authFetch(url, {
         method: method,
         headers: {
           'Content-Type': 'application/json',

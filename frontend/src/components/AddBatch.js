@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import './AddBatch.css';
 import { API_BASE } from '../config';
+import { authFetch } from '../utils/api';
 
 const AddBatch = ({ onBack, onSave }) => {
     const [formData, setFormData] = useState({
@@ -52,7 +53,7 @@ const AddBatch = ({ onBack, onSave }) => {
         setLoading(true);
         
         try {
-            const response = await fetch(`${API_BASE}/api/batch`, {
+            const response = await authFetch(`${API_BASE}/api/batch`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import './AddExam.css';
 import { API_BASE } from '../config';
+import { authFetch } from '../utils/api';
 
 const AddExam = ({ batch, students, onBack, onSave }) => {
   const [examMode, setExamMode] = useState('manual'); // 'manual' or 'excel'
@@ -88,7 +89,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
       }
 
       // Fetch the template file
-      const response = await fetch(apiUrl);
+      const response = await authFetch(apiUrl);
       
       if (!response.ok) {
         throw new Error('Failed to download template');
@@ -295,7 +296,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
       }
 
       // Make API call
-      const response = await fetch(apiUrl, {
+      const response = await authFetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

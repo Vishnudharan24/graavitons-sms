@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, status, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, validator
 from typing import List, Optional
@@ -9,6 +9,7 @@ import pandas as pd
 import io
 from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
 import numpy as np
+from api.middleware import get_current_user
 
 app = FastAPI(title=APP_TITLE)
 
@@ -330,7 +331,7 @@ def insert_student_data(student_data: StudentCreate, conn):
 
 
 @app.post("/api/student", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
-async def create_student(student: StudentCreate):
+async def create_student(student: StudentCreate, current_user: dict = Depends(get_current_user)):
     """
     Create a new student with all related information
     """
@@ -414,7 +415,8 @@ async def create_student(student: StudentCreate):
 @app.post("/api/student/upload", status_code=status.HTTP_201_CREATED)
 async def upload_students_excel(
     file: UploadFile = File(...),
-    batch_id: int = Form(...)
+    batch_id: int = Form(...),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Upload students from Excel file (.xlsx)
@@ -618,7 +620,7 @@ async def upload_students_excel(
 
 
 @app.get("/api/student/batch/{batch_id}")
-async def get_students_by_batch(batch_id: int):
+async def get_students_by_batch(batch_id: int, current_user: dict = Depends(get_current_user)):
     """
     Get all students in a specific batch with their basic information
     """
@@ -695,7 +697,7 @@ async def get_students_by_batch(batch_id: int):
 
 
 @app.get("/api/student/{student_id}")
-async def get_student_details(student_id: str):
+async def get_student_details(student_id: str, current_user: dict = Depends(get_current_user)):
     """
     Get complete student details from all related tables
     """
@@ -876,7 +878,7 @@ async def get_student_details(student_id: str):
 
 
 @app.put("/api/student/{student_id}")
-async def update_student(student_id: str, updates: StudentUpdate):
+async def update_student(student_id: str, updates: StudentUpdate, current_user: dict = Depends(get_current_user)):
     """
     Update student details - only updates fields that are provided (partial update)
     """
@@ -1071,7 +1073,7 @@ async def update_student(student_id: str, updates: StudentUpdate):
         )
 
 @app.get("/api/student/template")
-async def download_template():
+async def download_template(current_user: dict = Depends(get_current_user)):
     """
     Get the list of required columns for the Excel template
     """

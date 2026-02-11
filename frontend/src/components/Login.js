@@ -67,7 +67,9 @@ const Login = ({ onLogin }) => {
         setError('');
         alert('Registration successful! Please log in.');
       } else {
-        // Save user to localStorage and notify parent
+        // Save tokens and user to localStorage, then notify parent
+        localStorage.setItem('graavitons_token', data.access_token);
+        localStorage.setItem('graavitons_refresh_token', data.refresh_token);
         localStorage.setItem('graavitons_user', JSON.stringify(data.user));
         onLogin(data.user);
       }

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from typing import Optional
@@ -7,6 +7,12 @@ import bcrypt
 from datetime import datetime
 import uuid
 from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
+from api.middleware import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    get_current_user,
+)
 
 app = FastAPI(title=APP_TITLE)
 
@@ -31,6 +37,10 @@ class UserRegister(BaseModel):
     email: str
     password: str
     role: Optional[str] = "Teacher"
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 
 # ── Helper ──
@@ -78,8 +88,20 @@ async def login(credentials: UserLogin):
                 detail="Invalid email or password"
             )
 
+        # Build JWT claims
+        token_data = {
+            "sub": user[0],
+            "email": user[1],
+            "role": user[3],
+        }
+        access_token = create_access_token(token_data)
+        refresh_token = create_refresh_token(token_data)
+
         return {
             "message": "Login successful",
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
             "user": {
                 "id": user[0],
                 "email": user[1],
@@ -152,8 +174,29 @@ async def register(user_data: UserRegister):
             conn.close()
 
 
+@app.post("/api/auth/refresh")
+async def refresh_access_token(body: RefreshRequest):
+    """Accept a refresh token and return a new access token."""
+    payload = decode_token(body.refresh_token)
+    if payload.get("type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+    token_data = {
+        "sub": payload.get("sub"),
+        "email": payload.get("email"),
+        "role": payload.get("role"),
+    }
+    new_access_token = create_access_token(token_data)
+    return {
+        "access_token": new_access_token,
+        "token_type": "bearer",
+    }
+
+
 @app.get("/api/auth/user/{user_id}")
-async def get_user(user_id: str):
+async def get_user(user_id: str, current_user: dict = Depends(get_current_user)):
     """Get user info by ID (excludes password)."""
     conn = None
     try:

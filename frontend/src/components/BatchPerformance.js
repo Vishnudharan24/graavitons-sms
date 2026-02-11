@@ -4,6 +4,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, Cell
 } from 'recharts';
 import { API_BASE } from '../config';
+import { authFetch } from '../utils/api';
 import './BatchPerformance.css';
 
 const COLORS = ['#5b5fc7', '#48bb78', '#ed8936', '#e53e3e', '#38b2ac', '#d69e2e'];
@@ -27,7 +28,7 @@ const BatchPerformance = ({ batch }) => {
       if (dateTo) params.append('date_to', dateTo);
       if (subject) params.append('subject', subject);
 
-      const res = await fetch(
+      const res = await authFetch(
         `${API_BASE}/api/analysis/batch-performance/${batch.batch_id}?${params}`
       );
       if (!res.ok) throw new Error('Failed to fetch performance data');

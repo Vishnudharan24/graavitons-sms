@@ -3,6 +3,7 @@ import './App.css';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import Login from './components/Login';
+import { clearAuthStorage } from './utils/api';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -14,7 +15,7 @@ function App() {
       try {
         setUser(JSON.parse(savedUser));
       } catch {
-        localStorage.removeItem('graavitons_user');
+        clearAuthStorage();
       }
     }
   }, []);
@@ -25,7 +26,7 @@ function App() {
 
   const handleLogout = () => {
     setUser(null);
-    localStorage.removeItem('graavitons_user');
+    clearAuthStorage();
   };
 
   // Show login page if not authenticated
