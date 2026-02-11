@@ -6,11 +6,22 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 import uvicorn
 from config import APP_TITLE, CORS_ORIGINS, SERVER_HOST, SERVER_PORT, DEBUG
+from db_pool import close_pool
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: pool is already initialised when db_pool module is imported
+    yield
+    # Shutdown: close all pooled connections
+    close_pool()
+
 
 # Create main FastAPI app
-app = FastAPI(title=APP_TITLE)
+app = FastAPI(title=APP_TITLE, lifespan=lifespan)
 
 # CORS configuration
 app.add_middleware(

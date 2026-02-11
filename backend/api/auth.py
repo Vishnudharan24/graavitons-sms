@@ -6,7 +6,8 @@ import psycopg2
 import bcrypt
 from datetime import datetime
 import uuid
-from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
+from config import CORS_ORIGINS, APP_TITLE
+from db_pool import get_db_connection
 from api.middleware import (
     create_access_token,
     create_refresh_token,
@@ -44,10 +45,6 @@ class RefreshRequest(BaseModel):
 
 
 # ── Helper ──
-
-def get_db_connection():
-    return psycopg2.connect(**DB_CONFIG)
-
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt"""

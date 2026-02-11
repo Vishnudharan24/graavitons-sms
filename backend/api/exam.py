@@ -9,8 +9,9 @@ from datetime import datetime, date
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from io import BytesIO
-from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
+from config import CORS_ORIGINS, APP_TITLE
 from api.middleware import get_current_user
+from db_pool import get_db_connection
 
 app = FastAPI(title=APP_TITLE)
 
@@ -60,18 +61,6 @@ class MockTestCreate(BaseModel):
     chemistryUnitNames: str
     biologyUnitNames: str
     studentMarks: List[MockTestStudentMark]
-
-
-def get_db_connection():
-    """Create and return a database connection"""
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        return conn
-    except psycopg2.Error as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database connection failed: {str(e)}"
-        )
 
 
 @app.post("/api/exam/daily-test", status_code=status.HTTP_201_CREATED)

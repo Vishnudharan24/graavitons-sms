@@ -7,9 +7,10 @@ from psycopg2 import sql
 from datetime import datetime, date
 import pandas as pd
 import io
-from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
+from config import CORS_ORIGINS, APP_TITLE
 import numpy as np
 from api.middleware import get_current_user
+from db_pool import get_db_connection
 
 app = FastAPI(title=APP_TITLE)
 
@@ -210,16 +211,6 @@ class StudentUpdate(BaseModel):
 class MessageResponse(BaseModel):
     message: str
     student: StudentResponse
-
-
-def get_db_connection():
-    """Create and return a database connection"""
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        return conn
-    except psycopg2.Error as e:
-        print(f"Database connection error: {e}")
-        return None
 
 
 def insert_student_data(student_data: StudentCreate, conn):

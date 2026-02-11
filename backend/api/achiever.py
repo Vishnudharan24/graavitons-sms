@@ -5,8 +5,9 @@ from typing import Optional
 import psycopg2
 from psycopg2 import sql
 from datetime import date
-from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
+from config import CORS_ORIGINS, APP_TITLE
 from api.middleware import get_current_user
+from db_pool import get_db_connection
 
 app = FastAPI(title=APP_TITLE)
 
@@ -40,12 +41,6 @@ class AchieverUpdate(BaseModel):
     score: Optional[float] = None
     photo_url: Optional[str] = None
     achieved_date: Optional[date] = None
-
-
-# ── Helper ──
-
-def get_db_connection():
-    return psycopg2.connect(**DB_CONFIG)
 
 
 # ── Routes ──

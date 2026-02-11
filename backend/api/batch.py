@@ -5,8 +5,9 @@ from typing import List, Optional
 import psycopg2
 from psycopg2 import sql
 from datetime import datetime
-from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
+from config import CORS_ORIGINS, APP_TITLE
 from api.middleware import get_current_user
+from db_pool import get_db_connection
 
 app = FastAPI(title=APP_TITLE)
 
@@ -53,16 +54,6 @@ class BatchListResponse(BaseModel):
 class MessageResponse(BaseModel):
     message: str
     batch: BatchResponse
-
-
-def get_db_connection():
-    """Create and return a database connection"""
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        return conn
-    except psycopg2.Error as e:
-        print(f"Database connection error: {e}")
-        return None
 
 
 @app.post("/api/batch", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
