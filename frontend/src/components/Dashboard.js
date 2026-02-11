@@ -51,6 +51,26 @@ const Dashboard = () => {
     setSelectedBatch(null);
   };
 
+  const handleDeleteBatch = async (e, batchId, batchName) => {
+    e.stopPropagation();
+    if (!window.confirm(`Are you sure you want to delete "${batchName}"? This will remove all related students, exams, and data permanently.`)) {
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/api/batch/${batchId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || 'Failed to delete batch');
+      }
+      fetchBatches();
+    } catch (err) {
+      alert(err.message || 'Failed to delete batch');
+      console.error('Error deleting batch:', err);
+    }
+  };
+
   const handleAddBatch = () => {
     setShowAddBatch(true);
   };
@@ -151,7 +171,7 @@ const Dashboard = () => {
         ) : filteredBatches.length > 0 ? (
           filteredBatches.map((batch) => (
             <div key={batch.batch_id} onClick={() => handleBatchClick(batch)}>
-              <CourseCard course={batch} />
+              <CourseCard course={batch} onDelete={(e) => handleDeleteBatch(e, batch.batch_id, batch.batch_name)} />
             </div>
           ))
         ) : (

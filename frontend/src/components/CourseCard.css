@@ -1,4 +1,5 @@
 .course-card {
+    position: relative;
     background: white;
     border-radius: 12px;
     padding: 40px 30px;
@@ -12,6 +13,31 @@
     justify-content: center;
     min-height: 200px;
     text-align: center;
+}
+
+.course-card-delete-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: transparent;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: #a0aec0;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.2s;
+    opacity: 0;
+    z-index: 2;
+}
+
+.course-card:hover .course-card-delete-btn {
+    opacity: 1;
+}
+
+.course-card-delete-btn:hover {
+    background-color: #fee2e2;
+    color: #e53e3e;
 }
 
 .course-card:hover {

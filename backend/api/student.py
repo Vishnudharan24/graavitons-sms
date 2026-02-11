@@ -8,8 +8,30 @@ from datetime import datetime, date
 import pandas as pd
 import io
 from config import DB_CONFIG, CORS_ORIGINS, APP_TITLE
+import numpy as np
 
 app = FastAPI(title=APP_TITLE)
+
+
+def safe_int(value):
+    """Safely convert any value (including numpy floats) to Python int"""
+    if value is None:
+        return None
+    try:
+        return int(float(str(value)))
+    except (ValueError, TypeError):
+        return None
+
+
+def safe_str(value):
+    """Safely convert any value to a clean Python string"""
+    if value is None:
+        return None
+    s = str(value)
+    # Remove trailing .0 from numeric strings (e.g. "9876543210.0" -> "9876543210")
+    if s.endswith('.0') and s[:-2].replace('-', '', 1).isdigit():
+        s = s[:-2]
+    return s
 
 # CORS configuration
 app.add_middleware(
@@ -448,9 +470,19 @@ async def upload_students_excel(
         # Process each row
         for index, row in df.iterrows():
             try:
+                # Create SAVEPOINT at the start so it exists for rollback on ANY error
+                cursor.execute("SAVEPOINT student_row")
+                
+                # Helper to safely get a value from the row
+                def get_val(col):
+                    """Return value if column exists and is not NaN/None, else None"""
+                    if col in row and pd.notna(row[col]):
+                        return row[col]
+                    return None
+                
                 # Convert date string to date object if present
                 dob_value = None
-                if 'dob' in row and row['dob']:
+                if get_val('dob') is not None:
                     try:
                         dob_value = pd.to_datetime(row['dob']).date()
                     except:
@@ -458,105 +490,106 @@ async def upload_students_excel(
                 
                 # Prepare entrance exams if columns exist
                 entrance_exams = []
-                if 'entrance_exam_name' in row and row['entrance_exam_name']:
+                if get_val('entrance_exam_name') is not None:
                     entrance_exams.append(EntranceExam(
-                        exam_name=str(row.get('entrance_exam_name', '')),
-                        physics_marks=int(row['entrance_physics_marks']) if 'entrance_physics_marks' in row and pd.notna(row['entrance_physics_marks']) else None,
-                        chemistry_marks=int(row['entrance_chemistry_marks']) if 'entrance_chemistry_marks' in row and pd.notna(row['entrance_chemistry_marks']) else None,
-                        maths_marks=int(row['entrance_maths_marks']) if 'entrance_maths_marks' in row and pd.notna(row['entrance_maths_marks']) else None,
-                        biology_marks=int(row['entrance_biology_marks']) if 'entrance_biology_marks' in row and pd.notna(row['entrance_biology_marks']) else None,
-                        total_marks=int(row['entrance_total_marks']) if 'entrance_total_marks' in row and pd.notna(row['entrance_total_marks']) else None,
-                        overall_rank=int(row['entrance_overall_rank']) if 'entrance_overall_rank' in row and pd.notna(row['entrance_overall_rank']) else None,
-                        community_rank=int(row['entrance_community_rank']) if 'entrance_community_rank' in row and pd.notna(row['entrance_community_rank']) else None
+                        exam_name=safe_str(get_val('entrance_exam_name')),
+                        physics_marks=safe_int(get_val('entrance_physics_marks')),
+                        chemistry_marks=safe_int(get_val('entrance_chemistry_marks')),
+                        maths_marks=safe_int(get_val('entrance_maths_marks')),
+                        biology_marks=safe_int(get_val('entrance_biology_marks')),
+                        total_marks=safe_int(get_val('entrance_total_marks')),
+                        overall_rank=safe_int(get_val('entrance_overall_rank')),
+                        community_rank=safe_int(get_val('entrance_community_rank'))
                     ))
                 
-                # Create student object
+                # Create student object with safe type conversions
                 student_data = StudentCreate(
-                    student_id=str(row['student_id']),
+                    student_id=safe_str(row['student_id']),
                     batch_id=batch_id,
-                    student_name=str(row['student_name']),
+                    student_name=safe_str(row['student_name']),
                     dob=dob_value,
-                    grade=str(row['grade']) if 'grade' in row and pd.notna(row['grade']) else None,
-                    community=str(row['community']) if 'community' in row and pd.notna(row['community']) else None,
-                    enrollment_year=int(row['enrollment_year']) if 'enrollment_year' in row and pd.notna(row['enrollment_year']) else None,
-                    course=str(row['course']) if 'course' in row and pd.notna(row['course']) else None,
-                    branch=str(row['branch']) if 'branch' in row and pd.notna(row['branch']) else None,
-                    gender=str(row['gender']) if 'gender' in row and pd.notna(row['gender']) else None,
-                    student_mobile=str(row['student_mobile']) if 'student_mobile' in row and pd.notna(row['student_mobile']) else None,
-                    aadhar_no=str(row['aadhar_no']) if 'aadhar_no' in row and pd.notna(row['aadhar_no']) else None,
-                    apaar_id=str(row['apaar_id']) if 'apaar_id' in row and pd.notna(row['apaar_id']) else None,
-                    email=str(row['email']) if 'email' in row and pd.notna(row['email']) else None,
-                    school_name=str(row['school_name']) if 'school_name' in row and pd.notna(row['school_name']) else None,
+                    grade=safe_str(get_val('grade')),
+                    community=safe_str(get_val('community')),
+                    enrollment_year=safe_int(get_val('enrollment_year')),
+                    course=safe_str(get_val('course')),
+                    branch=safe_str(get_val('branch')),
+                    gender=safe_str(get_val('gender')),
+                    student_mobile=safe_str(get_val('student_mobile')),
+                    aadhar_no=safe_str(get_val('aadhar_no')),
+                    apaar_id=safe_str(get_val('apaar_id')),
+                    email=safe_str(get_val('email')),
+                    school_name=safe_str(get_val('school_name')),
                     
                     # Parent info
-                    guardian_name=str(row['guardian_name']) if 'guardian_name' in row and pd.notna(row['guardian_name']) else None,
-                    guardian_occupation=str(row['guardian_occupation']) if 'guardian_occupation' in row and pd.notna(row['guardian_occupation']) else None,
-                    guardian_mobile=str(row['guardian_mobile']) if 'guardian_mobile' in row and pd.notna(row['guardian_mobile']) else None,
-                    guardian_email=str(row['guardian_email']) if 'guardian_email' in row and pd.notna(row['guardian_email']) else None,
-                    father_name=str(row['father_name']) if 'father_name' in row and pd.notna(row['father_name']) else None,
-                    father_occupation=str(row['father_occupation']) if 'father_occupation' in row and pd.notna(row['father_occupation']) else None,
-                    father_mobile=str(row['father_mobile']) if 'father_mobile' in row and pd.notna(row['father_mobile']) else None,
-                    father_email=str(row['father_email']) if 'father_email' in row and pd.notna(row['father_email']) else None,
-                    mother_name=str(row['mother_name']) if 'mother_name' in row and pd.notna(row['mother_name']) else None,
-                    mother_occupation=str(row['mother_occupation']) if 'mother_occupation' in row and pd.notna(row['mother_occupation']) else None,
-                    mother_mobile=str(row['mother_mobile']) if 'mother_mobile' in row and pd.notna(row['mother_mobile']) else None,
-                    mother_email=str(row['mother_email']) if 'mother_email' in row and pd.notna(row['mother_email']) else None,
-                    sibling_name=str(row['sibling_name']) if 'sibling_name' in row and pd.notna(row['sibling_name']) else None,
-                    sibling_grade=str(row['sibling_grade']) if 'sibling_grade' in row and pd.notna(row['sibling_grade']) else None,
-                    sibling_school=str(row['sibling_school']) if 'sibling_school' in row and pd.notna(row['sibling_school']) else None,
-                    sibling_college=str(row['sibling_college']) if 'sibling_college' in row and pd.notna(row['sibling_college']) else None,
+                    guardian_name=safe_str(get_val('guardian_name')),
+                    guardian_occupation=safe_str(get_val('guardian_occupation')),
+                    guardian_mobile=safe_str(get_val('guardian_mobile')),
+                    guardian_email=safe_str(get_val('guardian_email')),
+                    father_name=safe_str(get_val('father_name')),
+                    father_occupation=safe_str(get_val('father_occupation')),
+                    father_mobile=safe_str(get_val('father_mobile')),
+                    father_email=safe_str(get_val('father_email')),
+                    mother_name=safe_str(get_val('mother_name')),
+                    mother_occupation=safe_str(get_val('mother_occupation')),
+                    mother_mobile=safe_str(get_val('mother_mobile')),
+                    mother_email=safe_str(get_val('mother_email')),
+                    sibling_name=safe_str(get_val('sibling_name')),
+                    sibling_grade=safe_str(get_val('sibling_grade')),
+                    sibling_school=safe_str(get_val('sibling_school')),
+                    sibling_college=safe_str(get_val('sibling_college')),
                     
                     # 10th marks
-                    tenth_school_name=str(row['tenth_school_name']) if 'tenth_school_name' in row and pd.notna(row['tenth_school_name']) else None,
-                    tenth_year_of_passing=int(row['tenth_year_of_passing']) if 'tenth_year_of_passing' in row and pd.notna(row['tenth_year_of_passing']) else None,
-                    tenth_board_of_study=str(row['tenth_board_of_study']) if 'tenth_board_of_study' in row and pd.notna(row['tenth_board_of_study']) else None,
-                    tenth_english=int(row['tenth_english']) if 'tenth_english' in row and pd.notna(row['tenth_english']) else None,
-                    tenth_tamil=int(row['tenth_tamil']) if 'tenth_tamil' in row and pd.notna(row['tenth_tamil']) else None,
-                    tenth_hindi=int(row['tenth_hindi']) if 'tenth_hindi' in row and pd.notna(row['tenth_hindi']) else None,
-                    tenth_maths=int(row['tenth_maths']) if 'tenth_maths' in row and pd.notna(row['tenth_maths']) else None,
-                    tenth_science=int(row['tenth_science']) if 'tenth_science' in row and pd.notna(row['tenth_science']) else None,
-                    tenth_social_science=int(row['tenth_social_science']) if 'tenth_social_science' in row and pd.notna(row['tenth_social_science']) else None,
-                    tenth_total_marks=int(row['tenth_total_marks']) if 'tenth_total_marks' in row and pd.notna(row['tenth_total_marks']) else None,
+                    tenth_school_name=safe_str(get_val('tenth_school_name')),
+                    tenth_year_of_passing=safe_int(get_val('tenth_year_of_passing')),
+                    tenth_board_of_study=safe_str(get_val('tenth_board_of_study')),
+                    tenth_english=safe_int(get_val('tenth_english')),
+                    tenth_tamil=safe_int(get_val('tenth_tamil')),
+                    tenth_hindi=safe_int(get_val('tenth_hindi')),
+                    tenth_maths=safe_int(get_val('tenth_maths')),
+                    tenth_science=safe_int(get_val('tenth_science')),
+                    tenth_social_science=safe_int(get_val('tenth_social_science')),
+                    tenth_total_marks=safe_int(get_val('tenth_total_marks')),
                     
                     # 12th marks
-                    twelfth_school_name=str(row['twelfth_school_name']) if 'twelfth_school_name' in row and pd.notna(row['twelfth_school_name']) else None,
-                    twelfth_year_of_passing=int(row['twelfth_year_of_passing']) if 'twelfth_year_of_passing' in row and pd.notna(row['twelfth_year_of_passing']) else None,
-                    twelfth_board_of_study=str(row['twelfth_board_of_study']) if 'twelfth_board_of_study' in row and pd.notna(row['twelfth_board_of_study']) else None,
-                    twelfth_english=int(row['twelfth_english']) if 'twelfth_english' in row and pd.notna(row['twelfth_english']) else None,
-                    twelfth_tamil=int(row['twelfth_tamil']) if 'twelfth_tamil' in row and pd.notna(row['twelfth_tamil']) else None,
-                    twelfth_physics=int(row['twelfth_physics']) if 'twelfth_physics' in row and pd.notna(row['twelfth_physics']) else None,
-                    twelfth_chemistry=int(row['twelfth_chemistry']) if 'twelfth_chemistry' in row and pd.notna(row['twelfth_chemistry']) else None,
-                    twelfth_maths=int(row['twelfth_maths']) if 'twelfth_maths' in row and pd.notna(row['twelfth_maths']) else None,
-                    twelfth_biology=int(row['twelfth_biology']) if 'twelfth_biology' in row and pd.notna(row['twelfth_biology']) else None,
-                    twelfth_computer_science=int(row['twelfth_computer_science']) if 'twelfth_computer_science' in row and pd.notna(row['twelfth_computer_science']) else None,
-                    twelfth_total_marks=int(row['twelfth_total_marks']) if 'twelfth_total_marks' in row and pd.notna(row['twelfth_total_marks']) else None,
+                    twelfth_school_name=safe_str(get_val('twelfth_school_name')),
+                    twelfth_year_of_passing=safe_int(get_val('twelfth_year_of_passing')),
+                    twelfth_board_of_study=safe_str(get_val('twelfth_board_of_study')),
+                    twelfth_english=safe_int(get_val('twelfth_english')),
+                    twelfth_tamil=safe_int(get_val('twelfth_tamil')),
+                    twelfth_physics=safe_int(get_val('twelfth_physics')),
+                    twelfth_chemistry=safe_int(get_val('twelfth_chemistry')),
+                    twelfth_maths=safe_int(get_val('twelfth_maths')),
+                    twelfth_biology=safe_int(get_val('twelfth_biology')),
+                    twelfth_computer_science=safe_int(get_val('twelfth_computer_science')),
+                    twelfth_total_marks=safe_int(get_val('twelfth_total_marks')),
                     
                     # Entrance exams
                     entrance_exams=entrance_exams,
                     
                     # Counselling
-                    counselling_forum=str(row['counselling_forum']) if 'counselling_forum' in row and pd.notna(row['counselling_forum']) else None,
-                    counselling_round=int(row['counselling_round']) if 'counselling_round' in row and pd.notna(row['counselling_round']) else None,
-                    counselling_college_alloted=str(row['counselling_college_alloted']) if 'counselling_college_alloted' in row and pd.notna(row['counselling_college_alloted']) else None,
-                    counselling_year_of_completion=int(row['counselling_year_of_completion']) if 'counselling_year_of_completion' in row and pd.notna(row['counselling_year_of_completion']) else None
+                    counselling_forum=safe_str(get_val('counselling_forum')),
+                    counselling_round=safe_int(get_val('counselling_round')),
+                    counselling_college_alloted=safe_str(get_val('counselling_college_alloted')),
+                    counselling_year_of_completion=safe_int(get_val('counselling_year_of_completion'))
                 )
                 
                 # Use SAVEPOINT so a single row failure doesn't abort the whole transaction
-                cursor.execute("SAVEPOINT student_row")
                 insert_student_data(student_data, conn)
                 cursor.execute("RELEASE SAVEPOINT student_row")
                 success_count += 1
                 
             except Exception as e:
                 # Rollback only this row's changes, keep the transaction alive
+                import traceback
+                traceback.print_exc()
                 cursor.execute("ROLLBACK TO SAVEPOINT student_row")
                 error_count += 1
                 error_msg = str(e)
                 if "student_pkey" in error_msg or "unique constraint" in error_msg.lower() or "already exists" in error_msg.lower():
                     error_msg = f"Student {row.get('student_id', 'N/A')} already exists in the database"
                 errors.append({
-                    'row': index + 2,  # +2 because Excel is 1-indexed and has header
-                    'student_id': str(row.get('student_id', 'N/A')),
+                    'row': int(index) + 2,  # +2 because Excel is 1-indexed and has header
+                    'student_id': safe_str(row.get('student_id', 'N/A')),
                     'error': error_msg
                 })
         

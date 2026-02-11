@@ -199,6 +199,112 @@ async def get_batches():
         )
 
 
+@app.delete("/api/batch/{batch_id}", status_code=status.HTTP_200_OK)
+async def delete_batch(batch_id: int):
+    """
+    Delete a batch and ALL related data:
+    - Student-related: parent_info, tenth_mark, twelfth_mark, entrance_exams,
+      counselling_detail, feedback, daily_test, mock_test
+    - Batch-related: achievers
+    - Then students and the batch itself
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database connection failed"
+            )
+
+        cursor = conn.cursor()
+
+        # 1. Verify batch exists
+        cursor.execute("SELECT batch_id, batch_name FROM batch WHERE batch_id = %s", (batch_id,))
+        batch_row = cursor.fetchone()
+        if not batch_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Batch with ID {batch_id} not found"
+            )
+
+        batch_name = batch_row[1]
+
+        # 2. Get all student_ids in this batch
+        cursor.execute("SELECT student_id FROM student WHERE batch_id = %s", (batch_id,))
+        student_ids = [row[0] for row in cursor.fetchall()]
+
+        # 3. Delete all student-related records if students exist
+        if student_ids:
+            # Use ANY() with a postgres array for efficient bulk delete
+            student_id_tuple = tuple(student_ids)
+
+            # Child tables that reference student_id
+            student_child_tables = [
+                "feedback",
+                "entrance_exams",
+                "counselling_detail",
+                "twelfth_mark",
+                "tenth_mark",
+                "parent_info",
+                "daily_test",
+                "mock_test",
+            ]
+
+            for table in student_child_tables:
+                cursor.execute(
+                    sql.SQL("DELETE FROM {} WHERE student_id IN %s").format(
+                        sql.Identifier(table)
+                    ),
+                    (student_id_tuple,)
+                )
+
+        # 4. Delete achievers linked to this batch
+        cursor.execute("DELETE FROM achievers WHERE batch_id = %s", (batch_id,))
+
+        # 5. Delete all students in this batch
+        cursor.execute("DELETE FROM student WHERE batch_id = %s", (batch_id,))
+        deleted_students = cursor.rowcount
+
+        # 6. Delete the batch itself
+        cursor.execute("DELETE FROM batch WHERE batch_id = %s", (batch_id,))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return {
+            "message": f"Batch '{batch_name}' and all related data deleted successfully",
+            "batch_id": batch_id,
+            "batch_name": batch_name,
+            "students_deleted": deleted_students
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+            conn.close()
+        raise
+
+    except psycopg2.Error as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server error: {str(e)}"
+        )
+
+
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

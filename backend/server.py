@@ -56,6 +56,7 @@ async def root():
         "endpoints": {
             "batch_create": "POST /api/batch",
             "batch_list": "GET /api/batch",
+            "batch_delete": "DELETE /api/batch/{batch_id}",
             "student_create": "POST /api/student",
             "student_upload": "POST /api/student/upload",
             "student_template": "GET /api/student/template",

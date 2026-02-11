@@ -1,9 +1,18 @@
 import React from 'react';
 import './CourseCard.css';
 
-const CourseCard = ({ course }) => {
+const CourseCard = ({ course, onDelete }) => {
   return (
     <div className="course-card">
+      {onDelete && (
+        <button
+          className="course-card-delete-btn"
+          title="Delete batch"
+          onClick={onDelete}
+        >
+          🗑
+        </button>
+      )}
       <h3 className="course-title">{course.batch_name || course.name}</h3>
       <div className="course-details">
         {course.type && (

@@ -1074,7 +1074,7 @@ async def get_batch_performance(
                     COALESCE(ROUND(AVG(dt.total_marks)::numeric, 1), 0),
                     COALESCE(MAX(dt.total_marks), 0),
                     COALESCE(MIN(dt.total_marks), 0),
-                    COUNT(*),
+                    COUNT(DISTINCT (dt.test_date, dt.subject, dt.unit_name)),
                     COUNT(DISTINCT dt.student_id)
                 FROM daily_test dt
                 JOIN student s ON dt.student_id = s.student_id
@@ -1171,7 +1171,7 @@ async def get_batch_performance(
                     COALESCE(ROUND(AVG(mt.total_marks)::numeric, 1), 0),
                     COALESCE(MAX(mt.total_marks), 0),
                     COALESCE(MIN(mt.total_marks), 0),
-                    COUNT(*),
+                    COUNT(DISTINCT mt.test_date),
                     COUNT(DISTINCT mt.student_id)
                 FROM mock_test mt
                 JOIN student s ON mt.student_id = s.student_id
