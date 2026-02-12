@@ -1325,20 +1325,56 @@ async def get_batch_performance(
         bottom_students = list(reversed(ranked[-5:])) if len(ranked) >= 5 else list(reversed(ranked))
 
         # ==================== SCORE DISTRIBUTION ====================
-        # Buckets: 0-25, 26-50, 51-75, 76-100
-        def build_distribution(student_avgs):
-            buckets = {"0-25": 0, "26-50": 0, "51-75": 0, "76-100": 0}
-            for s in student_avgs:
-                avg = s["avg"]
-                if avg <= 25:
-                    buckets["0-25"] += 1
-                elif avg <= 50:
-                    buckets["26-50"] += 1
-                elif avg <= 75:
-                    buckets["51-75"] += 1
-                else:
-                    buckets["76-100"] += 1
-            return [{"range": k, "count": v} for k, v in buckets.items()]
+        # Dynamic buckets based on actual min/max scores
+        import math
+
+        def build_distribution(student_avgs, num_buckets=5):
+            if not student_avgs:
+                return []
+            scores = [s["avg"] for s in student_avgs]
+            min_score = min(scores)
+            max_score = max(scores)
+
+            # Handle edge case where all scores are the same
+            if min_score == max_score:
+                label = str(int(min_score))
+                return [{"range": label, "count": len(scores)}]
+
+            # Round min down and max up to nice boundaries
+            bucket_size = math.ceil((max_score - min_score) / num_buckets)
+            if bucket_size == 0:
+                bucket_size = 1
+            range_start = int(math.floor(min_score / bucket_size) * bucket_size) if bucket_size > 1 else int(math.floor(min_score))
+
+            # Build bucket labels and count students per bucket
+            buckets = []
+            current = range_start
+            while current < max_score:
+                upper = current + bucket_size
+                label = f"{current}-{upper}"
+                buckets.append({"range": label, "low": current, "high": upper, "count": 0})
+                current = upper
+
+            # Assign each score to the right bucket
+            for score in scores:
+                placed = False
+                for i, b in enumerate(buckets):
+                    if i == len(buckets) - 1:
+                        # Last bucket includes upper bound
+                        if score >= b["low"]:
+                            b["count"] += 1
+                            placed = True
+                            break
+                    else:
+                        if b["low"] <= score < b["high"]:
+                            b["count"] += 1
+                            placed = True
+                            break
+                if not placed and buckets:
+                    buckets[-1]["count"] += 1
+
+            # Remove internal keys before returning
+            return [{"range": b["range"], "count": b["count"]} for b in buckets]
 
         daily_distribution = build_distribution(daily_student_avgs) if daily_student_avgs else []
         mock_distribution = build_distribution(mock_student_avgs) if mock_student_avgs else []

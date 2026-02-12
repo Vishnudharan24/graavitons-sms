@@ -8,7 +8,7 @@ import { authFetch } from '../utils/api';
 import './BatchPerformance.css';
 
 const COLORS = ['#5b5fc7', '#48bb78', '#ed8936', '#e53e3e', '#38b2ac', '#d69e2e'];
-const DIST_COLORS = ['#e53e3e', '#ed8936', '#48bb78', '#5b5fc7'];
+const DIST_COLORS = ['#e53e3e', '#ed8936', '#ecc94b', '#48bb78', '#5b5fc7', '#38b2ac', '#9f7aea', '#d69e2e'];
 
 const BatchPerformance = ({ batch }) => {
   const [data, setData] = useState(null);
