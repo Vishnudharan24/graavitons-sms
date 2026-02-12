@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, status, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, validator
 from typing import List, Optional
 import psycopg2
@@ -9,6 +10,8 @@ import pandas as pd
 import io
 from config import CORS_ORIGINS, APP_TITLE
 import numpy as np
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from api.middleware import get_current_user
 from db_pool import get_db_connection
 
@@ -1062,6 +1065,495 @@ async def update_student(student_id: str, updates: StudentUpdate, current_user: 
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error updating student: {str(e)}"
         )
+
+
+# ==================== BULK EDIT VIA EXCEL ====================
+
+# Column header -> (table, db_column, type)
+# This maps every possible Excel header to its table and column for update.
+BULK_EDIT_FIELD_MAP = {
+    # student table
+    "student_name":       ("student", "student_name", "str"),
+    "dob":                ("student", "dob", "date"),
+    "grade":              ("student", "grade", "str"),
+    "community":          ("student", "community", "str"),
+    "enrollment_year":    ("student", "enrollment_year", "int"),
+    "course":             ("student", "course", "str"),
+    "branch":             ("student", "branch", "str"),
+    "gender":             ("student", "gender", "str"),
+    "student_mobile":     ("student", "student_mobile", "str"),
+    "aadhar_no":          ("student", "aadhar_no", "str"),
+    "apaar_id":           ("student", "apaar_id", "str"),
+    "email":              ("student", "email", "str"),
+    "school_name":        ("student", "school_name", "str"),
+    # parent_info table
+    "guardian_name":       ("parent_info", "guardian_name", "str"),
+    "guardian_occupation": ("parent_info", "guardian_occupation", "str"),
+    "guardian_mobile":     ("parent_info", "guardian_mobile", "str"),
+    "guardian_email":      ("parent_info", "guardian_email", "str"),
+    "father_name":         ("parent_info", "father_name", "str"),
+    "father_occupation":   ("parent_info", "father_occupation", "str"),
+    "father_mobile":       ("parent_info", "father_mobile", "str"),
+    "father_email":        ("parent_info", "father_email", "str"),
+    "mother_name":         ("parent_info", "mother_name", "str"),
+    "mother_occupation":   ("parent_info", "mother_occupation", "str"),
+    "mother_mobile":       ("parent_info", "mother_mobile", "str"),
+    "mother_email":        ("parent_info", "mother_email", "str"),
+    "sibling_name":        ("parent_info", "sibling_name", "str"),
+    "sibling_grade":       ("parent_info", "sibling_grade", "str"),
+    "sibling_school":      ("parent_info", "sibling_school", "str"),
+    "sibling_college":     ("parent_info", "sibling_college", "str"),
+    # tenth_mark table
+    "tenth_school_name":    ("tenth_mark", "school_name", "str"),
+    "tenth_year_of_passing":("tenth_mark", "year_of_passing", "int"),
+    "tenth_board_of_study": ("tenth_mark", "board_of_study", "str"),
+    "tenth_english":        ("tenth_mark", "english", "int"),
+    "tenth_tamil":          ("tenth_mark", "tamil", "int"),
+    "tenth_hindi":          ("tenth_mark", "hindi", "int"),
+    "tenth_maths":          ("tenth_mark", "maths", "int"),
+    "tenth_science":        ("tenth_mark", "science", "int"),
+    "tenth_social_science": ("tenth_mark", "social_science", "int"),
+    "tenth_total_marks":    ("tenth_mark", "total_marks", "int"),
+    # twelfth_mark table
+    "twelfth_school_name":    ("twelfth_mark", "school_name", "str"),
+    "twelfth_year_of_passing":("twelfth_mark", "year_of_passing", "int"),
+    "twelfth_board_of_study": ("twelfth_mark", "board_of_study", "str"),
+    "twelfth_english":        ("twelfth_mark", "english", "int"),
+    "twelfth_tamil":          ("twelfth_mark", "tamil", "int"),
+    "twelfth_physics":        ("twelfth_mark", "physics", "int"),
+    "twelfth_chemistry":      ("twelfth_mark", "chemistry", "int"),
+    "twelfth_maths":          ("twelfth_mark", "maths", "int"),
+    "twelfth_biology":        ("twelfth_mark", "biology", "int"),
+    "twelfth_computer_science":("twelfth_mark", "computer_science", "int"),
+    "twelfth_total_marks":    ("twelfth_mark", "total_marks", "int"),
+    # counselling_detail table
+    "counselling_forum":           ("counselling_detail", "forum", "str"),
+    "counselling_round":           ("counselling_detail", "round", "int"),
+    "counselling_college_alloted": ("counselling_detail", "college_alloted", "str"),
+    "counselling_year_of_completion":("counselling_detail", "year_of_completion", "int"),
+}
+
+# All possible Excel headers in display order
+ALL_EDIT_COLUMNS = [
+    "student_id", "student_name",
+    # student info
+    "dob", "grade", "community", "enrollment_year", "course", "branch",
+    "gender", "student_mobile", "aadhar_no", "apaar_id", "email", "school_name",
+    # parent info
+    "guardian_name", "guardian_occupation", "guardian_mobile", "guardian_email",
+    "father_name", "father_occupation", "father_mobile", "father_email",
+    "mother_name", "mother_occupation", "mother_mobile", "mother_email",
+    "sibling_name", "sibling_grade", "sibling_school", "sibling_college",
+    # 10th marks
+    "tenth_school_name", "tenth_year_of_passing", "tenth_board_of_study",
+    "tenth_english", "tenth_tamil", "tenth_hindi", "tenth_maths",
+    "tenth_science", "tenth_social_science", "tenth_total_marks",
+    # 12th marks
+    "twelfth_school_name", "twelfth_year_of_passing", "twelfth_board_of_study",
+    "twelfth_english", "twelfth_tamil", "twelfth_physics", "twelfth_chemistry",
+    "twelfth_maths", "twelfth_biology", "twelfth_computer_science", "twelfth_total_marks",
+    # counselling
+    "counselling_forum", "counselling_round", "counselling_college_alloted",
+    "counselling_year_of_completion",
+]
+
+
+@app.get("/api/student/edit-template/{batch_id}")
+async def download_edit_template(batch_id: int, current_user: dict = Depends(get_current_user)):
+    """
+    Generate and download an Excel file pre-filled with all existing student
+    data for the given batch. Teachers edit cells they want to change and
+    re-upload it.
+    """
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Verify batch exists
+        cursor.execute("SELECT batch_name FROM batch WHERE batch_id = %s", (batch_id,))
+        batch_row = cursor.fetchone()
+        if not batch_row:
+            raise HTTPException(status_code=404, detail=f"Batch {batch_id} not found")
+        batch_name = batch_row[0]
+
+        # Fetch every student in the batch with ALL related data
+        cursor.execute("""
+            SELECT s.student_id FROM student s
+            WHERE s.batch_id = %s ORDER BY s.student_name
+        """, (batch_id,))
+        student_ids = [r[0] for r in cursor.fetchall()]
+
+        if not student_ids:
+            raise HTTPException(status_code=404, detail="No students found in this batch")
+
+        # For each student, pull complete data (reuse the single-student query pattern)
+        rows_data = []
+        for sid in student_ids:
+            row = {}
+            # student table
+            cursor.execute("""
+                SELECT student_id, student_name, dob, grade, community,
+                       enrollment_year, course, branch, gender, student_mobile,
+                       aadhar_no, apaar_id, email, school_name
+                FROM student WHERE student_id = %s
+            """, (sid,))
+            s = cursor.fetchone()
+            if s:
+                row["student_id"] = s[0]
+                row["student_name"] = s[1]
+                row["dob"] = s[2].isoformat() if s[2] else None
+                row["grade"] = s[3]
+                row["community"] = s[4]
+                row["enrollment_year"] = s[5]
+                row["course"] = s[6]
+                row["branch"] = s[7]
+                row["gender"] = s[8]
+                row["student_mobile"] = s[9]
+                row["aadhar_no"] = s[10]
+                row["apaar_id"] = s[11]
+                row["email"] = s[12]
+                row["school_name"] = s[13]
+
+            # parent_info
+            cursor.execute("""
+                SELECT guardian_name, guardian_occupation, guardian_mobile, guardian_email,
+                       father_name, father_occupation, father_mobile, father_email,
+                       mother_name, mother_occupation, mother_mobile, mother_email,
+                       sibling_name, sibling_grade, sibling_school, sibling_college
+                FROM parent_info WHERE student_id = %s
+            """, (sid,))
+            p = cursor.fetchone()
+            if p:
+                for i, key in enumerate([
+                    "guardian_name", "guardian_occupation", "guardian_mobile", "guardian_email",
+                    "father_name", "father_occupation", "father_mobile", "father_email",
+                    "mother_name", "mother_occupation", "mother_mobile", "mother_email",
+                    "sibling_name", "sibling_grade", "sibling_school", "sibling_college"
+                ]):
+                    row[key] = p[i]
+
+            # tenth_mark
+            cursor.execute("""
+                SELECT school_name, year_of_passing, board_of_study,
+                       english, tamil, hindi, maths, science, social_science, total_marks
+                FROM tenth_mark WHERE student_id = %s
+            """, (sid,))
+            t10 = cursor.fetchone()
+            if t10:
+                for i, key in enumerate([
+                    "tenth_school_name", "tenth_year_of_passing", "tenth_board_of_study",
+                    "tenth_english", "tenth_tamil", "tenth_hindi", "tenth_maths",
+                    "tenth_science", "tenth_social_science", "tenth_total_marks"
+                ]):
+                    row[key] = t10[i]
+
+            # twelfth_mark
+            cursor.execute("""
+                SELECT school_name, year_of_passing, board_of_study,
+                       english, tamil, physics, chemistry, maths, biology,
+                       computer_science, total_marks
+                FROM twelfth_mark WHERE student_id = %s
+            """, (sid,))
+            t12 = cursor.fetchone()
+            if t12:
+                for i, key in enumerate([
+                    "twelfth_school_name", "twelfth_year_of_passing", "twelfth_board_of_study",
+                    "twelfth_english", "twelfth_tamil", "twelfth_physics", "twelfth_chemistry",
+                    "twelfth_maths", "twelfth_biology", "twelfth_computer_science", "twelfth_total_marks"
+                ]):
+                    row[key] = t12[i]
+
+            # counselling_detail
+            cursor.execute("""
+                SELECT forum, round, college_alloted, year_of_completion
+                FROM counselling_detail WHERE student_id = %s
+            """, (sid,))
+            co = cursor.fetchone()
+            if co:
+                for i, key in enumerate([
+                    "counselling_forum", "counselling_round",
+                    "counselling_college_alloted", "counselling_year_of_completion"
+                ]):
+                    row[key] = co[i]
+
+            rows_data.append(row)
+
+        # Build Excel workbook
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Student Data"
+
+        # Styling
+        mandatory_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        optional_fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
+        locked_fill = PatternFill(start_color="D9E2F3", end_color="D9E2F3", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin')
+        )
+
+        # Write headers
+        for col_idx, header in enumerate(ALL_EDIT_COLUMNS, 1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            if header in ("student_id", "student_name"):
+                cell.fill = mandatory_fill
+            else:
+                cell.fill = optional_fill
+
+        # Write data rows
+        for row_idx, row_data in enumerate(rows_data, 2):
+            for col_idx, header in enumerate(ALL_EDIT_COLUMNS, 1):
+                value = row_data.get(header)
+                cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                cell.border = border
+                # Lightly shade the student_id column so users know not to change it
+                if header == "student_id":
+                    cell.fill = locked_fill
+
+        # Auto-width columns
+        for col_idx, header in enumerate(ALL_EDIT_COLUMNS, 1):
+            max_len = len(header) + 4
+            for row_idx in range(2, len(rows_data) + 2):
+                val = ws.cell(row=row_idx, column=col_idx).value
+                if val:
+                    max_len = max(max_len, len(str(val)) + 2)
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = min(max_len, 35)
+
+        # Instructions sheet
+        ins_ws = wb.create_sheet("Instructions")
+        instructions = [
+            ["Bulk Edit Template — Instructions"],
+            [""],
+            ["1. The blue columns (student_id, student_name) are mandatory and identify each student."],
+            ["2. Do NOT change the student_id column — it is used to match rows to the database."],
+            ["3. Edit any green column to update that field. Leave cells blank to keep existing values."],
+            ["4. You can DELETE entire columns you don't want to edit — they will be ignored."],
+            ["5. Blank cells are skipped — existing data will NOT be erased."],
+            ["6. Date format for 'dob': YYYY-MM-DD (e.g. 2005-06-15)"],
+            ["7. Save and upload the file back on the Bulk Edit page."],
+        ]
+        for r, row in enumerate(instructions, 1):
+            cell = ins_ws.cell(row=r, column=1, value=row[0])
+            if r == 1:
+                cell.font = Font(bold=True, size=14)
+        ins_ws.column_dimensions['A'].width = 80
+
+        # Return as downloadable file
+        excel_file = io.BytesIO()
+        wb.save(excel_file)
+        excel_file.seek(0)
+
+        safe_name = batch_name.replace(' ', '_') if batch_name else f'batch_{batch_id}'
+        return StreamingResponse(
+            excel_file,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={safe_name}_Edit_Template.xlsx"}
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate edit template: {str(e)}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.post("/api/student/upload-update")
+async def bulk_update_students(
+    file: UploadFile = File(...),
+    batch_id: int = Form(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Upload an edited Excel file to bulk-update student records.
+    Rules:
+      - student_id and student_name columns are mandatory in the file.
+      - student_id is used to identify which student to update.
+      - student_name is required so rows can be validated.
+      - All other columns are optional — only present, non-empty cells are updated.
+      - Columns that don't exist in the file are completely ignored.
+      - Blank cells are skipped (existing DB data preserved).
+    """
+    conn = None
+    cursor = None
+    try:
+        # Read uploaded Excel
+        contents = await file.read()
+        try:
+            df = pd.read_excel(io.BytesIO(contents), sheet_name=0, dtype=str)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Could not read the Excel file. Please upload a valid .xlsx file.")
+
+        # Normalize column names: strip, lowercase
+        df.columns = [c.strip().lower() for c in df.columns]
+
+        # Validate mandatory columns
+        if "student_id" not in df.columns:
+            raise HTTPException(status_code=400, detail="Missing mandatory column: 'student_id'")
+        if "student_name" not in df.columns:
+            raise HTTPException(status_code=400, detail="Missing mandatory column: 'student_name'")
+
+        # Replace NaN with None
+        df = df.replace({np.nan: None})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Verify batch exists
+        cursor.execute("SELECT batch_id FROM batch WHERE batch_id = %s", (batch_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail=f"Batch {batch_id} not found")
+
+        # Figure out which editable columns are present in the uploaded file
+        present_fields = {}
+        for col in df.columns:
+            if col in BULK_EDIT_FIELD_MAP:
+                present_fields[col] = BULK_EDIT_FIELD_MAP[col]
+
+        success_count = 0
+        skipped_count = 0
+        error_count = 0
+        errors = []
+
+        for idx, excel_row in df.iterrows():
+            row_num = idx + 2  # Excel row (1-based header + 1)
+            sid = excel_row.get("student_id")
+            sname = excel_row.get("student_name")
+
+            # Skip completely empty rows
+            if not sid or str(sid).strip() == "":
+                skipped_count += 1
+                continue
+
+            sid = str(sid).strip()
+            # Remove trailing .0 from IDs read as floats
+            if sid.endswith('.0') and sid[:-2].replace('-', '', 1).isdigit():
+                sid = sid[:-2]
+
+            # Validate student_name is present
+            if not sname or str(sname).strip() == "":
+                errors.append({"row": row_num, "student_id": sid, "error": "student_name is empty (mandatory)"})
+                error_count += 1
+                continue
+
+            # Check student exists and belongs to this batch
+            cursor.execute(
+                "SELECT student_id FROM student WHERE student_id = %s AND batch_id = %s",
+                (sid, batch_id)
+            )
+            if not cursor.fetchone():
+                errors.append({"row": row_num, "student_id": sid, "error": "Student not found in this batch"})
+                error_count += 1
+                continue
+
+            try:
+                # Group updates by table
+                table_updates = {}  # table_name -> {db_col: value}
+                for excel_col, (table, db_col, col_type) in present_fields.items():
+                    raw = excel_row.get(excel_col)
+                    if raw is None or str(raw).strip() == "":
+                        continue  # skip blank cells
+
+                    val = str(raw).strip()
+                    # Remove trailing .0 from numeric strings
+                    if val.endswith('.0') and val[:-2].replace('-', '', 1).isdigit():
+                        val = val[:-2]
+
+                    # Type coercion
+                    if col_type == "int":
+                        try:
+                            val = int(float(val))
+                        except (ValueError, TypeError):
+                            errors.append({"row": row_num, "student_id": sid, "error": f"{excel_col}: expected a number, got '{val}'"})
+                            continue
+                    elif col_type == "date":
+                        try:
+                            # Try multiple date formats
+                            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y"):
+                                try:
+                                    val = datetime.strptime(val, fmt).date()
+                                    break
+                                except ValueError:
+                                    continue
+                            else:
+                                raise ValueError(f"Unrecognized date: {val}")
+                        except Exception:
+                            errors.append({"row": row_num, "student_id": sid, "error": f"{excel_col}: invalid date '{raw}'"})
+                            continue
+
+                    if table not in table_updates:
+                        table_updates[table] = {}
+                    table_updates[table][db_col] = val
+
+                # Also update student_name in student table (it's mandatory and always present)
+                name_val = str(sname).strip()
+                if "student" not in table_updates:
+                    table_updates["student"] = {}
+                table_updates["student"]["student_name"] = name_val
+
+                # Apply updates per table
+                for table, fields in table_updates.items():
+                    if not fields:
+                        continue
+
+                    if table == "student":
+                        set_clause = ", ".join([f"{k} = %s" for k in fields.keys()])
+                        query = f"UPDATE student SET {set_clause} WHERE student_id = %s"
+                        cursor.execute(query, list(fields.values()) + [sid])
+                    else:
+                        # For related tables use UPSERT: update if exists, insert if not
+                        cursor.execute(
+                            f"SELECT student_id FROM {table} WHERE student_id = %s", (sid,)
+                        )
+                        exists = cursor.fetchone()
+
+                        if exists:
+                            set_clause = ", ".join([f"{k} = %s" for k in fields.keys()])
+                            query = f"UPDATE {table} SET {set_clause} WHERE student_id = %s"
+                            cursor.execute(query, list(fields.values()) + [sid])
+                        else:
+                            columns = ["student_id"] + list(fields.keys())
+                            placeholders = ", ".join(["%s"] * len(columns))
+                            query = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders})"
+                            cursor.execute(query, [sid] + list(fields.values()))
+
+                success_count += 1
+
+            except Exception as row_err:
+                errors.append({"row": row_num, "student_id": sid, "error": str(row_err)})
+                error_count += 1
+
+        conn.commit()
+
+        return {
+            "message": "Bulk update completed",
+            "success_count": success_count,
+            "skipped_count": skipped_count,
+            "error_count": error_count,
+            "errors": errors[:50]  # limit to first 50 errors
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Bulk update failed: {str(e)}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 
 @app.get("/api/student/template")
 async def download_template(current_user: dict = Depends(get_current_user)):
