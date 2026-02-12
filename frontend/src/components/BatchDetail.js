@@ -16,6 +16,10 @@ const BatchDetail = ({ batch, onBack }) => {
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [showEditStudent, setShowEditStudent] = useState(false);
   const [showAddExam, setShowAddExam] = useState(false);
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
+  const [bulkEditFile, setBulkEditFile] = useState(null);
+  const [bulkEditResult, setBulkEditResult] = useState(null);
+  const [bulkEditLoading, setBulkEditLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('students');
@@ -114,6 +118,69 @@ const BatchDetail = ({ batch, onBack }) => {
   
   const handleEditStudent = (student) => {
     setShowEditStudent(student);
+  };
+
+  // ── Bulk Edit via Excel ──
+  const handleDownloadEditTemplate = async () => {
+    try {
+      const response = await authFetch(`${API_BASE}/api/student/edit-template/${batch.batch_id}`);
+      if (!response.ok) throw new Error('Failed to download template');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(batch.batch_name || 'Batch').replace(/\s+/g, '_')}_Edit_Template.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download template error:', err);
+      alert('Failed to download edit template. Please try again.');
+    }
+  };
+
+  const handleBulkEditFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+      setBulkEditFile(file);
+    } else if (file) {
+      alert('Please upload an Excel file (.xlsx or .xls)');
+      e.target.value = '';
+    }
+  };
+
+  const handleBulkEditUpload = async () => {
+    if (!bulkEditFile) return;
+    setBulkEditLoading(true);
+    setBulkEditResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', bulkEditFile);
+      formData.append('batch_id', batch.batch_id);
+
+      const response = await authFetch(`${API_BASE}/api/student/upload-update`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || 'Upload failed');
+      }
+
+      const result = await response.json();
+      setBulkEditResult(result);
+
+      if (result.success_count > 0) {
+        fetchStudents(); // refresh list
+      }
+    } catch (err) {
+      console.error('Bulk edit error:', err);
+      setBulkEditResult({ error: err.message });
+    } finally {
+      setBulkEditLoading(false);
+    }
   };
 
   const handleAddExam = () => {
@@ -258,6 +325,127 @@ const BatchDetail = ({ batch, onBack }) => {
     return <AddStudent batch={batch} onBack={handleBackFromAddStudent} onSave={handleSaveStudent} />;
   }
 
+  if (showBulkEdit) {
+    return (
+      <div className="batch-detail">
+        <div className="batch-header">
+          <button className="back-button" onClick={() => { setShowBulkEdit(false); setBulkEditFile(null); setBulkEditResult(null); }}>← Back</button>
+          <h2>✏️ Bulk Edit Students — {batch.batch_name}</h2>
+        </div>
+
+        <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px' }}>
+          {/* Step 1: Download */}
+          <div style={{ background: '#f0f4ff', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
+            <h3 style={{ margin: '0 0 10px' }}>Step 1: Download Current Data</h3>
+            <p style={{ color: '#4a5568', margin: '0 0 15px' }}>
+              Download an Excel file pre-filled with all existing student data for this batch. Edit the cells you want to update.
+            </p>
+            <button
+              onClick={handleDownloadEditTemplate}
+              style={{
+                padding: '10px 20px',
+                background: 'linear-gradient(135deg, #38a169 0%, #2f855a 100%)',
+                color: 'white', border: 'none', borderRadius: '8px',
+                cursor: 'pointer', fontWeight: '600', fontSize: '14px',
+                boxShadow: '0 2px 6px rgba(56,161,105,0.3)',
+              }}
+            >
+              📥 Download Edit Template
+            </button>
+          </div>
+
+          {/* Step 2: Upload */}
+          <div style={{ background: '#fffbeb', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
+            <h3 style={{ margin: '0 0 10px' }}>Step 2: Upload Edited File</h3>
+            <p style={{ color: '#4a5568', margin: '0 0 15px' }}>
+              Upload the edited Excel file. Only non-empty cells will be updated — blank cells are skipped so existing data is preserved.
+            </p>
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleBulkEditFileChange}
+              disabled={bulkEditLoading}
+              style={{
+                padding: '10px', border: '2px dashed #cbd5e0',
+                borderRadius: '8px', width: '100%', cursor: 'pointer', marginBottom: '10px',
+              }}
+            />
+            {bulkEditFile && (
+              <p style={{ color: '#5b5fc7', fontWeight: '600', margin: '5px 0 15px' }}>
+                Selected: {bulkEditFile.name} ({(bulkEditFile.size / 1024).toFixed(1)} KB)
+              </p>
+            )}
+            <button
+              onClick={handleBulkEditUpload}
+              disabled={bulkEditLoading || !bulkEditFile}
+              style={{
+                padding: '10px 20px',
+                background: bulkEditLoading || !bulkEditFile
+                  ? '#cbd5e0'
+                  : 'linear-gradient(135deg, #5b5fc7 0%, #4347a0 100%)',
+                color: 'white', border: 'none', borderRadius: '8px',
+                cursor: bulkEditLoading || !bulkEditFile ? 'not-allowed' : 'pointer',
+                fontWeight: '600', fontSize: '14px',
+              }}
+            >
+              {bulkEditLoading ? '⏳ Updating...' : '📤 Upload & Update Students'}
+            </button>
+          </div>
+
+          {/* Results */}
+          {bulkEditResult && (
+            <div style={{
+              borderRadius: '12px', padding: '20px',
+              background: bulkEditResult.error
+                ? '#fee'
+                : bulkEditResult.error_count === 0 ? '#d4edda' : '#fff3cd',
+              color: bulkEditResult.error
+                ? '#c00'
+                : bulkEditResult.error_count === 0 ? '#155724' : '#856404',
+              border: `1px solid ${bulkEditResult.error ? '#fcc' : bulkEditResult.error_count === 0 ? '#c3e6cb' : '#ffeaa7'}`,
+            }}>
+              {bulkEditResult.error ? (
+                <p><strong>Error:</strong> {bulkEditResult.error}</p>
+              ) : (
+                <>
+                  <h4 style={{ margin: '0 0 10px' }}>Update Results</h4>
+                  <p style={{ margin: '5px 0' }}>✅ Successfully updated: <strong>{bulkEditResult.success_count}</strong> students</p>
+                  {bulkEditResult.skipped_count > 0 && (
+                    <p style={{ margin: '5px 0' }}>⏭️ Skipped: <strong>{bulkEditResult.skipped_count}</strong> rows</p>
+                  )}
+                  {bulkEditResult.error_count > 0 && (
+                    <>
+                      <p style={{ margin: '5px 0' }}>❌ Errors: <strong>{bulkEditResult.error_count}</strong></p>
+                      {bulkEditResult.errors && bulkEditResult.errors.length > 0 && (
+                        <ul style={{ margin: '10px 0', paddingLeft: '20px' }}>
+                          {bulkEditResult.errors.map((err, idx) => (
+                            <li key={idx}>Row {err.row} — {err.student_id}: {err.error}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Instructions */}
+          <div style={{ background: '#f8f9fa', borderRadius: '12px', padding: '20px', marginTop: '20px' }}>
+            <h4 style={{ margin: '0 0 10px' }}>📋 How it works</h4>
+            <ul style={{ margin: 0, paddingLeft: '20px', color: '#4a5568', lineHeight: '1.8' }}>
+              <li>The <strong>student_id</strong> column identifies each student — do not change it.</li>
+              <li>Edit any other cell to update that field.</li>
+              <li>Leave a cell <strong>blank</strong> to keep the existing value — it will not be erased.</li>
+              <li>You can delete columns you don't want to edit.</li>
+              <li>The file is accepted even if some data is missing.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (selectedStudent) {
     return <StudentProfile student={selectedStudent} onBack={handleBackToStudents} />;
   }
@@ -317,6 +505,7 @@ const BatchDetail = ({ batch, onBack }) => {
           {/* Student Management Buttons */}
           <div className="management-buttons">
             <button className="btn btn-primary" onClick={handleAddStudent}>+ Add New Student</button>
+            <button className="btn btn-secondary" onClick={() => setShowBulkEdit(true)} style={{ backgroundColor: '#f59e0b', color: 'white' }}>✏️ Bulk Edit via Excel</button>
             <button className="btn btn-secondary" onClick={handleAddExam}>+ New Exam</button>
             <button className="btn btn-report" onClick={handleGenerateReport} disabled={reportLoading}>
               {reportLoading ? '⏳ Generating...' : '📊 Generate Batch Report'}

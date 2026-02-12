@@ -49,6 +49,23 @@ def create_tables():
         conn.commit()
         print("Existing tables dropped successfully!")
         
+        # Create safe_numeric function for casting VARCHAR marks to NUMERIC
+        print("\nCreating safe_numeric function...")
+        cursor.execute("""
+            DROP FUNCTION IF EXISTS safe_numeric(text);
+            CREATE OR REPLACE FUNCTION safe_numeric(val text)
+            RETURNS NUMERIC AS $$
+            BEGIN
+                IF val IS NULL OR val = '' THEN
+                    RETURN NULL;
+                END IF;
+                RETURN val::NUMERIC;
+            EXCEPTION WHEN OTHERS THEN
+                RETURN NULL;
+            END;
+            $$ LANGUAGE plpgsql IMMUTABLE;
+        """)
+        
         # Create users table
         print("\nCreating users table...")
         cursor.execute("""
@@ -207,7 +224,7 @@ def create_tables():
                 test_date DATE,
                 subject VARCHAR(100),
                 unit_name VARCHAR(100),
-                total_marks INT,
+                total_marks VARCHAR(20),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
@@ -221,15 +238,15 @@ def create_tables():
                 grade INT,
                 branch VARCHAR(100),
                 test_date DATE,
-                maths_marks INT,
-                physics_marks INT,
-                biology_marks INT,
-                chemistry_marks INT,
+                maths_marks VARCHAR(20),
+                physics_marks VARCHAR(20),
+                biology_marks VARCHAR(20),
+                chemistry_marks VARCHAR(20),
                 maths_unit_names TEXT[],
                 chemistry_unit_names TEXT[],
                 biology_unit_names TEXT[],
                 physics_unit_names TEXT[],
-                total_marks INT,
+                total_marks VARCHAR(20),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)

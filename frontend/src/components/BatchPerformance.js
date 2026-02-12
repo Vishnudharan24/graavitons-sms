@@ -303,9 +303,9 @@ const BatchPerformance = ({ batch }) => {
                       <span className="student-name">{s.student_name}</span>
                       <span className="student-id">{s.student_id}</span>
                     </td>
-                    <td>{s.daily_avg || '—'}</td>
-                    <td>{s.mock_avg || '—'}</td>
-                    <td className="overall-score">{s.overall_avg}</td>
+                    <td>{s.daily_avg != null ? s.daily_avg : '—'}</td>
+                    <td>{s.mock_avg != null ? s.mock_avg : '—'}</td>
+                    <td className="overall-score">{s.overall_avg != null ? s.overall_avg : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -334,9 +334,9 @@ const BatchPerformance = ({ batch }) => {
                       <span className="student-name">{s.student_name}</span>
                       <span className="student-id">{s.student_id}</span>
                     </td>
-                    <td>{s.daily_avg || '—'}</td>
-                    <td>{s.mock_avg || '—'}</td>
-                    <td className="overall-score">{s.overall_avg}</td>
+                    <td>{s.daily_avg != null ? s.daily_avg : '—'}</td>
+                    <td>{s.mock_avg != null ? s.mock_avg : '—'}</td>
+                    <td className="overall-score">{s.overall_avg != null ? s.overall_avg : '—'}</td>
                   </tr>
                 ))}
               </tbody>

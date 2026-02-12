@@ -5,6 +5,19 @@ import './StudentProfile.css';
 import { API_BASE, DEFAULT_AVATAR } from '../config';
 import { authFetch } from '../utils/api';
 
+// Helper: safely parse a mark value to a number, returning null for non-numeric values like 'A', '-'
+const parseNumericMark = (val) => {
+  if (val === null || val === undefined || val === '') return null;
+  const num = Number(val);
+  return isNaN(num) ? null : num;
+};
+
+// Helper: display a mark value — shows 0 as '0', null/undefined as fallback
+const displayMark = (val, fallback = '-') => {
+  if (val === null || val === undefined || val === '') return fallback;
+  return val;
+};
+
 const StudentProfile = ({ student, batchStats, onBack }) => {
   const [activeTab, setActiveTab] = useState('personal');
   const [loading, setLoading] = useState(true);
@@ -177,13 +190,13 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       schoolName: studentData.tenth_school_name || 'N/A',
       yearOfPassing: studentData.tenth_year_of_passing || 'N/A',
       boardOfStudy: studentData.tenth_board_of_study || 'N/A',
-      english: studentData.tenth_english || '-',
-      tamil: studentData.tenth_tamil || '-',
-      hindi: studentData.tenth_hindi || '-',
-      maths: studentData.tenth_maths || '-',
-      science: studentData.tenth_science || '-',
-      socialScience: studentData.tenth_social_science || '-',
-      total: studentData.tenth_total_marks || '-'
+      english: displayMark(studentData.tenth_english),
+      tamil: displayMark(studentData.tenth_tamil),
+      hindi: displayMark(studentData.tenth_hindi),
+      maths: displayMark(studentData.tenth_maths),
+      science: displayMark(studentData.tenth_science),
+      socialScience: displayMark(studentData.tenth_social_science),
+      total: displayMark(studentData.tenth_total_marks)
     },
 
     // 12th Standard Marks
@@ -191,14 +204,14 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       schoolName: studentData.twelfth_school_name || 'N/A',
       yearOfPassing: studentData.twelfth_year_of_passing || 'N/A',
       boardOfStudy: studentData.twelfth_board_of_study || 'N/A',
-      english: studentData.twelfth_english || '-',
-      tamil: studentData.twelfth_tamil || '-',
-      physics: studentData.twelfth_physics || '-',
-      chemistry: studentData.twelfth_chemistry || '-',
-      mathematics: studentData.twelfth_maths || '-',
-      biology: studentData.twelfth_biology || '-',
-      computerScience: studentData.twelfth_computer_science || '-',
-      total: studentData.twelfth_total_marks || '-'
+      english: displayMark(studentData.twelfth_english),
+      tamil: displayMark(studentData.twelfth_tamil),
+      physics: displayMark(studentData.twelfth_physics),
+      chemistry: displayMark(studentData.twelfth_chemistry),
+      mathematics: displayMark(studentData.twelfth_maths),
+      biology: displayMark(studentData.twelfth_biology),
+      computerScience: displayMark(studentData.twelfth_computer_science),
+      total: displayMark(studentData.twelfth_total_marks)
     },
 
     // Entrance Exam Marks
@@ -237,13 +250,15 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     filteredDailyTests.forEach(test => {
       const d = test.test_date || 'Unknown';
       if (!byDate[d]) byDate[d] = { marks: [], classAvg: [] };
-      byDate[d].marks.push(test.marks || 0);
-      byDate[d].classAvg.push(test.class_avg || 0);
+      const numMark = parseNumericMark(test.marks);
+      const numAvg = parseNumericMark(test.class_avg);
+      if (numMark !== null) byDate[d].marks.push(numMark);
+      if (numAvg !== null) byDate[d].classAvg.push(numAvg);
     });
     return Object.entries(byDate).sort().map(([date, data]) => ({
       date: new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
-      score: Math.round(data.marks.reduce((a, b) => a + b, 0) / data.marks.length),
-      classAvg: Math.round(data.classAvg.reduce((a, b) => a + b, 0) / data.classAvg.length)
+      score: data.marks.length > 0 ? Math.round(data.marks.reduce((a, b) => a + b, 0) / data.marks.length) : null,
+      classAvg: data.classAvg.length > 0 ? Math.round(data.classAvg.reduce((a, b) => a + b, 0) / data.classAvg.length) : null
     }));
   };
 
@@ -252,11 +267,11 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     if (!filteredMockTests || filteredMockTests.length === 0) return [];
     return filteredMockTests.map((test, idx) => ({
       exam: `Mock ${idx + 1} (${test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''})`,
-      physics: test.physics_marks || 0,
-      chemistry: test.chemistry_marks || 0,
-      biology: test.biology_marks || 0,
-      maths: test.maths_marks || 0,
-      total: test.total_marks || 0
+      physics: parseNumericMark(test.physics_marks) ?? 0,
+      chemistry: parseNumericMark(test.chemistry_marks) ?? 0,
+      biology: parseNumericMark(test.biology_marks) ?? 0,
+      maths: parseNumericMark(test.maths_marks) ?? 0,
+      total: parseNumericMark(test.total_marks) ?? 0
     }));
   };
 
@@ -400,14 +415,14 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       academicRows.push(['Exam Name', 'Physics', 'Chemistry', 'Maths', 'Biology', 'Total', 'Overall Rank', 'Community Rank']);
       displayData.entranceExams.forEach(exam => {
         academicRows.push([
-          exam.exam_name || '-',
-          exam.physics_marks || '-',
-          exam.chemistry_marks || '-',
-          exam.maths_marks || '-',
-          exam.biology_marks || '-',
-          exam.total_marks || '-',
-          exam.overall_rank || '-',
-          exam.community_rank || '-'
+          displayMark(exam.exam_name, '-'),
+          displayMark(exam.physics_marks),
+          displayMark(exam.chemistry_marks),
+          displayMark(exam.maths_marks),
+          displayMark(exam.biology_marks),
+          displayMark(exam.total_marks),
+          displayMark(exam.overall_rank),
+          displayMark(exam.community_rank)
         ]);
       });
     }
@@ -423,9 +438,9 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
         test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN') : '-',
         test.subject || '-',
         test.unit_name || '-',
-        test.marks || 0,
-        test.class_avg || 0,
-        test.top_score || 0
+        displayMark(test.marks, 0),
+        displayMark(test.class_avg, 0),
+        displayMark(test.top_score, 0)
       ]);
       const wsDaily = XLSX.utils.aoa_to_sheet([['DAILY TEST PERFORMANCE'], [], dailyHeader, ...dailyRows]);
       wsDaily['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 28 }, { wch: 10 }, { wch: 12 }, { wch: 12 }];
@@ -437,13 +452,13 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       const mockHeader = ['Date', 'Maths', 'Physics', 'Chemistry', 'Biology', 'Total', 'Class Avg', 'Top Score'];
       const mockRows = mockTests.map(test => [
         test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN') : '-',
-        test.maths_marks || 0,
-        test.physics_marks || 0,
-        test.chemistry_marks || 0,
-        test.biology_marks || 0,
-        test.total_marks || 0,
-        test.class_avg_total || 0,
-        test.top_score_total || 0
+        displayMark(test.maths_marks, 0),
+        displayMark(test.physics_marks, 0),
+        displayMark(test.chemistry_marks, 0),
+        displayMark(test.biology_marks, 0),
+        displayMark(test.total_marks, 0),
+        displayMark(test.class_avg_total, 0),
+        displayMark(test.top_score_total, 0)
       ]);
       const wsMock = XLSX.utils.aoa_to_sheet([['MOCK TEST PERFORMANCE'], [], mockHeader, ...mockRows]);
       wsMock['!cols'] = [{ wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 }];
@@ -757,13 +772,13 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                     {displayData.entranceExams.map((exam, index) => (
                       <tr key={index}>
                         <td className="exam-name">{exam.exam_name}</td>
-                        <td>{exam.physics_marks || '-'}</td>
-                        <td>{exam.chemistry_marks || '-'}</td>
-                        <td>{exam.maths_marks || '-'}</td>
-                        <td>{exam.biology_marks || '-'}</td>
-                        <td><strong>{exam.total_marks || '-'}</strong></td>
-                        <td>{exam.overall_rank || '-'}</td>
-                        <td>{exam.community_rank || '-'}</td>
+                        <td>{displayMark(exam.physics_marks)}</td>
+                        <td>{displayMark(exam.chemistry_marks)}</td>
+                        <td>{displayMark(exam.maths_marks)}</td>
+                        <td>{displayMark(exam.biology_marks)}</td>
+                        <td><strong>{displayMark(exam.total_marks)}</strong></td>
+                        <td>{displayMark(exam.overall_rank)}</td>
+                        <td>{displayMark(exam.community_rank)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -840,9 +855,9 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                           <td>{test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN') : 'N/A'}</td>
                           <td className="exam-name">{test.subject || 'N/A'}</td>
                           <td>{test.unit_name || 'N/A'}</td>
-                          <td><strong>{test.marks || 0}</strong></td>
-                          <td>{test.class_avg || 0}</td>
-                          <td className="top-score">{test.top_score || 0}</td>
+                          <td><strong>{displayMark(test.marks, 0)}</strong></td>
+                          <td>{displayMark(test.class_avg, 0)}</td>
+                          <td className="top-score">{displayMark(test.top_score, 0)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -926,13 +941,13 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                       {filteredMockTests.map((exam, index) => (
                         <tr key={exam.test_id || index}>
                           <td>{exam.test_date ? new Date(exam.test_date).toLocaleDateString('en-IN') : 'N/A'}</td>
-                          <td>{exam.maths_marks || 0}</td>
-                          <td>{exam.physics_marks || 0}</td>
-                          <td>{exam.chemistry_marks || 0}</td>
-                          <td>{exam.biology_marks || 0}</td>
-                          <td><strong>{exam.total_marks || 0}</strong></td>
-                          <td>{exam.class_avg_total || 0}</td>
-                          <td className="top-score">{exam.top_score_total || 0}</td>
+                          <td>{displayMark(exam.maths_marks, 0)}</td>
+                          <td>{displayMark(exam.physics_marks, 0)}</td>
+                          <td>{displayMark(exam.chemistry_marks, 0)}</td>
+                          <td>{displayMark(exam.biology_marks, 0)}</td>
+                          <td><strong>{displayMark(exam.total_marks, 0)}</strong></td>
+                          <td>{displayMark(exam.class_avg_total, 0)}</td>
+                          <td className="top-score">{displayMark(exam.top_score_total, 0)}</td>
                         </tr>
                       ))}
                     </tbody>

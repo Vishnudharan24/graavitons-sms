@@ -527,12 +527,10 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                         <td>{student.name}</td>
                         <td>
                           <input
-                            type="number"
+                            type="text"
                             value={student.marks}
                             onChange={(e) => handleMarksChange(student.id, 'marks', e.target.value)}
-                            min="0"
-                            max={examData.totalMarks || 100}
-                            placeholder="Enter marks"
+                            placeholder="e.g. 85, A, -"
                             className="marks-input"
                           />
                         </td>
@@ -559,40 +557,36 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                         <td>{student.name}</td>
                         <td>
                           <input
-                            type="number"
+                            type="text"
                             value={student.mathsMarks}
                             onChange={(e) => handleMarksChange(student.id, 'mathsMarks', e.target.value)}
-                            min="0"
                             placeholder="Maths"
                             className="marks-input"
                           />
                         </td>
                         <td>
                           <input
-                            type="number"
+                            type="text"
                             value={student.physicsMarks}
                             onChange={(e) => handleMarksChange(student.id, 'physicsMarks', e.target.value)}
-                            min="0"
                             placeholder="Physics"
                             className="marks-input"
                           />
                         </td>
                         <td>
                           <input
-                            type="number"
+                            type="text"
                             value={student.chemistryMarks}
                             onChange={(e) => handleMarksChange(student.id, 'chemistryMarks', e.target.value)}
-                            min="0"
                             placeholder="Chemistry"
                             className="marks-input"
                           />
                         </td>
                         <td>
                           <input
-                            type="number"
+                            type="text"
                             value={student.biologyMarks}
                             onChange={(e) => handleMarksChange(student.id, 'biologyMarks', e.target.value)}
-                            min="0"
                             placeholder="Biology"
                             className="marks-input"
                           />

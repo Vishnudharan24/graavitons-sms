@@ -21,6 +21,32 @@ app.add_middleware(
 )
 
 
+# Helper: SQL expression to safely cast VARCHAR marks to numeric, returning NULL for non-numeric values
+# Use this in AVG/MAX/MIN/SUM aggregations on mark columns
+def safe_numeric_cast(column):
+    """Return a SQL CASE expression that casts a VARCHAR mark column to NUMERIC, or NULL if non-numeric."""
+    return f"CASE WHEN {column} ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN {column}::NUMERIC ELSE NULL END"
+
+
+# Helper: Python function to safely parse a mark value
+def safe_parse_mark(value):
+    """Parse a mark value to a number, returning None for non-numeric values like 'A', '-'."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    val = str(value).strip()
+    if val == '':
+        return None
+    try:
+        return int(val)
+    except ValueError:
+        try:
+            return float(val)
+        except ValueError:
+            return None
+
+
 
 # ==================== FILTER OPTIONS ENDPOINTS ====================
 
@@ -227,8 +253,10 @@ async def get_subjectwise_analysis(
                 "marks": row[6],
                 "date": row[7].isoformat() if row[7] else None
             })
-            student_daily[sid]["subjects"][subj]["total_marks"] += (row[6] or 0)
-            student_daily[sid]["subjects"][subj]["count"] += 1
+            numeric_mark = safe_parse_mark(row[6])
+            if numeric_mark is not None:
+                student_daily[sid]["subjects"][subj]["total_marks"] += numeric_mark
+                student_daily[sid]["subjects"][subj]["count"] += 1
 
         # Aggregate mock test data per student
         student_mock = {}
@@ -244,10 +272,18 @@ async def get_subjectwise_analysis(
                     "biology_total": 0,
                     "count": 0
                 }
-            student_mock[sid]["maths_total"] += (row[4] or 0)
-            student_mock[sid]["physics_total"] += (row[5] or 0)
-            student_mock[sid]["chemistry_total"] += (row[6] or 0)
-            student_mock[sid]["biology_total"] += (row[7] or 0)
+            m_maths = safe_parse_mark(row[4])
+            m_physics = safe_parse_mark(row[5])
+            m_chemistry = safe_parse_mark(row[6])
+            m_biology = safe_parse_mark(row[7])
+            if m_maths is not None:
+                student_mock[sid]["maths_total"] += m_maths
+            if m_physics is not None:
+                student_mock[sid]["physics_total"] += m_physics
+            if m_chemistry is not None:
+                student_mock[sid]["chemistry_total"] += m_chemistry
+            if m_biology is not None:
+                student_mock[sid]["biology_total"] += m_biology
             student_mock[sid]["count"] += 1
 
         # Build combined student-level results
@@ -349,9 +385,9 @@ async def get_branchwise_analysis(
             SELECT
                 s.branch,
                 dt.subject,
-                AVG(dt.total_marks) as avg_marks,
-                MAX(dt.total_marks) as max_marks,
-                MIN(dt.total_marks) as min_marks,
+                AVG(safe_numeric(dt.total_marks)) as avg_marks,
+                MAX(safe_numeric(dt.total_marks)) as max_marks,
+                MIN(safe_numeric(dt.total_marks)) as min_marks,
                 COUNT(*) as test_count,
                 COUNT(DISTINCT s.student_id) as student_count
             FROM daily_test dt
@@ -394,13 +430,13 @@ async def get_branchwise_analysis(
         mock_query = """
             SELECT
                 s.branch,
-                AVG(mt.maths_marks) as avg_maths,
-                AVG(mt.physics_marks) as avg_physics,
-                AVG(mt.chemistry_marks) as avg_chemistry,
-                AVG(mt.biology_marks) as avg_biology,
-                AVG(mt.total_marks) as avg_total,
-                MAX(mt.total_marks) as max_total,
-                MIN(mt.total_marks) as min_total,
+                AVG(safe_numeric(mt.maths_marks)) as avg_maths,
+                AVG(safe_numeric(mt.physics_marks)) as avg_physics,
+                AVG(safe_numeric(mt.chemistry_marks)) as avg_chemistry,
+                AVG(safe_numeric(mt.biology_marks)) as avg_biology,
+                AVG(safe_numeric(mt.total_marks)) as avg_total,
+                MAX(safe_numeric(mt.total_marks)) as max_total,
+                MIN(safe_numeric(mt.total_marks)) as min_total,
                 COUNT(*) as test_count,
                 COUNT(DISTINCT s.student_id) as student_count
             FROM mock_test mt
@@ -495,7 +531,7 @@ async def get_branchwise_analysis(
                 s.grade,
                 b.batch_name,
                 dt.subject,
-                AVG(dt.total_marks) as avg_marks
+                AVG(safe_numeric(dt.total_marks)) as avg_marks
             FROM daily_test dt
             JOIN student s ON dt.student_id = s.student_id
             JOIN batch b ON s.batch_id = b.batch_id
@@ -725,8 +761,8 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
             # Get class average and top score for the same test
             cursor.execute("""
                 SELECT
-                    AVG(dt2.total_marks) as class_avg,
-                    MAX(dt2.total_marks) as top_score,
+                    AVG(safe_numeric(dt2.total_marks)) as class_avg,
+                    MAX(safe_numeric(dt2.total_marks)) as top_score,
                     COUNT(DISTINCT dt2.student_id) as student_count
                 FROM daily_test dt2
                 JOIN student s2 ON dt2.student_id = s2.student_id
@@ -774,12 +810,12 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
             # Get class average and top score for mock tests on same date
             cursor.execute("""
                 SELECT
-                    AVG(mt2.total_marks) as class_avg,
-                    MAX(mt2.total_marks) as top_score,
-                    AVG(mt2.maths_marks) as avg_maths,
-                    AVG(mt2.physics_marks) as avg_physics,
-                    AVG(mt2.chemistry_marks) as avg_chemistry,
-                    AVG(mt2.biology_marks) as avg_biology
+                    AVG(safe_numeric(mt2.total_marks)) as class_avg,
+                    MAX(safe_numeric(mt2.total_marks)) as top_score,
+                    AVG(safe_numeric(mt2.maths_marks)) as avg_maths,
+                    AVG(safe_numeric(mt2.physics_marks)) as avg_physics,
+                    AVG(safe_numeric(mt2.chemistry_marks)) as avg_chemistry,
+                    AVG(safe_numeric(mt2.biology_marks)) as avg_biology
                 FROM mock_test mt2
                 JOIN student s2 ON mt2.student_id = s2.student_id
                 WHERE s2.batch_id = %s AND mt2.test_date = %s
@@ -1066,9 +1102,9 @@ async def get_batch_performance(
             # Overall daily stats
             cursor.execute(f"""
                 SELECT
-                    COALESCE(ROUND(AVG(dt.total_marks)::numeric, 1), 0),
-                    COALESCE(MAX(dt.total_marks), 0),
-                    COALESCE(MIN(dt.total_marks), 0),
+                    COALESCE(ROUND(AVG(safe_numeric(dt.total_marks))::numeric, 1), 0),
+                    COALESCE(MAX(safe_numeric(dt.total_marks)), 0),
+                    COALESCE(MIN(safe_numeric(dt.total_marks)), 0),
                     COUNT(DISTINCT (dt.test_date, dt.subject, dt.unit_name)),
                     COUNT(DISTINCT dt.student_id)
                 FROM daily_test dt
@@ -1088,9 +1124,9 @@ async def get_batch_performance(
             cursor.execute(f"""
                 SELECT
                     dt.test_date,
-                    ROUND(AVG(dt.total_marks)::numeric, 1) as avg_marks,
-                    MAX(dt.total_marks) as top_marks,
-                    MIN(dt.total_marks) as low_marks,
+                    ROUND(AVG(safe_numeric(dt.total_marks))::numeric, 1) as avg_marks,
+                    MAX(safe_numeric(dt.total_marks)) as top_marks,
+                    MIN(safe_numeric(dt.total_marks)) as low_marks,
                     COUNT(DISTINCT dt.student_id) as students
                 FROM daily_test dt
                 JOIN student s ON dt.student_id = s.student_id
@@ -1111,9 +1147,9 @@ async def get_batch_performance(
             cursor.execute(f"""
                 SELECT
                     dt.subject,
-                    ROUND(AVG(dt.total_marks)::numeric, 1),
-                    MAX(dt.total_marks),
-                    MIN(dt.total_marks),
+                    ROUND(AVG(safe_numeric(dt.total_marks))::numeric, 1),
+                    MAX(safe_numeric(dt.total_marks)),
+                    MIN(safe_numeric(dt.total_marks)),
                     COUNT(*),
                     COUNT(DISTINCT dt.student_id)
                 FROM daily_test dt
@@ -1137,7 +1173,7 @@ async def get_batch_performance(
                 SELECT
                     s.student_id,
                     s.student_name,
-                    ROUND(AVG(dt.total_marks)::numeric, 1) as avg_marks,
+                    ROUND(AVG(safe_numeric(dt.total_marks))::numeric, 1) as avg_marks,
                     COUNT(*) as test_count
                 FROM daily_test dt
                 JOIN student s ON dt.student_id = s.student_id
@@ -1163,9 +1199,9 @@ async def get_batch_performance(
             # Overall mock stats
             cursor.execute(f"""
                 SELECT
-                    COALESCE(ROUND(AVG(mt.total_marks)::numeric, 1), 0),
-                    COALESCE(MAX(mt.total_marks), 0),
-                    COALESCE(MIN(mt.total_marks), 0),
+                    COALESCE(ROUND(AVG(safe_numeric(mt.total_marks))::numeric, 1), 0),
+                    COALESCE(MAX(safe_numeric(mt.total_marks)), 0),
+                    COALESCE(MIN(safe_numeric(mt.total_marks)), 0),
                     COUNT(DISTINCT mt.test_date),
                     COUNT(DISTINCT mt.student_id)
                 FROM mock_test mt
@@ -1185,9 +1221,9 @@ async def get_batch_performance(
             cursor.execute(f"""
                 SELECT
                     mt.test_date,
-                    ROUND(AVG(mt.total_marks)::numeric, 1),
-                    MAX(mt.total_marks),
-                    MIN(mt.total_marks),
+                    ROUND(AVG(safe_numeric(mt.total_marks))::numeric, 1),
+                    MAX(safe_numeric(mt.total_marks)),
+                    MIN(safe_numeric(mt.total_marks)),
                     COUNT(DISTINCT mt.student_id)
                 FROM mock_test mt
                 JOIN student s ON mt.student_id = s.student_id
@@ -1207,12 +1243,12 @@ async def get_batch_performance(
             # Mock subject breakdown (per-subject averages)
             cursor.execute(f"""
                 SELECT
-                    ROUND(AVG(mt.maths_marks)::numeric, 1),
-                    ROUND(AVG(mt.physics_marks)::numeric, 1),
-                    ROUND(AVG(mt.chemistry_marks)::numeric, 1),
-                    ROUND(AVG(mt.biology_marks)::numeric, 1),
-                    MAX(mt.maths_marks), MAX(mt.physics_marks),
-                    MAX(mt.chemistry_marks), MAX(mt.biology_marks)
+                    ROUND(AVG(safe_numeric(mt.maths_marks))::numeric, 1),
+                    ROUND(AVG(safe_numeric(mt.physics_marks))::numeric, 1),
+                    ROUND(AVG(safe_numeric(mt.chemistry_marks))::numeric, 1),
+                    ROUND(AVG(safe_numeric(mt.biology_marks))::numeric, 1),
+                    MAX(safe_numeric(mt.maths_marks)), MAX(safe_numeric(mt.physics_marks)),
+                    MAX(safe_numeric(mt.chemistry_marks)), MAX(safe_numeric(mt.biology_marks))
                 FROM mock_test mt
                 JOIN student s ON mt.student_id = s.student_id
                 WHERE s.batch_id = %s {mock_date_filter}
@@ -1231,7 +1267,7 @@ async def get_batch_performance(
                 SELECT
                     s.student_id,
                     s.student_name,
-                    ROUND(AVG(mt.total_marks)::numeric, 1) as avg_marks,
+                    ROUND(AVG(safe_numeric(mt.total_marks))::numeric, 1) as avg_marks,
                     COUNT(*) as test_count
                 FROM mock_test mt
                 JOIN student s ON mt.student_id = s.student_id

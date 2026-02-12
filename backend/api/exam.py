@@ -123,8 +123,8 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
                 
                 branch = student_result[0]
                 
-                # Convert marks to integer
-                marks = int(student_mark.marks)
+                # Store marks as-is (supports integers, 'A' for absent, '-' for N/A, negative marks)
+                marks = student_mark.marks.strip()
                 
                 # Insert daily test record
                 cursor.execute("""
@@ -145,11 +145,6 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
                 
                 inserted_count += 1
                 
-            except ValueError as ve:
-                failed_students.append({
-                    "student_id": student_mark.id,
-                    "reason": f"Invalid marks value: {student_mark.marks}"
-                })
             except psycopg2.Error as db_error:
                 failed_students.append({
                     "student_id": student_mark.id,
@@ -257,14 +252,22 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
                 
                 branch = student_result[0]
                 
-                # Convert marks to integers (handle empty strings)
-                maths_marks = int(student_mark.mathsMarks) if student_mark.mathsMarks and student_mark.mathsMarks.strip() else 0
-                physics_marks = int(student_mark.physicsMarks) if student_mark.physicsMarks and student_mark.physicsMarks.strip() else 0
-                chemistry_marks = int(student_mark.chemistryMarks) if student_mark.chemistryMarks and student_mark.chemistryMarks.strip() else 0
-                biology_marks = int(student_mark.biologyMarks) if student_mark.biologyMarks and student_mark.biologyMarks.strip() else 0
+                # Store marks as-is (supports integers, 'A' for absent, '-' for N/A, negative marks)
+                maths_marks = student_mark.mathsMarks.strip() if student_mark.mathsMarks and student_mark.mathsMarks.strip() else ''
+                physics_marks = student_mark.physicsMarks.strip() if student_mark.physicsMarks and student_mark.physicsMarks.strip() else ''
+                chemistry_marks = student_mark.chemistryMarks.strip() if student_mark.chemistryMarks and student_mark.chemistryMarks.strip() else ''
+                biology_marks = student_mark.biologyMarks.strip() if student_mark.biologyMarks and student_mark.biologyMarks.strip() else ''
                 
-                # Calculate total marks
-                total_marks = maths_marks + physics_marks + chemistry_marks + biology_marks
+                # Calculate total marks only from numeric values
+                def safe_int(val):
+                    try:
+                        return int(val)
+                    except (ValueError, TypeError):
+                        return None
+                
+                numeric_marks = [safe_int(m) for m in [maths_marks, physics_marks, chemistry_marks, biology_marks]]
+                valid_marks = [m for m in numeric_marks if m is not None]
+                total_marks = str(sum(valid_marks)) if valid_marks else ''
                 
                 # Insert mock test record
                 cursor.execute("""
