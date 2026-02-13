@@ -21,9 +21,7 @@ yarn-error.log*
 # OS files
 .DS_Store
 
-# Build outputs
-/frontend/build
-/backend/dist
+
 
 # IDE
 .vscode/
