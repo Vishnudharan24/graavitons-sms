@@ -1113,9 +1113,9 @@ async def get_batch_performance(
             """, [batch_id] + daily_date_params + daily_subject_params)
             row = cursor.fetchone()
             daily_stats = {
-                "avg_score": float(row[0]),
-                "top_score": row[1],
-                "lowest_score": row[2],
+                "avg_score": float(row[0]) if row[0] is not None else 0,
+                "top_score": float(row[1]) if row[1] is not None else 0,
+                "lowest_score": float(row[2]) if row[2] is not None else 0,
                 "total_tests": row[3],
                 "students_tested": row[4]
             }
@@ -1137,9 +1137,9 @@ async def get_batch_performance(
             for r in cursor.fetchall():
                 daily_trend.append({
                     "date": r[0].isoformat() if r[0] else None,
-                    "avg": float(r[1]) if r[1] else 0,
-                    "top": r[2] or 0,
-                    "low": r[3] or 0,
+                    "avg": float(r[1]) if r[1] is not None else 0,
+                    "top": float(r[2]) if r[2] is not None else 0,
+                    "low": float(r[3]) if r[3] is not None else 0,
                     "students": r[4]
                 })
 
@@ -1161,9 +1161,9 @@ async def get_batch_performance(
             for r in cursor.fetchall():
                 daily_subject_breakdown.append({
                     "subject": r[0],
-                    "avg": float(r[1]) if r[1] else 0,
-                    "top": r[2] or 0,
-                    "low": r[3] or 0,
+                    "avg": float(r[1]) if r[1] is not None else 0,
+                    "top": float(r[2]) if r[2] is not None else 0,
+                    "low": float(r[3]) if r[3] is not None else 0,
                     "tests": r[4],
                     "students": r[5]
                 })
@@ -1179,10 +1179,10 @@ async def get_batch_performance(
                 JOIN student s ON dt.student_id = s.student_id
                 WHERE s.batch_id = %s {daily_date_filter} {daily_subject_filter}
                 GROUP BY s.student_id, s.student_name
-                ORDER BY avg_marks DESC
+                ORDER BY avg_marks DESC NULLS LAST
             """, [batch_id] + daily_date_params + daily_subject_params)
             daily_student_avgs = [
-                {"student_id": r[0], "student_name": r[1], "avg": float(r[2]), "tests": r[3]}
+                {"student_id": r[0], "student_name": r[1], "avg": float(r[2]) if r[2] is not None else 0, "tests": r[3]}
                 for r in cursor.fetchall()
             ]
 
@@ -1210,9 +1210,9 @@ async def get_batch_performance(
             """, [batch_id] + mock_date_params)
             row = cursor.fetchone()
             mock_stats = {
-                "avg_score": float(row[0]),
-                "top_score": row[1],
-                "lowest_score": row[2],
+                "avg_score": float(row[0]) if row[0] is not None else 0,
+                "top_score": float(row[1]) if row[1] is not None else 0,
+                "lowest_score": float(row[2]) if row[2] is not None else 0,
                 "total_tests": row[3],
                 "students_tested": row[4]
             }
@@ -1234,9 +1234,9 @@ async def get_batch_performance(
             for r in cursor.fetchall():
                 mock_trend.append({
                     "date": r[0].isoformat() if r[0] else None,
-                    "avg": float(r[1]) if r[1] else 0,
-                    "top": r[2] or 0,
-                    "low": r[3] or 0,
+                    "avg": float(r[1]) if r[1] is not None else 0,
+                    "top": float(r[2]) if r[2] is not None else 0,
+                    "low": float(r[3]) if r[3] is not None else 0,
                     "students": r[4]
                 })
 
@@ -1273,10 +1273,10 @@ async def get_batch_performance(
                 JOIN student s ON mt.student_id = s.student_id
                 WHERE s.batch_id = %s {mock_date_filter}
                 GROUP BY s.student_id, s.student_name
-                ORDER BY avg_marks DESC
+                ORDER BY avg_marks DESC NULLS LAST
             """, [batch_id] + mock_date_params)
             mock_student_avgs = [
-                {"student_id": r[0], "student_name": r[1], "avg": float(r[2]), "tests": r[3]}
+                {"student_id": r[0], "student_name": r[1], "avg": float(r[2]) if r[2] is not None else 0, "tests": r[3]}
                 for r in cursor.fetchall()
             ]
 
