@@ -8,7 +8,7 @@ const Login = ({ onLogin }) => {
   const [error, setError] = useState('');
 
   const [formData, setFormData] = useState({
-    email: '',
+    username: '',
     password: '',
     confirmPassword: '',
     role: 'Teacher'
@@ -25,7 +25,7 @@ const Login = ({ onLogin }) => {
     setError('');
 
     // Validation
-    if (!formData.email || !formData.password) {
+    if (!formData.username || !formData.password) {
       setError('Please fill in all fields');
       return;
     }
@@ -45,8 +45,8 @@ const Login = ({ onLogin }) => {
     try {
       const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
       const payload = isRegister
-        ? { email: formData.email, password: formData.password, role: formData.role }
-        : { email: formData.email, password: formData.password };
+        ? { username: formData.username, password: formData.password, role: formData.role }
+        : { username: formData.username, password: formData.password };
 
       const response = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
@@ -63,7 +63,7 @@ const Login = ({ onLogin }) => {
       if (isRegister) {
         // After successful registration, switch to login
         setIsRegister(false);
-        setFormData({ email: formData.email, password: '', confirmPassword: '', role: 'Teacher' });
+        setFormData({ username: formData.username, password: '', confirmPassword: '', role: 'Teacher' });
         setError('');
         alert('Registration successful! Please log in.');
       } else {
@@ -83,17 +83,21 @@ const Login = ({ onLogin }) => {
   const toggleMode = () => {
     setIsRegister(!isRegister);
     setError('');
-    setFormData({ email: '', password: '', confirmPassword: '', role: 'Teacher' });
+    setFormData({ username: '', password: '', confirmPassword: '', role: 'Teacher' });
   };
 
   return (
     <div className="login-page">
+      <img
+        src="/logo.png"
+        alt="Graavitons Logo"
+        className="login-logo"
+      />
       <div className="login-container">
-        <div className="login-brand">
-          <div className="login-logo">📚</div>
+        {/* <div className="login-brand">
           <h1>GRAAVITONS</h1>
           <p>Student Management System</p>
-        </div>
+        </div> */}
 
         <div className="login-card">
           <h2>{isRegister ? 'Create Account' : 'Welcome Back'}</h2>
@@ -109,13 +113,13 @@ const Login = ({ onLogin }) => {
 
           <form onSubmit={handleSubmit}>
             <div className="login-field">
-              <label>Email Address</label>
+              <label>Username</label>
               <input
-                type="email"
-                name="email"
-                value={formData.email}
+                type="text"
+                name="username"
+                value={formData.username}
                 onChange={handleChange}
-                placeholder="you@example.com"
+                placeholder="Enter your username"
                 required
                 autoFocus
               />

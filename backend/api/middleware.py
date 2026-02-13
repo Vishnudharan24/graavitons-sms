@@ -20,7 +20,7 @@ security = HTTPBearer()
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
     Create a JWT access token.
-    Claims: sub (user_id), email, role, exp.
+    Claims: sub (user_id), username, role, exp.
     """
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
@@ -60,7 +60,7 @@ async def get_current_user(
     """
     FastAPI dependency that extracts and validates the JWT from the
     Authorization: Bearer <token> header.
-    Returns the decoded user payload (sub, email, role).
+    Returns the decoded user payload (sub, username, role).
     """
     payload = decode_token(credentials.credentials)
     if payload.get("type") != "access":
@@ -78,7 +78,7 @@ async def get_current_user(
         )
     return {
         "user_id": user_id,
-        "email": payload.get("email"),
+        "username": payload.get("username"),
         "role": payload.get("role"),
     }
 

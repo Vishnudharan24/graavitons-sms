@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from typing import Optional
 import psycopg2
 import bcrypt
@@ -30,12 +30,12 @@ app.add_middleware(
 # ── Pydantic Models ──
 
 class UserLogin(BaseModel):
-    email: str
+    username: str
     password: str
 
 
 class UserRegister(BaseModel):
-    email: str
+    username: str
     password: str
     role: Optional[str] = "Teacher"
 
@@ -60,35 +60,35 @@ def verify_password(password: str, hashed: str) -> bool:
 
 @app.post("/api/auth/login")
 async def login(credentials: UserLogin):
-    """Authenticate a user with email and password."""
+    """Authenticate a user with username and password."""
     conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
 
         cursor.execute(
-            "SELECT id, email, password, role, created_at FROM users WHERE email = %s;",
-            (credentials.email,)
+            "SELECT id, username, password, role, created_at FROM users WHERE username = %s;",
+            (credentials.username,)
         )
         user = cursor.fetchone()
 
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password"
+                detail="Invalid username or password"
             )
 
         # user[2] is the hashed password
         if not verify_password(credentials.password, user[2]):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password"
+                detail="Invalid username or password"
             )
 
         # Build JWT claims
         token_data = {
             "sub": user[0],
-            "email": user[1],
+            "username": user[1],
             "role": user[3],
         }
         access_token = create_access_token(token_data)
@@ -101,7 +101,7 @@ async def login(credentials: UserLogin):
             "token_type": "bearer",
             "user": {
                 "id": user[0],
-                "email": user[1],
+                "username": user[1],
                 "role": user[3],
                 "created_at": str(user[4]) if user[4] else None
             }
@@ -127,22 +127,22 @@ async def register(user_data: UserRegister):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Check if email already exists
-        cursor.execute("SELECT id FROM users WHERE email = %s;", (user_data.email,))
+        # Check if username already exists
+        cursor.execute("SELECT id FROM users WHERE username = %s;", (user_data.username,))
         if cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="An account with this email already exists"
+                detail="An account with this username already exists"
             )
 
         user_id = str(uuid.uuid4())[:8]  # Short unique ID
         hashed_pw = hash_password(user_data.password)
 
         cursor.execute("""
-            INSERT INTO users (id, email, password, role)
+            INSERT INTO users (id, username, password, role)
             VALUES (%s, %s, %s, %s)
-            RETURNING id, email, role, created_at;
-        """, (user_id, user_data.email, hashed_pw, user_data.role))
+            RETURNING id, username, role, created_at;
+        """, (user_id, user_data.username, hashed_pw, user_data.role))
 
         result = cursor.fetchone()
         conn.commit()
@@ -151,7 +151,7 @@ async def register(user_data: UserRegister):
             "message": "Registration successful",
             "user": {
                 "id": result[0],
-                "email": result[1],
+                "username": result[1],
                 "role": result[2],
                 "created_at": str(result[3]) if result[3] else None
             }
@@ -182,7 +182,7 @@ async def refresh_access_token(body: RefreshRequest):
         )
     token_data = {
         "sub": payload.get("sub"),
-        "email": payload.get("email"),
+        "username": payload.get("username"),
         "role": payload.get("role"),
     }
     new_access_token = create_access_token(token_data)
@@ -201,7 +201,7 @@ async def get_user(user_id: str, current_user: dict = Depends(get_current_user))
         cursor = conn.cursor()
 
         cursor.execute(
-            "SELECT id, email, role, created_at FROM users WHERE id = %s;",
+            "SELECT id, username, role, created_at FROM users WHERE id = %s;",
             (user_id,)
         )
         user = cursor.fetchone()
@@ -211,7 +211,7 @@ async def get_user(user_id: str, current_user: dict = Depends(get_current_user))
 
         return {
             "id": user[0],
-            "email": user[1],
+            "username": user[1],
             "role": user[2],
             "created_at": str(user[3]) if user[3] else None
         }

@@ -10,7 +10,7 @@ const Header = ({ user, onLogout }) => {
           <div className="header-user">
             <div className="user-info">
               <span className="user-role-badge">{user.role || 'User'}</span>
-              <span className="user-email">{user.email}</span>
+              <span className="user-email">{user.username}</span>
             </div>
             <button className="logout-btn" onClick={onLogout}>
               Logout
