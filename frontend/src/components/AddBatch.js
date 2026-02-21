@@ -12,7 +12,6 @@ const AddBatch = ({ onBack, onSave }) => {
         subjects: []
     });
 
-    const [subjectInput, setSubjectInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -24,13 +23,13 @@ const AddBatch = ({ onBack, onSave }) => {
         }));
     };
 
-    const handleAddSubject = () => {
-        if (subjectInput.trim() && !formData.subjects.includes(subjectInput.trim())) {
+    const handleAddSubject = (e) => {
+        const selectedSubject = e.target.value;
+        if (selectedSubject && !formData.subjects.includes(selectedSubject)) {
             setFormData(prev => ({
                 ...prev,
-                subjects: [...prev.subjects, subjectInput.trim()]
+                subjects: [...prev.subjects, selectedSubject]
             }));
-            setSubjectInput('');
         }
     };
 
@@ -156,35 +155,17 @@ const AddBatch = ({ onBack, onSave }) => {
 
                     <div className="form-group">
                         <label>Subjects</label>
-                        <div className="subject-input-container" style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                            <input
-                                type="text"
-                                value={subjectInput}
-                                onChange={(e) => setSubjectInput(e.target.value)}
-                                placeholder="e.g., Physics, Chemistry..."
-                                onKeyPress={(e) => {
-                                    if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        handleAddSubject();
-                                    }
-                                }}
-                                style={{ flex: 1 }}
-                            />
-                            <button
-                                type="button"
-                                onClick={handleAddSubject}
-                                style={{
-                                    padding: '8px 16px',
-                                    backgroundColor: '#4CAF50',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Add
-                            </button>
-                        </div>
+                        <select
+                            onChange={handleAddSubject}
+                            value=""
+                            style={{ marginBottom: '10px' }}
+                        >
+                            <option value="" disabled>Select a subject</option>
+                            <option value="Physics">Physics</option>
+                            <option value="Chemistry">Chemistry</option>
+                            <option value="Biology">Biology</option>
+                            <option value="Mathematics">Mathematics</option>
+                        </select>
                         <div className="subjects-list" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                             {formData.subjects.map((subject, index) => (
                                 <span

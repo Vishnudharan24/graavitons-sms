@@ -72,6 +72,65 @@ const Dashboard = () => {
     }
   };
 
+  const handleRenameBatch = async (e, batchId, currentBatchName) => {
+    e.stopPropagation();
+
+    const newName = window.prompt('Enter new batch name:', currentBatchName);
+    if (newName === null) return;
+
+    const trimmedName = newName.trim();
+    if (!trimmedName) {
+      alert('Batch name cannot be empty');
+      return;
+    }
+
+    if (trimmedName === currentBatchName) {
+      return;
+    }
+
+    try {
+      let response = null;
+      const methods = ['PUT', 'PATCH', 'POST'];
+
+      for (const method of methods) {
+        response = await authFetch(`${API_BASE}/api/batch/${batchId}/rename`, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ batch_name: trimmedName }),
+        });
+
+        if (response.ok) {
+          break;
+        }
+
+        // Retry with next method when method is blocked by proxy/server
+        if (![404, 405].includes(response.status)) {
+          break;
+        }
+      }
+
+      if (!response || !response.ok) {
+        let errDetail = 'Failed to rename batch';
+        if (response) {
+          try {
+            const errData = await response.json();
+            errDetail = errData.detail || errDetail;
+          } catch (_) {
+            // keep fallback error message
+          }
+        }
+        throw new Error(errDetail);
+      }
+
+      fetchBatches();
+    } catch (err) {
+      alert(err.message || 'Failed to rename batch');
+      console.error('Error renaming batch:', err);
+    }
+  };
+
   const handleAddBatch = () => {
     setShowAddBatch(true);
   };
@@ -172,7 +231,11 @@ const Dashboard = () => {
         ) : filteredBatches.length > 0 ? (
           filteredBatches.map((batch) => (
             <div key={batch.batch_id} onClick={() => handleBatchClick(batch)}>
-              <CourseCard course={batch} onDelete={(e) => handleDeleteBatch(e, batch.batch_id, batch.batch_name)} />
+              <CourseCard
+                course={batch}
+                onDelete={(e) => handleDeleteBatch(e, batch.batch_id, batch.batch_name)}
+                onRename={(e) => handleRenameBatch(e, batch.batch_id, batch.batch_name)}
+              />
             </div>
           ))
         ) : (

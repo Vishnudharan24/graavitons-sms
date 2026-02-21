@@ -50,6 +50,9 @@ class BatchListResponse(BaseModel):
     batches: List[BatchResponse]
     count: int
 
+class BatchRenameRequest(BaseModel):
+    batch_name: str
+
 
 class MessageResponse(BaseModel):
     message: str
@@ -270,6 +273,85 @@ async def delete_batch(batch_id: int, current_user: dict = Depends(get_current_u
             "batch_id": batch_id,
             "batch_name": batch_name,
             "students_deleted": deleted_students
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+            conn.close()
+        raise
+
+    except psycopg2.Error as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server error: {str(e)}"
+        )
+
+
+@app.put("/api/batch/{batch_id}/rename", status_code=status.HTTP_200_OK)
+@app.patch("/api/batch/{batch_id}/rename", status_code=status.HTTP_200_OK)
+@app.post("/api/batch/{batch_id}/rename", status_code=status.HTTP_200_OK)
+async def rename_batch(
+    batch_id: int,
+    payload: BatchRenameRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Rename an existing batch"""
+    conn = None
+    try:
+        new_name = payload.batch_name.strip()
+        if not new_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Batch name cannot be empty"
+            )
+
+        conn = get_db_connection()
+        if not conn:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database connection failed"
+            )
+
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            UPDATE batch
+            SET batch_name = %s
+            WHERE batch_id = %s
+            RETURNING batch_id, batch_name;
+            """,
+            (new_name, batch_id)
+        )
+
+        updated = cursor.fetchone()
+        if not updated:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Batch with ID {batch_id} not found"
+            )
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return {
+            "message": "Batch renamed successfully",
+            "batch_id": updated[0],
+            "batch_name": updated[1]
         }
 
     except HTTPException:

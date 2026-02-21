@@ -1,9 +1,18 @@
 import React from 'react';
 import './CourseCard.css';
 
-const CourseCard = ({ course, onDelete }) => {
+const CourseCard = ({ course, onDelete, onRename }) => {
   return (
     <div className="course-card">
+      {onRename && (
+        <button
+          className="course-card-rename-btn"
+          title="Rename batch"
+          onClick={onRename}
+        >
+          ✏️
+        </button>
+      )}
       {onDelete && (
         <button
           className="course-card-delete-btn"
