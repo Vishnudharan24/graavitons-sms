@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  LineChart, Line, AreaChart, Area, BarChart, Bar, RadarChart, Radar,
+  PolarGrid, PolarAngleAxis, PolarRadiusAxis, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, Cell
 } from 'recharts';
 import { API_BASE } from '../config';
@@ -18,6 +19,10 @@ const BatchPerformance = ({ batch }) => {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [subject, setSubject] = useState('');
+  const [chartSection, setChartSection] = useState('all');
+  const [trendChartType, setTrendChartType] = useState('line');
+  const [subjectChartType, setSubjectChartType] = useState('bar');
+  const [distributionChartType, setDistributionChartType] = useState('bar');
 
   const fetchPerformance = useCallback(async () => {
     setLoading(true);
@@ -46,8 +51,10 @@ const BatchPerformance = ({ batch }) => {
     fetchPerformance();
   }, [fetchPerformance]);
 
-  // Gather unique subjects from daily breakdown for filter dropdown
-  const availableSubjects = data?.daily_subject_breakdown?.map(s => s.subject) || [];
+  // Gather unique subjects for filter dropdown (prefer batch subjects so options remain stable after filtering)
+  const availableSubjects = batch?.subjects?.length > 0
+    ? batch.subjects
+    : (data?.daily_subject_breakdown?.map(s => s.subject) || []);
 
   if (loading) {
     return (
@@ -76,6 +83,22 @@ const BatchPerformance = ({ batch }) => {
   // Pick which stats to show based on filter
   const showDaily = testType === 'daily' || testType === 'both';
   const showMock = testType === 'mock' || testType === 'both';
+  const showTrendSection = chartSection === 'all' || chartSection === 'trends';
+  const showSubjectSection = chartSection === 'all' || chartSection === 'subjects';
+  const showDistributionSection = chartSection === 'all' || chartSection === 'distribution';
+  const showRankingSection = chartSection === 'all' || chartSection === 'rankings';
+
+  const normalizeSubject = (value) => {
+    const v = (value || '').toLowerCase().trim();
+    if (v === 'maths') return 'mathematics';
+    return v;
+  };
+
+  const selectedSubjectNormalized = normalizeSubject(subject);
+  const matchesSelectedSubject = (label) => {
+    if (!selectedSubjectNormalized) return true;
+    return normalizeSubject(label) === selectedSubjectNormalized;
+  };
 
   // Combined subject data for bar chart
   const subjectChartData = [];
@@ -95,6 +118,8 @@ const BatchPerformance = ({ batch }) => {
       }
     });
   }
+
+  const filteredSubjectChartData = subjectChartData.filter(item => matchesSelectedSubject(item.subject));
 
   return (
     <div className="batch-performance">
@@ -127,6 +152,43 @@ const BatchPerformance = ({ batch }) => {
             </select>
           </div>
         )}
+        <div className="filter-group">
+          <label>Chart Section</label>
+          <select value={chartSection} onChange={e => setChartSection(e.target.value)}>
+            <option value="all">All Charts</option>
+            <option value="trends">Trends</option>
+            <option value="subjects">Subject-wise</option>
+            <option value="distribution">Distribution</option>
+            <option value="rankings">Rankings</option>
+          </select>
+        </div>
+        {showTrendSection && (
+          <div className="filter-group">
+            <label>Trend Chart</label>
+            <select value={trendChartType} onChange={e => setTrendChartType(e.target.value)}>
+              <option value="line">Line</option>
+              <option value="area">Area</option>
+            </select>
+          </div>
+        )}
+        {showSubjectSection && (
+          <div className="filter-group">
+            <label>Subject Chart</label>
+            <select value={subjectChartType} onChange={e => setSubjectChartType(e.target.value)}>
+              <option value="bar">Bar</option>
+              <option value="radar">Radar</option>
+            </select>
+          </div>
+        )}
+        {showDistributionSection && (
+          <div className="filter-group">
+            <label>Distribution Chart</label>
+            <select value={distributionChartType} onChange={e => setDistributionChartType(e.target.value)}>
+              <option value="bar">Bar</option>
+              <option value="line">Line</option>
+            </select>
+          </div>
+        )}
         {(dateFrom || dateTo || subject) && (
           <button className="btn-clear-filters" onClick={() => { setDateFrom(''); setDateTo(''); setSubject(''); }}>
             ✕ Clear
@@ -146,10 +208,10 @@ const BatchPerformance = ({ batch }) => {
               <h4>Daily Test Avg</h4>
               <p className="stat-value">{daily_stats.avg_score}</p>
             </div>
-            <div className="perf-stat-card accent-green">
+            {/* <div className="perf-stat-card accent-green">
               <h4>Daily Top Score</h4>
               <p className="stat-value">{daily_stats.top_score}</p>
-            </div>
+            </div> */}
             <div className="perf-stat-card accent-orange">
               <h4>Daily Tests</h4>
               <p className="stat-value">{daily_stats.total_tests}</p>
@@ -185,103 +247,169 @@ const BatchPerformance = ({ batch }) => {
       {/* ── Charts Grid ── */}
       <div className="perf-charts-grid">
         {/* Daily Trend Line Chart */}
-        {showDaily && daily_trend.length > 0 && (
+        {showTrendSection && showDaily && daily_trend.length > 0 && (
           <div className="chart-card">
             <h4>📈 Daily Test Trend</h4>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={daily_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="date" tick={{ fontSize: 12 }} angle={-30} textAnchor="end" height={60} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="avg" name="Average" stroke="#5b5fc7" strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="top" name="Top Score" stroke="#48bb78" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
-                <Line type="monotone" dataKey="low" name="Lowest" stroke="#e53e3e" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+            {trendChartType === 'line' ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={daily_trend}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} angle={-30} textAnchor="end" height={60} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="avg" name="Average" stroke="#5b5fc7" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="top" name="Top Score" stroke="#48bb78" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                  <Line type="monotone" dataKey="low" name="Lowest" stroke="#e53e3e" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <AreaChart data={daily_trend}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} angle={-30} textAnchor="end" height={60} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Legend />
+                  <Area type="monotone" dataKey="avg" name="Average" stroke="#5b5fc7" fill="#5b5fc733" strokeWidth={2} />
+                  <Area type="monotone" dataKey="top" name="Top Score" stroke="#48bb78" fill="#48bb7833" strokeWidth={1.5} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         )}
 
         {/* Mock Trend Line Chart */}
-        {showMock && mock_trend.length > 0 && (
+        {showTrendSection && showMock && mock_trend.length > 0 && (
           <div className="chart-card">
             <h4>📈 Mock Test Trend</h4>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={mock_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="date" tick={{ fontSize: 12 }} angle={-30} textAnchor="end" height={60} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="avg" name="Average" stroke="#5b5fc7" strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="top" name="Top Score" stroke="#48bb78" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
-                <Line type="monotone" dataKey="low" name="Lowest" stroke="#e53e3e" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+            {trendChartType === 'line' ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={mock_trend}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} angle={-30} textAnchor="end" height={60} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="avg" name="Average" stroke="#5b5fc7" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="top" name="Top Score" stroke="#48bb78" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                  <Line type="monotone" dataKey="low" name="Lowest" stroke="#e53e3e" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <AreaChart data={mock_trend}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} angle={-30} textAnchor="end" height={60} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Legend />
+                  <Area type="monotone" dataKey="avg" name="Average" stroke="#5b5fc7" fill="#5b5fc733" strokeWidth={2} />
+                  <Area type="monotone" dataKey="top" name="Top Score" stroke="#48bb78" fill="#48bb7833" strokeWidth={1.5} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         )}
 
         {/* Subject Breakdown Bar Chart */}
-        {subjectChartData.length > 0 && (
+        {showSubjectSection && filteredSubjectChartData.length > 0 && (
           <div className="chart-card">
             <h4>📊 Subject-wise Performance</h4>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={subjectChartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="subject" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Legend />
-                {showDaily && <Bar dataKey="Daily Avg" fill="#5b5fc7" radius={[4, 4, 0, 0]} />}
-                {showMock && <Bar dataKey="Mock Avg" fill="#48bb78" radius={[4, 4, 0, 0]} />}
-              </BarChart>
-            </ResponsiveContainer>
+            {subjectChartType === 'bar' ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={filteredSubjectChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="subject" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Legend />
+                  {showDaily && <Bar dataKey="Daily Avg" fill="#5b5fc7" radius={[4, 4, 0, 0]} />}
+                  {showMock && <Bar dataKey="Mock Avg" fill="#48bb78" radius={[4, 4, 0, 0]} />}
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <RadarChart data={filteredSubjectChartData}>
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="subject" />
+                  <PolarRadiusAxis />
+                  <Tooltip />
+                  <Legend />
+                  {showDaily && <Radar dataKey="Daily Avg" stroke="#5b5fc7" fill="#5b5fc7" fillOpacity={0.35} />}
+                  {showMock && <Radar dataKey="Mock Avg" stroke="#48bb78" fill="#48bb78" fillOpacity={0.25} />}
+                </RadarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         )}
 
         {/* Score Distribution */}
-        {(showDaily && daily_distribution.length > 0) && (
+        {showDistributionSection && (showDaily && daily_distribution.length > 0) && (
           <div className="chart-card">
             <h4>📉 Daily Score Distribution</h4>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={daily_distribution}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="range" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="count" name="Students" radius={[4, 4, 0, 0]}>
-                  {daily_distribution.map((_, i) => (
-                    <Cell key={i} fill={DIST_COLORS[i % DIST_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            {distributionChartType === 'bar' ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={daily_distribution}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="range" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" name="Students" radius={[4, 4, 0, 0]}>
+                    {daily_distribution.map((_, i) => (
+                      <Cell key={i} fill={DIST_COLORS[i % DIST_COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={daily_distribution}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="range" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="count" name="Students" stroke="#5b5fc7" strokeWidth={3} dot={{ r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
         )}
 
-        {(showMock && mock_distribution.length > 0) && (
+        {showDistributionSection && (showMock && mock_distribution.length > 0) && (
           <div className="chart-card">
             <h4>📉 Mock Score Distribution</h4>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={mock_distribution}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="range" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="count" name="Students" radius={[4, 4, 0, 0]}>
-                  {mock_distribution.map((_, i) => (
-                    <Cell key={i} fill={DIST_COLORS[i % DIST_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            {distributionChartType === 'bar' ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={mock_distribution}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="range" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" name="Students" radius={[4, 4, 0, 0]}>
+                    {mock_distribution.map((_, i) => (
+                      <Cell key={i} fill={DIST_COLORS[i % DIST_COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={mock_distribution}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="range" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="count" name="Students" stroke="#38b2ac" strokeWidth={3} dot={{ r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
         )}
       </div>
 
       {/* ── Top & Bottom Students ── */}
-      <div className="perf-rankings">
+      {showRankingSection && <div className="perf-rankings">
         {top_students.length > 0 && (
           <div className="ranking-card">
             <h4>🏆 Top 5 Students</h4>
@@ -343,7 +471,7 @@ const BatchPerformance = ({ batch }) => {
             </table>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* ── No data state ── */}
       {daily_trend.length === 0 && mock_trend.length === 0 &&

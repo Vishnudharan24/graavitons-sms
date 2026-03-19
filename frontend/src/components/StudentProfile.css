@@ -668,3 +668,12 @@
 .date-filter-clear:hover {
     background: #feb2b2;
 }
+
+.chart-control-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}

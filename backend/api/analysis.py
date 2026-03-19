@@ -1154,10 +1154,10 @@ async def get_batch_performance(
                     COUNT(DISTINCT dt.student_id)
                 FROM daily_test dt
                 JOIN student s ON dt.student_id = s.student_id
-                WHERE s.batch_id = %s {daily_date_filter}
+                WHERE s.batch_id = %s {daily_date_filter} {daily_subject_filter}
                 GROUP BY dt.subject
                 ORDER BY dt.subject
-            """, [batch_id] + daily_date_params)
+            """, [batch_id] + daily_date_params + daily_subject_params)
             for r in cursor.fetchall():
                 daily_subject_breakdown.append({
                     "subject": r[0],

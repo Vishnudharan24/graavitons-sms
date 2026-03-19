@@ -4,7 +4,34 @@ import './AddExam.css';
 import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
 
+const MOCK_SUBJECTS = [
+  { key: 'maths', label: 'Maths', aliases: ['maths', 'mathematics'], marksField: 'mathsMarks', unitField: 'mathsUnitNames' },
+  { key: 'physics', label: 'Physics', aliases: ['physics'], marksField: 'physicsMarks', unitField: 'physicsUnitNames' },
+  { key: 'chemistry', label: 'Chemistry', aliases: ['chemistry'], marksField: 'chemistryMarks', unitField: 'chemistryUnitNames' },
+  { key: 'biology', label: 'Biology', aliases: ['biology'], marksField: 'biologyMarks', unitField: 'biologyUnitNames' }
+];
+
+const getActiveMockSubjects = (batchSubjects) => {
+  if (!Array.isArray(batchSubjects) || batchSubjects.length === 0) {
+    return MOCK_SUBJECTS;
+  }
+
+  const normalized = new Set(
+    batchSubjects
+      .filter(Boolean)
+      .map(subject => String(subject).trim().toLowerCase())
+  );
+
+  const selected = MOCK_SUBJECTS.filter(subject =>
+    subject.aliases.some(alias => normalized.has(alias))
+  );
+
+  return selected.length > 0 ? selected : MOCK_SUBJECTS;
+};
+
 const AddExam = ({ batch, students, onBack, onSave }) => {
+  const activeMockSubjects = getActiveMockSubjects(batch?.subjects);
+
   const [examMode, setExamMode] = useState('manual'); // 'manual' or 'excel'
   const [examData, setExamData] = useState({
     examName: '',
@@ -132,13 +159,19 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
           if (fileName.endsWith('.csv')) {
             // Handle CSV files
             const text = event.target.result;
-            const rows = text.split('\n').slice(1); // Skip header
+            const allRows = text
+              .split('\n')
+              .map(row => row.trim())
+              .filter(Boolean)
+              .map(row => row.split(',').map(cell => cell.trim()));
+
+            const rows = allRows.slice(1); // Skip header
 
             if (examData.examType === 'daily test') {
               const updatedMarks = studentMarks.map(student => {
-                const row = rows.find(r => r.startsWith(student.rollNo));
+                const row = rows.find(r => r[0] === student.rollNo);
                 if (row) {
-                  const marks = row.split(',')[2]?.trim();
+                  const marks = row[2]?.trim();
                   return { ...student, marks: marks || '' };
                 }
                 return student;
@@ -146,15 +179,14 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
               setStudentMarks(updatedMarks);
             } else if (examData.examType === 'mock test') {
               const updatedMarks = studentMarks.map(student => {
-                const row = rows.find(r => r.startsWith(student.rollNo));
+                const row = rows.find(r => r[0] === student.rollNo);
                 if (row) {
-                  const parts = row.split(',');
+                  const updatedStudent = { ...student };
+                  activeMockSubjects.forEach((subject, index) => {
+                    updatedStudent[subject.marksField] = row[2 + index]?.trim() || '';
+                  });
                   return { 
-                    ...student, 
-                    mathsMarks: parts[2]?.trim() || '',
-                    physicsMarks: parts[3]?.trim() || '',
-                    biologyMarks: parts[4]?.trim() || '',
-                    chemistryMarks: parts[5]?.trim() || ''
+                    ...updatedStudent
                   };
                 }
                 return student;
@@ -184,13 +216,11 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
               const updatedMarks = studentMarks.map(student => {
                 const row = rows.find(r => r[0] === student.rollNo);
                 if (row) {
-                  return { 
-                    ...student, 
-                    mathsMarks: row[2]?.toString().trim() || '',
-                    physicsMarks: row[3]?.toString().trim() || '',
-                    biologyMarks: row[4]?.toString().trim() || '',
-                    chemistryMarks: row[5]?.toString().trim() || ''
-                  };
+                  const updatedStudent = { ...student };
+                  activeMockSubjects.forEach((subject, index) => {
+                    updatedStudent[subject.marksField] = row[2 + index]?.toString().trim() || '';
+                  });
+                  return updatedStudent;
                 }
                 return student;
               });
@@ -237,15 +267,14 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
         }
       }
     } else if (examData.examType === 'mock test') {
-      if (!examData.mathsUnitNames || !examData.physicsUnitNames || 
-          !examData.biologyUnitNames || !examData.chemistryUnitNames) {
-        alert('Please fill unit names for all subjects in mock test');
+      const hasMissingUnitNames = activeMockSubjects.some(subject => !examData[subject.unitField]);
+      if (hasMissingUnitNames) {
+        alert('Please fill unit names for all subjects in this batch');
         return;
       }
       
       const hasEmptyMarks = studentMarks.some(student => 
-        student.mathsMarks === '' || student.physicsMarks === '' || 
-        student.biologyMarks === '' || student.chemistryMarks === ''
+        activeMockSubjects.some(subject => student[subject.marksField] === '')
       );
       if (hasEmptyMarks) {
         if (!window.confirm('Some students have incomplete marks. Continue anyway?')) {
@@ -281,10 +310,10 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
           examName: examData.examName,
           examDate: examData.examDate,
           examType: examData.examType,
-          mathsUnitNames: examData.mathsUnitNames,
-          physicsUnitNames: examData.physicsUnitNames,
-          chemistryUnitNames: examData.chemistryUnitNames,
-          biologyUnitNames: examData.biologyUnitNames,
+          mathsUnitNames: activeMockSubjects.some(subject => subject.key === 'maths') ? examData.mathsUnitNames : '',
+          physicsUnitNames: activeMockSubjects.some(subject => subject.key === 'physics') ? examData.physicsUnitNames : '',
+          chemistryUnitNames: activeMockSubjects.some(subject => subject.key === 'chemistry') ? examData.chemistryUnitNames : '',
+          biologyUnitNames: activeMockSubjects.some(subject => subject.key === 'biology') ? examData.biologyUnitNames : '',
           studentMarks: studentMarks.map(s => ({
             id: s.rollNo,
             mathsMarks: s.mathsMarks,
@@ -433,53 +462,19 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
             {/* Mock Test Fields */}
             {examData.examType === 'mock test' && (
               <>
-                <div className="form-group">
-                  <label>Maths Unit Names *</label>
-                  <input
-                    type="text"
-                    name="mathsUnitNames"
-                    value={examData.mathsUnitNames}
-                    onChange={handleExamDataChange}
-                    placeholder="e.g., Unit 1, Unit 2"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Physics Unit Names *</label>
-                  <input
-                    type="text"
-                    name="physicsUnitNames"
-                    value={examData.physicsUnitNames}
-                    onChange={handleExamDataChange}
-                    placeholder="e.g., Unit 1, Unit 2"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Chemistry Unit Names *</label>
-                  <input
-                    type="text"
-                    name="chemistryUnitNames"
-                    value={examData.chemistryUnitNames}
-                    onChange={handleExamDataChange}
-                    placeholder="e.g., Unit 1, Unit 2"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Biology Unit Names *</label>
-                  <input
-                    type="text"
-                    name="biologyUnitNames"
-                    value={examData.biologyUnitNames}
-                    onChange={handleExamDataChange}
-                    placeholder="e.g., Unit 1, Unit 2"
-                    required
-                  />
-                </div>
+                {activeMockSubjects.map(subject => (
+                  <div className="form-group" key={subject.key}>
+                    <label>{subject.label} Unit Names *</label>
+                    <input
+                      type="text"
+                      name={subject.unitField}
+                      value={examData[subject.unitField]}
+                      onChange={handleExamDataChange}
+                      placeholder="e.g., Unit 1, Unit 2"
+                      required
+                    />
+                  </div>
+                ))}
               </>
             )}
           </div>
@@ -544,10 +539,9 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     <tr>
                       <th>Admission Number</th>
                       <th>Student Name</th>
-                      <th>Maths</th>
-                      <th>Physics</th>
-                      <th>Chemistry</th>
-                      <th>Biology</th>
+                      {activeMockSubjects.map(subject => (
+                        <th key={subject.key}>{subject.label}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -555,42 +549,17 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                       <tr key={student.id}>
                         <td>{student.rollNo}</td>
                         <td>{student.name}</td>
-                        <td>
-                          <input
-                            type="text"
-                            value={student.mathsMarks}
-                            onChange={(e) => handleMarksChange(student.id, 'mathsMarks', e.target.value)}
-                            placeholder="Maths"
-                            className="marks-input"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="text"
-                            value={student.physicsMarks}
-                            onChange={(e) => handleMarksChange(student.id, 'physicsMarks', e.target.value)}
-                            placeholder="Physics"
-                            className="marks-input"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="text"
-                            value={student.chemistryMarks}
-                            onChange={(e) => handleMarksChange(student.id, 'chemistryMarks', e.target.value)}
-                            placeholder="Chemistry"
-                            className="marks-input"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="text"
-                            value={student.biologyMarks}
-                            onChange={(e) => handleMarksChange(student.id, 'biologyMarks', e.target.value)}
-                            placeholder="Biology"
-                            className="marks-input"
-                          />
-                        </td>
+                        {activeMockSubjects.map(subject => (
+                          <td key={`${student.id}-${subject.key}`}>
+                            <input
+                              type="text"
+                              value={student[subject.marksField]}
+                              onChange={(e) => handleMarksChange(student.id, subject.marksField, e.target.value)}
+                              placeholder={subject.label}
+                              className="marks-input"
+                            />
+                          </td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
@@ -670,10 +639,9 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                         <tr>
                           <th>Admission Number</th>
                           <th>Student Name</th>
-                          <th>Maths</th>
-                          <th>Physics</th>
-                          <th>Biology</th>
-                          <th>Chemistry</th>
+                          {activeMockSubjects.map(subject => (
+                            <th key={subject.key}>{subject.label}</th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
@@ -681,10 +649,9 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                           <tr key={student.id}>
                             <td>{student.rollNo}</td>
                             <td>{student.name}</td>
-                            <td>{student.mathsMarks || '-'}</td>
-                            <td>{student.physicsMarks || '-'}</td>
-                            <td>{student.biologyMarks || '-'}</td>
-                            <td>{student.chemistryMarks || '-'}</td>
+                            {activeMockSubjects.map(subject => (
+                              <td key={`${student.id}-${subject.key}`}>{student[subject.marksField] || '-'}</td>
+                            ))}
                           </tr>
                         ))}
                       </tbody>

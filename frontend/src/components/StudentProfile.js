@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import {
+  LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
+} from 'recharts';
 import * as XLSX from 'xlsx';
 import './StudentProfile.css';
 import { API_BASE, DEFAULT_AVATAR } from '../config';
@@ -32,6 +36,8 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
   const [dailyDateTo, setDailyDateTo] = useState('');
   const [mockDateFrom, setMockDateFrom] = useState('');
   const [mockDateTo, setMockDateTo] = useState('');
+  const [dailyChartType, setDailyChartType] = useState('line');
+  const [mockChartType, setMockChartType] = useState('grouped');
   const [currentFeedback, setCurrentFeedback] = useState({
     date: new Date().toISOString().split('T')[0],
     teacherFeedback: '',
@@ -275,8 +281,33 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     }));
   };
 
+  const buildMockTrendData = () => {
+    if (!filteredMockTests || filteredMockTests.length === 0) return [];
+    return filteredMockTests.map((test, idx) => ({
+      exam: `Mock ${idx + 1}`,
+      date: test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-',
+      total: parseNumericMark(test.total_marks) ?? 0,
+      classAvg: parseNumericMark(test.class_avg_total) ?? 0,
+      topScore: parseNumericMark(test.top_score_total) ?? 0
+    }));
+  };
+
+  const buildLatestMockSubjectShare = () => {
+    if (!filteredMockTests || filteredMockTests.length === 0) return [];
+    const lastMock = filteredMockTests[filteredMockTests.length - 1];
+    const rows = [
+      { name: 'Maths', value: parseNumericMark(lastMock.maths_marks) ?? 0, fill: '#FFA500' },
+      { name: 'Physics', value: parseNumericMark(lastMock.physics_marks) ?? 0, fill: '#FF6B9D' },
+      { name: 'Chemistry', value: parseNumericMark(lastMock.chemistry_marks) ?? 0, fill: '#4A90E2' },
+      { name: 'Biology', value: parseNumericMark(lastMock.biology_marks) ?? 0, fill: '#00D9C0' }
+    ];
+    return rows.filter(r => r.value > 0);
+  };
+
   const performanceTrend = buildPerformanceTrend();
   const mockTestChartData = buildMockTestChartData();
+  const mockTrendData = buildMockTrendData();
+  const latestMockSubjectShare = buildLatestMockSubjectShare();
 
   // Save feedback to backend API
   const handleSaveFeedback = async () => {
@@ -867,18 +898,56 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                 {/* Performance Trend Chart */}
                 {performanceTrend.length > 1 && (
                   <div className="profile-section" style={{ marginTop: '20px' }}>
-                    <h4>Performance Trend</h4>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={performanceTrend} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="score" stroke="#5b5fc7" strokeWidth={3} name="Your Score" dot={{ r: 5 }} />
-                        <Line type="monotone" dataKey="classAvg" stroke="#a0aec0" strokeWidth={2} strokeDasharray="5 5" name="Class Average" dot={{ r: 3 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
+                    <div className="chart-control-row">
+                      <h4>Performance Trend</h4>
+                      <div className="date-filter-field">
+                        <label>Chart Type</label>
+                        <select className="date-filter-input" value={dailyChartType} onChange={(e) => setDailyChartType(e.target.value)}>
+                          <option value="line">Line Chart</option>
+                          <option value="area">Area Chart</option>
+                          <option value="bar">Bar Chart</option>
+                        </select>
+                      </div>
+                    </div>
+                    {dailyChartType === 'line' && (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={performanceTrend} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Line type="monotone" dataKey="score" stroke="#5b5fc7" strokeWidth={3} name="Your Score" dot={{ r: 5 }} />
+                          <Line type="monotone" dataKey="classAvg" stroke="#a0aec0" strokeWidth={2} strokeDasharray="5 5" name="Class Average" dot={{ r: 3 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    )}
+                    {dailyChartType === 'area' && (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <AreaChart data={performanceTrend} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Area type="monotone" dataKey="score" stroke="#5b5fc7" fill="#5b5fc733" strokeWidth={2} name="Your Score" />
+                          <Area type="monotone" dataKey="classAvg" stroke="#a0aec0" fill="#a0aec033" strokeWidth={2} name="Class Average" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    )}
+                    {dailyChartType === 'bar' && (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={performanceTrend} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Bar dataKey="score" fill="#5b5fc7" name="Your Score" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="classAvg" fill="#a0aec0" name="Class Average" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
                   </div>
                 )}
               </>
@@ -907,20 +976,89 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
             </div>
             {filteredMockTests.length > 0 ? (
               <>
-                {/* Mock Test Bar Chart */}
-                <ResponsiveContainer width="100%" height={350}>
-                  <BarChart data={mockTestChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="exam" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="physics" fill="#FF6B9D" name="Physics" />
-                    <Bar dataKey="chemistry" fill="#4A90E2" name="Chemistry" />
-                    <Bar dataKey="biology" fill="#00D9C0" name="Biology" />
-                    <Bar dataKey="maths" fill="#FFA500" name="Maths" />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div className="chart-control-row" style={{ marginBottom: '12px' }}>
+                  <h4 style={{ margin: 0 }}>Mock Test Chart</h4>
+                  <div className="date-filter-field">
+                    <label>Chart Type</label>
+                    <select className="date-filter-input" value={mockChartType} onChange={(e) => setMockChartType(e.target.value)}>
+                      <option value="grouped">Grouped Bar (Subject-wise)</option>
+                      <option value="trend">Line Trend (Total vs Class)</option>
+                      <option value="radar">Radar (Latest Mock Subject Profile)</option>
+                      <option value="pie">Pie (Latest Mock Subject Share)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {mockChartType === 'grouped' && (
+                  <ResponsiveContainer width="100%" height={350}>
+                    <BarChart data={mockTestChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="exam" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="physics" fill="#FF6B9D" name="Physics" />
+                      <Bar dataKey="chemistry" fill="#4A90E2" name="Chemistry" />
+                      <Bar dataKey="biology" fill="#00D9C0" name="Biology" />
+                      <Bar dataKey="maths" fill="#FFA500" name="Maths" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+
+                {mockChartType === 'trend' && (
+                  <ResponsiveContainer width="100%" height={350}>
+                    <LineChart data={mockTrendData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="exam" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Line type="monotone" dataKey="total" stroke="#5b5fc7" strokeWidth={3} name="Your Total" dot={{ r: 4 }} />
+                      <Line type="monotone" dataKey="classAvg" stroke="#38b2ac" strokeWidth={2} name="Class Average" dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="topScore" stroke="#48bb78" strokeWidth={2} name="Top Score" dot={{ r: 3 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+
+                {mockChartType === 'radar' && latestMockSubjectShare.length > 0 && (
+                  <ResponsiveContainer width="100%" height={350}>
+                    <RadarChart data={latestMockSubjectShare}>
+                      <PolarGrid />
+                      <PolarAngleAxis dataKey="name" />
+                      <PolarRadiusAxis />
+                      <Tooltip />
+                      <Radar dataKey="value" name="Marks" stroke="#5b5fc7" fill="#5b5fc7" fillOpacity={0.35} />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                )}
+
+                {mockChartType === 'pie' && latestMockSubjectShare.length > 0 && (
+                  <ResponsiveContainer width="100%" height={350}>
+                    <PieChart>
+                      <Tooltip />
+                      <Legend />
+                      <Pie
+                        data={latestMockSubjectShare}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={110}
+                        label
+                      >
+                        {latestMockSubjectShare.map((entry) => (
+                          <Cell key={entry.name} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+
+                {(mockChartType === 'radar' || mockChartType === 'pie') && latestMockSubjectShare.length === 0 && (
+                  <p style={{ color: '#666', fontStyle: 'italic', padding: '12px 0', textAlign: 'center' }}>
+                    Not enough numeric marks in the latest mock test for this chart.
+                  </p>
+                )}
 
                 {/* Mock Test Details Table */}
                 <div className="marks-table" style={{ marginTop: '20px' }}>

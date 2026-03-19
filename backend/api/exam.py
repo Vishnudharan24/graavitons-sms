@@ -15,6 +15,33 @@ from db_pool import get_db_connection
 
 app = FastAPI(title=APP_TITLE)
 
+MOCK_SUBJECT_CONFIG = {
+    "maths": {"aliases": {"maths", "mathematics"}, "unit_field": "mathsUnitNames"},
+    "physics": {"aliases": {"physics"}, "unit_field": "physicsUnitNames"},
+    "chemistry": {"aliases": {"chemistry"}, "unit_field": "chemistryUnitNames"},
+    "biology": {"aliases": {"biology"}, "unit_field": "biologyUnitNames"},
+}
+
+
+def get_batch_mock_subjects(batch_subjects):
+    if not batch_subjects:
+        return ["maths", "physics", "chemistry", "biology"]
+
+    selected = []
+    lowered = {str(s).strip().lower() for s in batch_subjects if str(s).strip()}
+    for key in ["maths", "physics", "chemistry", "biology"]:
+        aliases = MOCK_SUBJECT_CONFIG[key]["aliases"]
+        if lowered.intersection(aliases):
+            selected.append(key)
+
+    return selected if selected else ["maths", "physics", "chemistry", "biology"]
+
+
+def split_units(unit_text: str):
+    if not unit_text:
+        return []
+    return [u.strip() for u in unit_text.split(',') if u.strip()]
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
@@ -197,9 +224,9 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Get batch details to extract grade
+        # Get batch details to extract grade and configured subjects
         cursor.execute("""
-            SELECT batch_name, type FROM batch WHERE batch_id = %s
+            SELECT batch_name, type, subjects FROM batch WHERE batch_id = %s
         """, (exam_data.batch_id,))
         
         batch_result = cursor.fetchone()
@@ -209,7 +236,8 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
                 detail=f"Batch with ID {exam_data.batch_id} not found"
             )
         
-        batch_name, batch_type = batch_result
+        batch_name, batch_type, batch_subjects = batch_result
+        active_subjects = set(get_batch_mock_subjects(batch_subjects))
         
         # Extract grade from batch
         grade = None
@@ -219,11 +247,11 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
             if grade_match:
                 grade = int(grade_match.group())
         
-        # Parse unit names (convert comma-separated strings to arrays)
-        maths_units = [u.strip() for u in exam_data.mathsUnitNames.split(',') if u.strip()]
-        physics_units = [u.strip() for u in exam_data.physicsUnitNames.split(',') if u.strip()]
-        chemistry_units = [u.strip() for u in exam_data.chemistryUnitNames.split(',') if u.strip()]
-        biology_units = [u.strip() for u in exam_data.biologyUnitNames.split(',') if u.strip()]
+        # Parse unit names only for subjects configured in the batch
+        maths_units = split_units(exam_data.mathsUnitNames) if "maths" in active_subjects else []
+        physics_units = split_units(exam_data.physicsUnitNames) if "physics" in active_subjects else []
+        chemistry_units = split_units(exam_data.chemistryUnitNames) if "chemistry" in active_subjects else []
+        biology_units = split_units(exam_data.biologyUnitNames) if "biology" in active_subjects else []
         
         inserted_count = 0
         failed_students = []
@@ -253,10 +281,10 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
                 branch = student_result[0]
                 
                 # Store marks as-is (supports integers, 'A' for absent, '-' for N/A, negative marks)
-                maths_marks = student_mark.mathsMarks.strip() if student_mark.mathsMarks and student_mark.mathsMarks.strip() else ''
-                physics_marks = student_mark.physicsMarks.strip() if student_mark.physicsMarks and student_mark.physicsMarks.strip() else ''
-                chemistry_marks = student_mark.chemistryMarks.strip() if student_mark.chemistryMarks and student_mark.chemistryMarks.strip() else ''
-                biology_marks = student_mark.biologyMarks.strip() if student_mark.biologyMarks and student_mark.biologyMarks.strip() else ''
+                maths_marks = student_mark.mathsMarks.strip() if "maths" in active_subjects and student_mark.mathsMarks and student_mark.mathsMarks.strip() else ''
+                physics_marks = student_mark.physicsMarks.strip() if "physics" in active_subjects and student_mark.physicsMarks and student_mark.physicsMarks.strip() else ''
+                chemistry_marks = student_mark.chemistryMarks.strip() if "chemistry" in active_subjects and student_mark.chemistryMarks and student_mark.chemistryMarks.strip() else ''
+                biology_marks = student_mark.biologyMarks.strip() if "biology" in active_subjects and student_mark.biologyMarks and student_mark.biologyMarks.strip() else ''
                 
                 # Calculate total marks only from numeric values
                 def safe_int(val):
@@ -313,6 +341,7 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
             "message": "Mock test marks added successfully",
             "exam_name": exam_data.examName,
             "exam_date": str(exam_data.examDate),
+            "active_subjects": list(active_subjects),
             "units": {
                 "maths": maths_units,
                 "physics": physics_units,
@@ -489,6 +518,18 @@ async def get_mock_test_template(batch_id: int, current_user: dict = Depends(get
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No students found for batch ID {batch_id}"
             )
+
+        # Determine which mock-test subjects are enabled for this batch
+        cursor.execute("SELECT subjects FROM batch WHERE batch_id = %s", (batch_id,))
+        batch_row = cursor.fetchone()
+        batch_subjects = batch_row[0] if batch_row else None
+        active_subjects = get_batch_mock_subjects(batch_subjects)
+        subject_headers = {
+            "maths": "Maths Marks",
+            "physics": "Physics Marks",
+            "chemistry": "Chemistry Marks",
+            "biology": "Biology Marks",
+        }
         
         # Create Excel workbook
         wb = openpyxl.Workbook()
@@ -506,7 +547,7 @@ async def get_mock_test_template(batch_id: int, current_user: dict = Depends(get
         )
         
         # Headers
-        headers = ['Admission Number', 'Student Name', 'Maths Marks', 'Physics Marks', 'Biology Marks', 'Chemistry Marks']
+        headers = ['Admission Number', 'Student Name'] + [subject_headers[s] for s in active_subjects]
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
             cell.fill = header_fill
@@ -518,30 +559,26 @@ async def get_mock_test_template(batch_id: int, current_user: dict = Depends(get
         for row, (student_id, student_name) in enumerate(students, 2):
             ws.cell(row=row, column=1, value=student_id).border = border
             ws.cell(row=row, column=2, value=student_name).border = border
-            ws.cell(row=row, column=3, value="").border = border  # Maths
-            ws.cell(row=row, column=4, value="").border = border  # Physics
-            ws.cell(row=row, column=5, value="").border = border  # Biology
-            ws.cell(row=row, column=6, value="").border = border  # Chemistry
+            for index, _ in enumerate(active_subjects, 3):
+                ws.cell(row=row, column=index, value="").border = border
         
         # Adjust column widths
         ws.column_dimensions['A'].width = 20
         ws.column_dimensions['B'].width = 35
-        ws.column_dimensions['C'].width = 15
-        ws.column_dimensions['D'].width = 15
-        ws.column_dimensions['E'].width = 15
-        ws.column_dimensions['F'].width = 15
+        for index in range(3, len(headers) + 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(index)].width = 18
         
         # Add instructions in a separate sheet
         instructions_ws = wb.create_sheet("Instructions")
         instructions = [
             ["Mock Test Marks Template - Instructions"],
             [""],
-            ["1. Fill in the marks for each student for all four subjects"],
+            [f"1. Fill in the marks only for configured batch subjects: {', '.join([s.title() for s in active_subjects])}"],
             ["2. Do not modify the Admission Number or Student Name columns"],
-            ["3. Enter marks for: Maths, Physics, Biology, and Chemistry"],
-            ["4. All subject marks are required for each student"],
+            ["3. Leave unsupported subject columns absent; they are not part of this template"],
+            ["4. Subject marks can be left empty if not available"],
             ["5. Save the file and upload it back to the system"],
-            ["6. Empty marks will be treated as 0 during upload"],
+            ["6. Empty marks are skipped during upload"],
             [""],
             ["Note: This template is specifically generated for your batch."]
         ]
