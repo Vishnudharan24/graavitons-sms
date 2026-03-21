@@ -13,6 +13,7 @@ Usage in API modules:
 """
 
 import atexit
+import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
 from fastapi import HTTPException, status
 from config import DB_CONFIG, DB_POOL_MIN, DB_POOL_MAX
@@ -69,14 +70,47 @@ def get_db_connection():
     Get a connection from the pool wrapped in PooledConnection.
     Calling conn.close() returns it to the pool.
     """
-    try:
-        raw = pool.getconn()
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Database connection pool exhausted or unavailable: {e}",
-        )
-    return PooledConnection(raw, pool)
+    # Retry once with a fresh connection if the pooled one is stale.
+    for attempt in range(2):
+        try:
+            raw = pool.getconn()
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Database connection pool exhausted or unavailable: {e}",
+            )
+
+        try:
+            # If Postgres already marked this connection closed, discard it.
+            if raw.closed:
+                pool.putconn(raw, close=True)
+                if attempt == 0:
+                    continue
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Database connection is closed",
+                )
+
+            # Lightweight health check to catch stale SSL/idle-timeout sockets.
+            with raw.cursor() as cursor:
+                cursor.execute("SELECT 1;")
+
+            return PooledConnection(raw, pool)
+
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            # Drop broken connection and retry once with a new one.
+            try:
+                pool.putconn(raw, close=True)
+            except Exception:
+                pass
+
+            if attempt == 0:
+                continue
+
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database connection is unavailable",
+            )
 
 
 def close_pool():
