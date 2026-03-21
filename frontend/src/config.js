@@ -10,11 +10,23 @@ const isLocalDev =
   typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL !== undefined
-  ? process.env.REACT_APP_API_BASE_URL
-  : isLocalDev
-    ? 'http://localhost:8000'
-    : '';
+const configuredApiBase = (process.env.REACT_APP_API_BASE_URL || '').trim();
+
+const normalizeApiBase = (value) => {
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  return `https://${value}`;
+};
+
+const normalizedConfiguredApiBase = normalizeApiBase(configuredApiBase);
+const pointsToLocalhost = /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalizedConfiguredApiBase);
+
+// Safety guard:
+// If build-time env accidentally sets localhost in a production deployment,
+// force relative URLs so nginx can proxy /api/ correctly.
+const API_BASE = normalizedConfiguredApiBase
+  ? (!isLocalDev && pointsToLocalhost ? '' : normalizedConfiguredApiBase)
+  : (isLocalDev ? 'http://localhost:8000' : '');
 
 const DEFAULT_AVATAR = process.env.REACT_APP_DEFAULT_AVATAR_URL || 'https://via.placeholder.com/150';
 
