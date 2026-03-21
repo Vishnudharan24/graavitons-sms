@@ -9,9 +9,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: DATABASE_URL
-        fromDatabase:
-          name: graavitons-db
-          property: connectionString
+        sync: false
       - key: DB_SSLMODE
         value: require
       - key: CORS_ORIGINS
@@ -41,7 +39,3 @@ services:
         source: /*
         destination: /index.html
 
-databases:
-  - name: graavitons-db
-    databaseName: graavitons_db
-    user: graav_user
