@@ -143,6 +143,19 @@
   margin: 0 0 16px;
 }
 
+/* Recharts text visibility */
+.batch-performance .recharts-cartesian-axis-tick-value,
+.batch-performance .recharts-polar-angle-axis text,
+.batch-performance .recharts-polar-radius-axis text,
+.batch-performance .recharts-legend-item-text {
+  fill: #1f2937 !important;
+}
+
+.batch-performance .recharts-tooltip-label,
+.batch-performance .recharts-tooltip-item {
+  color: #1f2937 !important;
+}
+
 /* ── Rankings ── */
 .perf-rankings {
   display: grid;

@@ -28,6 +28,30 @@ const displayMarkWithTotal = (obtained, total, fallback = '-') => {
   return `${shownObtained}/${total}`;
 };
 
+const toPercentage = (obtained, total) => {
+  const obtainedNum = parseNumericMark(obtained);
+  const totalNum = parseNumericMark(total);
+  if (obtainedNum === null || totalNum === null || totalNum <= 0) return null;
+  return Number(((obtainedNum * 100) / totalNum).toFixed(1));
+};
+
+const chartAxisStyle = {
+  tick: { fontSize: 12, fill: '#2d3748' },
+  axisLine: { stroke: '#94a3b8' },
+  tickLine: { stroke: '#94a3b8' }
+};
+
+const chartTooltipStyle = {
+  contentStyle: {
+    borderRadius: '8px',
+    border: '1px solid #cbd5e1',
+    color: '#1e293b',
+    fontSize: '12px'
+  },
+  itemStyle: { color: '#1e293b' },
+  labelStyle: { color: '#334155', fontWeight: 600 }
+};
+
 const StudentProfile = ({ student, batchStats, onBack }) => {
   const [activeTab, setActiveTab] = useState('personal');
   const [loading, setLoading] = useState(true);
@@ -258,54 +282,93 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
   // Build performance trend from filtered daily tests
   const buildPerformanceTrend = () => {
     if (!filteredDailyTests || filteredDailyTests.length === 0) return [];
+    const hasDailyTotals = filteredDailyTests.some(test => parseNumericMark(test.subject_total_marks ?? test.test_total_marks) !== null);
     const byDate = {};
     filteredDailyTests.forEach(test => {
       const d = test.test_date || 'Unknown';
       if (!byDate[d]) byDate[d] = { marks: [], classAvg: [] };
-      const numMark = parseNumericMark(test.marks);
-      const numAvg = parseNumericMark(test.class_avg);
+      const effectiveTotal = test.subject_total_marks ?? test.test_total_marks;
+      const numMark = hasDailyTotals
+        ? (toPercentage(test.marks, effectiveTotal) ?? parseNumericMark(test.marks))
+        : parseNumericMark(test.marks);
+      const numAvg = hasDailyTotals
+        ? (toPercentage(test.class_avg, effectiveTotal) ?? parseNumericMark(test.class_avg))
+        : parseNumericMark(test.class_avg);
       if (numMark !== null) byDate[d].marks.push(numMark);
       if (numAvg !== null) byDate[d].classAvg.push(numAvg);
     });
     return Object.entries(byDate).sort().map(([date, data]) => ({
       date: new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
       score: data.marks.length > 0 ? Math.round(data.marks.reduce((a, b) => a + b, 0) / data.marks.length) : null,
-      classAvg: data.classAvg.length > 0 ? Math.round(data.classAvg.reduce((a, b) => a + b, 0) / data.classAvg.length) : null
+      classAvg: data.classAvg.length > 0 ? Math.round(data.classAvg.reduce((a, b) => a + b, 0) / data.classAvg.length) : null,
+      unit: hasDailyTotals ? '%' : 'marks'
     }));
   };
 
   // Build mock test chart data from filtered mock tests
   const buildMockTestChartData = () => {
     if (!filteredMockTests || filteredMockTests.length === 0) return [];
+    const hasMockSubjectTotals = filteredMockTests.some(test =>
+      parseNumericMark(test.maths_total_marks) !== null ||
+      parseNumericMark(test.physics_total_marks) !== null ||
+      parseNumericMark(test.chemistry_total_marks) !== null ||
+      parseNumericMark(test.biology_total_marks) !== null
+    );
+
+    const getSubjectValue = (obtained, total) => {
+      if (!hasMockSubjectTotals) return parseNumericMark(obtained) ?? 0;
+      return toPercentage(obtained, total) ?? (parseNumericMark(obtained) ?? 0);
+    };
+
     return filteredMockTests.map((test, idx) => ({
       exam: `Mock ${idx + 1} (${test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''})`,
-      physics: parseNumericMark(test.physics_marks) ?? 0,
-      chemistry: parseNumericMark(test.chemistry_marks) ?? 0,
-      biology: parseNumericMark(test.biology_marks) ?? 0,
-      maths: parseNumericMark(test.maths_marks) ?? 0,
-      total: parseNumericMark(test.total_marks) ?? 0
+      physics: getSubjectValue(test.physics_marks, test.physics_total_marks),
+      chemistry: getSubjectValue(test.chemistry_marks, test.chemistry_total_marks),
+      biology: getSubjectValue(test.biology_marks, test.biology_total_marks),
+      maths: getSubjectValue(test.maths_marks, test.maths_total_marks),
+      total: getSubjectValue(test.total_marks, test.test_total_marks),
+      unit: hasMockSubjectTotals ? '%' : 'marks'
     }));
   };
 
   const buildMockTrendData = () => {
     if (!filteredMockTests || filteredMockTests.length === 0) return [];
+    const hasMockTotal = filteredMockTests.some(test => parseNumericMark(test.test_total_marks) !== null);
     return filteredMockTests.map((test, idx) => ({
       exam: `Mock ${idx + 1}`,
       date: test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-',
-      total: parseNumericMark(test.total_marks) ?? 0,
-      classAvg: parseNumericMark(test.class_avg_total) ?? 0,
-      topScore: parseNumericMark(test.top_score_total) ?? 0
+      total: hasMockTotal
+        ? (toPercentage(test.total_marks, test.test_total_marks) ?? (parseNumericMark(test.total_marks) ?? 0))
+        : (parseNumericMark(test.total_marks) ?? 0),
+      classAvg: hasMockTotal
+        ? (toPercentage(test.class_avg_total, test.test_total_marks) ?? (parseNumericMark(test.class_avg_total) ?? 0))
+        : (parseNumericMark(test.class_avg_total) ?? 0),
+      topScore: hasMockTotal
+        ? (toPercentage(test.top_score_total, test.test_total_marks) ?? (parseNumericMark(test.top_score_total) ?? 0))
+        : (parseNumericMark(test.top_score_total) ?? 0),
+      unit: hasMockTotal ? '%' : 'marks'
     }));
   };
 
   const buildLatestMockSubjectShare = () => {
     if (!filteredMockTests || filteredMockTests.length === 0) return [];
     const lastMock = filteredMockTests[filteredMockTests.length - 1];
+    const hasMockSubjectTotals =
+      parseNumericMark(lastMock.maths_total_marks) !== null ||
+      parseNumericMark(lastMock.physics_total_marks) !== null ||
+      parseNumericMark(lastMock.chemistry_total_marks) !== null ||
+      parseNumericMark(lastMock.biology_total_marks) !== null;
+
+    const getLatestValue = (obtained, total) => {
+      if (!hasMockSubjectTotals) return parseNumericMark(obtained) ?? 0;
+      return toPercentage(obtained, total) ?? (parseNumericMark(obtained) ?? 0);
+    };
+
     const rows = [
-      { name: 'Maths', value: parseNumericMark(lastMock.maths_marks) ?? 0, fill: '#FFA500' },
-      { name: 'Physics', value: parseNumericMark(lastMock.physics_marks) ?? 0, fill: '#FF6B9D' },
-      { name: 'Chemistry', value: parseNumericMark(lastMock.chemistry_marks) ?? 0, fill: '#4A90E2' },
-      { name: 'Biology', value: parseNumericMark(lastMock.biology_marks) ?? 0, fill: '#00D9C0' }
+      { name: 'Maths', value: getLatestValue(lastMock.maths_marks, lastMock.maths_total_marks), fill: '#FFA500' },
+      { name: 'Physics', value: getLatestValue(lastMock.physics_marks, lastMock.physics_total_marks), fill: '#FF6B9D' },
+      { name: 'Chemistry', value: getLatestValue(lastMock.chemistry_marks, lastMock.chemistry_total_marks), fill: '#4A90E2' },
+      { name: 'Biology', value: getLatestValue(lastMock.biology_marks, lastMock.biology_total_marks), fill: '#00D9C0' }
     ];
     return rows.filter(r => r.value > 0);
   };
@@ -919,9 +982,15 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                       <ResponsiveContainer width="100%" height={300}>
                         <LineChart data={performanceTrend} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="date" />
-                          <YAxis />
-                          <Tooltip />
+                          <XAxis dataKey="date" {...chartAxisStyle} />
+                          <YAxis {...chartAxisStyle} />
+                          <Tooltip
+                            {...chartTooltipStyle}
+                            formatter={(value, name, payload) => {
+                              const unit = payload?.payload?.unit || 'marks';
+                              return [unit === '%' ? `${value}%` : value, name];
+                            }}
+                          />
                           <Legend />
                           <Line type="monotone" dataKey="score" stroke="#5b5fc7" strokeWidth={3} name="Your Score" dot={{ r: 5 }} />
                           <Line type="monotone" dataKey="classAvg" stroke="#a0aec0" strokeWidth={2} strokeDasharray="5 5" name="Class Average" dot={{ r: 3 }} />
@@ -932,9 +1001,15 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                       <ResponsiveContainer width="100%" height={300}>
                         <AreaChart data={performanceTrend} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="date" />
-                          <YAxis />
-                          <Tooltip />
+                          <XAxis dataKey="date" {...chartAxisStyle} />
+                          <YAxis {...chartAxisStyle} />
+                          <Tooltip
+                            {...chartTooltipStyle}
+                            formatter={(value, name, payload) => {
+                              const unit = payload?.payload?.unit || 'marks';
+                              return [unit === '%' ? `${value}%` : value, name];
+                            }}
+                          />
                           <Legend />
                           <Area type="monotone" dataKey="score" stroke="#5b5fc7" fill="#5b5fc733" strokeWidth={2} name="Your Score" />
                           <Area type="monotone" dataKey="classAvg" stroke="#a0aec0" fill="#a0aec033" strokeWidth={2} name="Class Average" />
@@ -945,9 +1020,15 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                       <ResponsiveContainer width="100%" height={300}>
                         <BarChart data={performanceTrend} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="date" />
-                          <YAxis />
-                          <Tooltip />
+                          <XAxis dataKey="date" {...chartAxisStyle} />
+                          <YAxis {...chartAxisStyle} />
+                          <Tooltip
+                            {...chartTooltipStyle}
+                            formatter={(value, name, payload) => {
+                              const unit = payload?.payload?.unit || 'marks';
+                              return [unit === '%' ? `${value}%` : value, name];
+                            }}
+                          />
                           <Legend />
                           <Bar dataKey="score" fill="#5b5fc7" name="Your Score" radius={[4, 4, 0, 0]} />
                           <Bar dataKey="classAvg" fill="#a0aec0" name="Class Average" radius={[4, 4, 0, 0]} />
@@ -999,9 +1080,15 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                   <ResponsiveContainer width="100%" height={350}>
                     <BarChart data={mockTestChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="exam" />
-                      <YAxis />
-                      <Tooltip />
+                      <XAxis dataKey="exam" {...chartAxisStyle} angle={-20} textAnchor="end" height={70} />
+                      <YAxis {...chartAxisStyle} />
+                      <Tooltip
+                        {...chartTooltipStyle}
+                        formatter={(value, name, payload) => {
+                          const unit = payload?.payload?.unit || 'marks';
+                          return [unit === '%' ? `${value}%` : value, name];
+                        }}
+                      />
                       <Legend />
                       <Bar dataKey="physics" fill="#FF6B9D" name="Physics" />
                       <Bar dataKey="chemistry" fill="#4A90E2" name="Chemistry" />
@@ -1015,9 +1102,15 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                   <ResponsiveContainer width="100%" height={350}>
                     <LineChart data={mockTrendData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="exam" />
-                      <YAxis />
-                      <Tooltip />
+                      <XAxis dataKey="exam" {...chartAxisStyle} />
+                      <YAxis {...chartAxisStyle} />
+                      <Tooltip
+                        {...chartTooltipStyle}
+                        formatter={(value, name, payload) => {
+                          const unit = payload?.payload?.unit || 'marks';
+                          return [unit === '%' ? `${value}%` : value, name];
+                        }}
+                      />
                       <Legend />
                       <Line type="monotone" dataKey="total" stroke="#5b5fc7" strokeWidth={3} name="Your Total" dot={{ r: 4 }} />
                       <Line type="monotone" dataKey="classAvg" stroke="#38b2ac" strokeWidth={2} name="Class Average" dot={{ r: 3 }} />
@@ -1030,9 +1123,9 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                   <ResponsiveContainer width="100%" height={350}>
                     <RadarChart data={latestMockSubjectShare}>
                       <PolarGrid />
-                      <PolarAngleAxis dataKey="name" />
+                      <PolarAngleAxis dataKey="name" tick={{ fill: '#2d3748', fontSize: 12 }} />
                       <PolarRadiusAxis />
-                      <Tooltip />
+                      <Tooltip {...chartTooltipStyle} formatter={(value) => [`${value}`, 'Score']} />
                       <Radar dataKey="value" name="Marks" stroke="#5b5fc7" fill="#5b5fc7" fillOpacity={0.35} />
                     </RadarChart>
                   </ResponsiveContainer>
@@ -1041,7 +1134,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                 {mockChartType === 'pie' && latestMockSubjectShare.length > 0 && (
                   <ResponsiveContainer width="100%" height={350}>
                     <PieChart>
-                      <Tooltip />
+                      <Tooltip {...chartTooltipStyle} formatter={(value) => [`${value}`, 'Score']} />
                       <Legend />
                       <Pie
                         data={latestMockSubjectShare}

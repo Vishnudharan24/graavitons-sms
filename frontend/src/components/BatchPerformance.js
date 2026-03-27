@@ -11,6 +11,23 @@ import './BatchPerformance.css';
 const COLORS = ['#5b5fc7', '#48bb78', '#ed8936', '#e53e3e', '#38b2ac', '#d69e2e'];
 const DIST_COLORS = ['#e53e3e', '#ed8936', '#ecc94b', '#48bb78', '#5b5fc7', '#38b2ac', '#9f7aea', '#d69e2e'];
 
+const AXIS_STYLE = {
+  tick: { fontSize: 12, fill: '#2d3748' },
+  axisLine: { stroke: '#94a3b8' },
+  tickLine: { stroke: '#94a3b8' }
+};
+
+const TOOLTIP_STYLE = {
+  contentStyle: {
+    borderRadius: '8px',
+    border: '1px solid #cbd5e1',
+    color: '#1e293b',
+    fontSize: '12px'
+  },
+  itemStyle: { color: '#1e293b' },
+  labelStyle: { color: '#334155', fontWeight: 600 }
+};
+
 const BatchPerformance = ({ batch }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -205,8 +222,8 @@ const BatchPerformance = ({ batch }) => {
         {showDaily && (
           <>
             <div className="perf-stat-card accent-blue">
-              <h4>Daily Test Avg</h4>
-              <p className="stat-value">{daily_stats.avg_score}</p>
+              <h4>Daily Test Avg %</h4>
+              <p className="stat-value">{daily_stats.avg_score}%</p>
             </div>
             {/* <div className="perf-stat-card accent-green">
               <h4>Daily Top Score</h4>
@@ -221,12 +238,12 @@ const BatchPerformance = ({ batch }) => {
         {showMock && (
           <>
             <div className="perf-stat-card accent-purple">
-              <h4>Mock Test Avg</h4>
-              <p className="stat-value">{mock_stats.avg_score}</p>
+              <h4>Mock Test Avg %</h4>
+              <p className="stat-value">{mock_stats.avg_score}%</p>
             </div>
             <div className="perf-stat-card accent-teal">
-              <h4>Mock Top Score</h4>
-              <p className="stat-value">{mock_stats.top_score}</p>
+              <h4>Mock Top Score %</h4>
+              <p className="stat-value">{mock_stats.top_score}%</p>
             </div>
             <div className="perf-stat-card accent-yellow">
               <h4>Mock Tests</h4>
@@ -254,25 +271,25 @@ const BatchPerformance = ({ batch }) => {
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={daily_trend}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} angle={-30} textAnchor="end" height={60} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip />
+                  <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
+                  <YAxis {...AXIS_STYLE} />
+                  <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
                   <Legend />
-                  <Line type="monotone" dataKey="avg" name="Average" stroke="#5b5fc7" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="top" name="Top Score" stroke="#48bb78" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
-                  <Line type="monotone" dataKey="low" name="Lowest" stroke="#e53e3e" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                  <Line type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                  <Line type="monotone" dataKey="low" name="Lowest %" stroke="#e53e3e" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
               <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={daily_trend}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} angle={-30} textAnchor="end" height={60} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip />
+                  <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
+                  <YAxis {...AXIS_STYLE} />
+                  <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
                   <Legend />
-                  <Area type="monotone" dataKey="avg" name="Average" stroke="#5b5fc7" fill="#5b5fc733" strokeWidth={2} />
-                  <Area type="monotone" dataKey="top" name="Top Score" stroke="#48bb78" fill="#48bb7833" strokeWidth={1.5} />
+                  <Area type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" fill="#5b5fc733" strokeWidth={2} />
+                  <Area type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" fill="#48bb7833" strokeWidth={1.5} />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -287,25 +304,25 @@ const BatchPerformance = ({ batch }) => {
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={mock_trend}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} angle={-30} textAnchor="end" height={60} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip />
+                  <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
+                  <YAxis {...AXIS_STYLE} />
+                  <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
                   <Legend />
-                  <Line type="monotone" dataKey="avg" name="Average" stroke="#5b5fc7" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="top" name="Top Score" stroke="#48bb78" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
-                  <Line type="monotone" dataKey="low" name="Lowest" stroke="#e53e3e" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                  <Line type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                  <Line type="monotone" dataKey="low" name="Lowest %" stroke="#e53e3e" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
               <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={mock_trend}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} angle={-30} textAnchor="end" height={60} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip />
+                  <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
+                  <YAxis {...AXIS_STYLE} />
+                  <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
                   <Legend />
-                  <Area type="monotone" dataKey="avg" name="Average" stroke="#5b5fc7" fill="#5b5fc733" strokeWidth={2} />
-                  <Area type="monotone" dataKey="top" name="Top Score" stroke="#48bb78" fill="#48bb7833" strokeWidth={1.5} />
+                  <Area type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" fill="#5b5fc733" strokeWidth={2} />
+                  <Area type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" fill="#48bb7833" strokeWidth={1.5} />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -320,24 +337,24 @@ const BatchPerformance = ({ batch }) => {
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={filteredSubjectChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="subject" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip />
+                  <XAxis dataKey="subject" {...AXIS_STYLE} />
+                  <YAxis {...AXIS_STYLE} />
+                  <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
                   <Legend />
-                  {showDaily && <Bar dataKey="Daily Avg" fill="#5b5fc7" radius={[4, 4, 0, 0]} />}
-                  {showMock && <Bar dataKey="Mock Avg" fill="#48bb78" radius={[4, 4, 0, 0]} />}
+                  {showDaily && <Bar dataKey="Daily Avg" name="Daily Avg %" fill="#5b5fc7" radius={[4, 4, 0, 0]} />}
+                  {showMock && <Bar dataKey="Mock Avg" name="Mock Avg %" fill="#48bb78" radius={[4, 4, 0, 0]} />}
                 </BarChart>
               </ResponsiveContainer>
             ) : (
               <ResponsiveContainer width="100%" height={300}>
                 <RadarChart data={filteredSubjectChartData}>
                   <PolarGrid />
-                  <PolarAngleAxis dataKey="subject" />
+                  <PolarAngleAxis dataKey="subject" tick={{ fill: '#2d3748', fontSize: 12 }} />
                   <PolarRadiusAxis />
-                  <Tooltip />
+                  <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
                   <Legend />
-                  {showDaily && <Radar dataKey="Daily Avg" stroke="#5b5fc7" fill="#5b5fc7" fillOpacity={0.35} />}
-                  {showMock && <Radar dataKey="Mock Avg" stroke="#48bb78" fill="#48bb78" fillOpacity={0.25} />}
+                  {showDaily && <Radar dataKey="Daily Avg" name="Daily Avg %" stroke="#5b5fc7" fill="#5b5fc7" fillOpacity={0.35} />}
+                  {showMock && <Radar dataKey="Mock Avg" name="Mock Avg %" stroke="#48bb78" fill="#48bb78" fillOpacity={0.25} />}
                 </RadarChart>
               </ResponsiveContainer>
             )}
@@ -352,9 +369,9 @@ const BatchPerformance = ({ batch }) => {
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={daily_distribution}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="range" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                  <Tooltip />
+                  <XAxis dataKey="range" {...AXIS_STYLE} />
+                  <YAxis {...AXIS_STYLE} allowDecimals={false} />
+                  <Tooltip {...TOOLTIP_STYLE} />
                   <Bar dataKey="count" name="Students" radius={[4, 4, 0, 0]}>
                     {daily_distribution.map((_, i) => (
                       <Cell key={i} fill={DIST_COLORS[i % DIST_COLORS.length]} />
@@ -366,9 +383,9 @@ const BatchPerformance = ({ batch }) => {
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={daily_distribution}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="range" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                  <Tooltip />
+                  <XAxis dataKey="range" {...AXIS_STYLE} />
+                  <YAxis {...AXIS_STYLE} allowDecimals={false} />
+                  <Tooltip {...TOOLTIP_STYLE} />
                   <Line type="monotone" dataKey="count" name="Students" stroke="#5b5fc7" strokeWidth={3} dot={{ r: 4 }} />
                 </LineChart>
               </ResponsiveContainer>
@@ -383,9 +400,9 @@ const BatchPerformance = ({ batch }) => {
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={mock_distribution}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="range" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                  <Tooltip />
+                  <XAxis dataKey="range" {...AXIS_STYLE} />
+                  <YAxis {...AXIS_STYLE} allowDecimals={false} />
+                  <Tooltip {...TOOLTIP_STYLE} />
                   <Bar dataKey="count" name="Students" radius={[4, 4, 0, 0]}>
                     {mock_distribution.map((_, i) => (
                       <Cell key={i} fill={DIST_COLORS[i % DIST_COLORS.length]} />
@@ -397,9 +414,9 @@ const BatchPerformance = ({ batch }) => {
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={mock_distribution}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="range" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                  <Tooltip />
+                  <XAxis dataKey="range" {...AXIS_STYLE} />
+                  <YAxis {...AXIS_STYLE} allowDecimals={false} />
+                  <Tooltip {...TOOLTIP_STYLE} />
                   <Line type="monotone" dataKey="count" name="Students" stroke="#38b2ac" strokeWidth={3} dot={{ r: 4 }} />
                 </LineChart>
               </ResponsiveContainer>
@@ -420,7 +437,7 @@ const BatchPerformance = ({ batch }) => {
                   <th>Student</th>
                   <th>Daily Avg</th>
                   <th>Mock Avg</th>
-                  <th>Overall</th>
+                  <th>Overall %</th>
                 </tr>
               </thead>
               <tbody>
@@ -431,9 +448,9 @@ const BatchPerformance = ({ batch }) => {
                       <span className="student-name">{s.student_name}</span>
                       <span className="student-id">{s.student_id}</span>
                     </td>
-                    <td>{s.daily_avg != null ? s.daily_avg : '—'}</td>
-                    <td>{s.mock_avg != null ? s.mock_avg : '—'}</td>
-                    <td className="overall-score">{s.overall_avg != null ? s.overall_avg : '—'}</td>
+                    <td>{s.daily_avg != null ? `${s.daily_avg}%` : '—'}</td>
+                    <td>{s.mock_avg != null ? `${s.mock_avg}%` : '—'}</td>
+                    <td className="overall-score">{s.overall_avg != null ? `${s.overall_avg}%` : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -451,7 +468,7 @@ const BatchPerformance = ({ batch }) => {
                   <th>Student</th>
                   <th>Daily Avg</th>
                   <th>Mock Avg</th>
-                  <th>Overall</th>
+                  <th>Overall %</th>
                 </tr>
               </thead>
               <tbody>
@@ -462,9 +479,9 @@ const BatchPerformance = ({ batch }) => {
                       <span className="student-name">{s.student_name}</span>
                       <span className="student-id">{s.student_id}</span>
                     </td>
-                    <td>{s.daily_avg != null ? s.daily_avg : '—'}</td>
-                    <td>{s.mock_avg != null ? s.mock_avg : '—'}</td>
-                    <td className="overall-score">{s.overall_avg != null ? s.overall_avg : '—'}</td>
+                    <td>{s.daily_avg != null ? `${s.daily_avg}%` : '—'}</td>
+                    <td>{s.mock_avg != null ? `${s.mock_avg}%` : '—'}</td>
+                    <td className="overall-score">{s.overall_avg != null ? `${s.overall_avg}%` : '—'}</td>
                   </tr>
                 ))}
               </tbody>

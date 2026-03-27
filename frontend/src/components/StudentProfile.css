@@ -295,6 +295,19 @@
   border-radius: 8px;
 }
 
+/* Recharts text visibility */
+.student-profile .recharts-cartesian-axis-tick-value,
+.student-profile .recharts-polar-angle-axis text,
+.student-profile .recharts-polar-radius-axis text,
+.student-profile .recharts-legend-item-text {
+  fill: #1f2937 !important;
+}
+
+.student-profile .recharts-tooltip-label,
+.student-profile .recharts-tooltip-item {
+  color: #1f2937 !important;
+}
+
 .chart-placeholder h4 {
   color: #2c3e50;
   margin-bottom: 25px;
