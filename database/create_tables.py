@@ -225,6 +225,8 @@ def create_tables():
                 subject VARCHAR(100),
                 unit_name VARCHAR(100),
                 total_marks VARCHAR(20),
+                subject_total_marks INT,
+                test_total_marks INT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
@@ -242,6 +244,11 @@ def create_tables():
                 physics_marks VARCHAR(20),
                 biology_marks VARCHAR(20),
                 chemistry_marks VARCHAR(20),
+                maths_total_marks INT,
+                physics_total_marks INT,
+                chemistry_total_marks INT,
+                biology_total_marks INT,
+                test_total_marks INT,
                 maths_unit_names TEXT[],
                 chemistry_unit_names TEXT[],
                 biology_unit_names TEXT[],

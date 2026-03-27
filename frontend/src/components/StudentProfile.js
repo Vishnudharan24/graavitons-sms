@@ -22,6 +22,12 @@ const displayMark = (val, fallback = '-') => {
   return val;
 };
 
+const displayMarkWithTotal = (obtained, total, fallback = '-') => {
+  const shownObtained = displayMark(obtained, fallback);
+  if (total === null || total === undefined || total === '') return shownObtained;
+  return `${shownObtained}/${total}`;
+};
+
 const StudentProfile = ({ student, batchStats, onBack }) => {
   const [activeTab, setActiveTab] = useState('personal');
   const [loading, setLoading] = useState(true);
@@ -464,14 +470,14 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
 
     // ===== Sheet 3: Daily Test Performance =====
     if (dailyTests.length > 0) {
-      const dailyHeader = ['Date', 'Subject', 'Unit Name', 'Marks', 'Class Avg', 'Top Score'];
+      const dailyHeader = ['Date', 'Subject', 'Unit Name', 'Marks (Obtained/Total)', 'Class Avg', 'Top Score'];
       const dailyRows = dailyTests.map(test => [
         test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN') : '-',
         test.subject || '-',
         test.unit_name || '-',
-        displayMark(test.marks, 0),
-        displayMark(test.class_avg, 0),
-        displayMark(test.top_score, 0)
+        displayMarkWithTotal(test.marks, test.subject_total_marks ?? test.test_total_marks, 0),
+        displayMarkWithTotal(test.class_avg, test.subject_total_marks ?? test.test_total_marks, 0),
+        displayMarkWithTotal(test.top_score, test.subject_total_marks ?? test.test_total_marks, 0)
       ]);
       const wsDaily = XLSX.utils.aoa_to_sheet([['DAILY TEST PERFORMANCE'], [], dailyHeader, ...dailyRows]);
       wsDaily['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 28 }, { wch: 10 }, { wch: 12 }, { wch: 12 }];
@@ -480,16 +486,16 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
 
     // ===== Sheet 4: Mock Test Performance =====
     if (mockTests.length > 0) {
-      const mockHeader = ['Date', 'Maths', 'Physics', 'Chemistry', 'Biology', 'Total', 'Class Avg', 'Top Score'];
+      const mockHeader = ['Date', 'Maths (Obtained/Total)', 'Physics (Obtained/Total)', 'Chemistry (Obtained/Total)', 'Biology (Obtained/Total)', 'Total (Obtained/Total)', 'Class Avg', 'Top Score'];
       const mockRows = mockTests.map(test => [
         test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN') : '-',
-        displayMark(test.maths_marks, 0),
-        displayMark(test.physics_marks, 0),
-        displayMark(test.chemistry_marks, 0),
-        displayMark(test.biology_marks, 0),
-        displayMark(test.total_marks, 0),
-        displayMark(test.class_avg_total, 0),
-        displayMark(test.top_score_total, 0)
+        displayMarkWithTotal(test.maths_marks, test.maths_total_marks, 0),
+        displayMarkWithTotal(test.physics_marks, test.physics_total_marks, 0),
+        displayMarkWithTotal(test.chemistry_marks, test.chemistry_total_marks, 0),
+        displayMarkWithTotal(test.biology_marks, test.biology_total_marks, 0),
+        displayMarkWithTotal(test.total_marks, test.test_total_marks, 0),
+        displayMarkWithTotal(test.class_avg_total, test.test_total_marks, 0),
+        displayMarkWithTotal(test.top_score_total, test.test_total_marks, 0)
       ]);
       const wsMock = XLSX.utils.aoa_to_sheet([['MOCK TEST PERFORMANCE'], [], mockHeader, ...mockRows]);
       wsMock['!cols'] = [{ wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 }];
@@ -875,7 +881,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                         <th>Date</th>
                         <th>Subject</th>
                         <th>Unit Covered</th>
-                        <th>Marks</th>
+                        <th>Marks (Obtained/Total)</th>
                         <th>Class Avg</th>
                         <th>Top Score</th>
                       </tr>
@@ -886,9 +892,9 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                           <td>{test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN') : 'N/A'}</td>
                           <td className="exam-name">{test.subject || 'N/A'}</td>
                           <td>{test.unit_name || 'N/A'}</td>
-                          <td><strong>{displayMark(test.marks, 0)}</strong></td>
-                          <td>{displayMark(test.class_avg, 0)}</td>
-                          <td className="top-score">{displayMark(test.top_score, 0)}</td>
+                          <td><strong>{displayMarkWithTotal(test.marks, test.subject_total_marks ?? test.test_total_marks, 0)}</strong></td>
+                          <td>{displayMarkWithTotal(test.class_avg, test.subject_total_marks ?? test.test_total_marks, 0)}</td>
+                          <td className="top-score">{displayMarkWithTotal(test.top_score, test.subject_total_marks ?? test.test_total_marks, 0)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1070,7 +1076,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                         <th>Physics</th>
                         <th>Chemistry</th>
                         <th>Biology</th>
-                        <th>Total</th>
+                        <th>Total (Obtained/Total)</th>
                         <th>Class Avg</th>
                         <th>Top Score</th>
                       </tr>
@@ -1079,13 +1085,13 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                       {filteredMockTests.map((exam, index) => (
                         <tr key={exam.test_id || index}>
                           <td>{exam.test_date ? new Date(exam.test_date).toLocaleDateString('en-IN') : 'N/A'}</td>
-                          <td>{displayMark(exam.maths_marks, 0)}</td>
-                          <td>{displayMark(exam.physics_marks, 0)}</td>
-                          <td>{displayMark(exam.chemistry_marks, 0)}</td>
-                          <td>{displayMark(exam.biology_marks, 0)}</td>
-                          <td><strong>{displayMark(exam.total_marks, 0)}</strong></td>
-                          <td>{displayMark(exam.class_avg_total, 0)}</td>
-                          <td className="top-score">{displayMark(exam.top_score_total, 0)}</td>
+                          <td>{displayMarkWithTotal(exam.maths_marks, exam.maths_total_marks, 0)}</td>
+                          <td>{displayMarkWithTotal(exam.physics_marks, exam.physics_total_marks, 0)}</td>
+                          <td>{displayMarkWithTotal(exam.chemistry_marks, exam.chemistry_total_marks, 0)}</td>
+                          <td>{displayMarkWithTotal(exam.biology_marks, exam.biology_total_marks, 0)}</td>
+                          <td><strong>{displayMarkWithTotal(exam.total_marks, exam.test_total_marks, 0)}</strong></td>
+                          <td>{displayMarkWithTotal(exam.class_avg_total, exam.test_total_marks, 0)}</td>
+                          <td className="top-score">{displayMarkWithTotal(exam.top_score_total, exam.test_total_marks, 0)}</td>
                         </tr>
                       ))}
                     </tbody>

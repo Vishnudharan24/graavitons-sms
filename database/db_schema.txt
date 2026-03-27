@@ -129,7 +129,9 @@ CREATE TABLE daily_test (
     test_date DATE,
     subject VARCHAR(100),
     unit_name VARCHAR(100),
-    total_marks VARCHAR(20), -- VARCHAR to support 'A' (absent), '-' (not applicable), negative marks
+    total_marks VARCHAR(20), -- Student obtained mark
+    subject_total_marks INT, -- Maximum mark for the subject in this test
+    test_total_marks INT, -- Maximum total mark for the test
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -144,6 +146,11 @@ CREATE TABLE mock_test (
     physics_marks VARCHAR(20),
     biology_marks VARCHAR(20),
     chemistry_marks VARCHAR(20),
+    maths_total_marks INT,
+    physics_total_marks INT,
+    chemistry_total_marks INT,
+    biology_total_marks INT,
+    test_total_marks INT,
     -- Handling multivalue units
     maths_unit_names TEXT[],
     chemistry_unit_names TEXT[],

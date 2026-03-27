@@ -5,10 +5,10 @@ import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
 
 const MOCK_SUBJECTS = [
-  { key: 'maths', label: 'Maths', aliases: ['maths', 'mathematics'], marksField: 'mathsMarks', unitField: 'mathsUnitNames' },
-  { key: 'physics', label: 'Physics', aliases: ['physics'], marksField: 'physicsMarks', unitField: 'physicsUnitNames' },
-  { key: 'chemistry', label: 'Chemistry', aliases: ['chemistry'], marksField: 'chemistryMarks', unitField: 'chemistryUnitNames' },
-  { key: 'biology', label: 'Biology', aliases: ['biology'], marksField: 'biologyMarks', unitField: 'biologyUnitNames' }
+  { key: 'maths', label: 'Maths', aliases: ['maths', 'mathematics'], marksField: 'mathsMarks', unitField: 'mathsUnitNames', totalField: 'mathsTotalMarks' },
+  { key: 'physics', label: 'Physics', aliases: ['physics'], marksField: 'physicsMarks', unitField: 'physicsUnitNames', totalField: 'physicsTotalMarks' },
+  { key: 'chemistry', label: 'Chemistry', aliases: ['chemistry'], marksField: 'chemistryMarks', unitField: 'chemistryUnitNames', totalField: 'chemistryTotalMarks' },
+  { key: 'biology', label: 'Biology', aliases: ['biology'], marksField: 'biologyMarks', unitField: 'biologyUnitNames', totalField: 'biologyTotalMarks' }
 ];
 
 const getActiveMockSubjects = (batchSubjects) => {
@@ -38,13 +38,19 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
     examDate: '',
     subject: '',
     unitName: '',
-    totalMarks: '',
+    dailySubjectTotalMarks: '',
+    dailyTestTotalMarks: '',
     examType: '',
     // For mock test
     mathsUnitNames: '',
     physicsUnitNames: '',
     biologyUnitNames: '',
-    chemistryUnitNames: ''
+    chemistryUnitNames: '',
+    mathsTotalMarks: '',
+    physicsTotalMarks: '',
+    chemistryTotalMarks: '',
+    biologyTotalMarks: '',
+    mockTestTotalMarks: ''
   });
 
   // Initialize marks for all students
@@ -76,19 +82,37 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
         setExamData(prev => ({
           ...prev,
           examType: value,
+          dailySubjectTotalMarks: '',
+          dailyTestTotalMarks: '',
           mathsUnitNames: '',
           physicsUnitNames: '',
           biologyUnitNames: '',
-          chemistryUnitNames: ''
+          chemistryUnitNames: '',
+          mathsTotalMarks: '',
+          physicsTotalMarks: '',
+          chemistryTotalMarks: '',
+          biologyTotalMarks: '',
+          mockTestTotalMarks: ''
         }));
       } else if (value === 'mock test') {
         setExamData(prev => ({
           ...prev,
           examType: value,
           subject: '',
-          unitName: ''
+          unitName: '',
+          dailySubjectTotalMarks: '',
+          dailyTestTotalMarks: ''
         }));
       }
+    }
+
+    // Keep daily test total in sync by default for single-subject tests
+    if (name === 'dailySubjectTotalMarks') {
+      setExamData(prev => ({
+        ...prev,
+        dailySubjectTotalMarks: value,
+        dailyTestTotalMarks: value
+      }));
     }
   };
 
@@ -106,7 +130,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
       let apiUrl = '';
       
       if (examData.examType === 'daily test') {
-        const totalMarks = examData.totalMarks || 100;
+        const totalMarks = examData.dailySubjectTotalMarks || 100;
         apiUrl = `${API_BASE}/api/exam/template/daily-test/${batch.batch_id}?total_marks=${totalMarks}`;
       } else if (examData.examType === 'mock test') {
         apiUrl = `${API_BASE}/api/exam/template/mock-test/${batch.batch_id}`;
@@ -255,8 +279,13 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
 
     // Validate based on exam type
     if (examData.examType === 'daily test') {
-      if (!examData.subject || !examData.unitName || !examData.totalMarks) {
+      if (!examData.subject || !examData.unitName || !examData.dailySubjectTotalMarks || !examData.dailyTestTotalMarks) {
         alert('Please fill subject, unit name, and total marks for daily test');
+        return;
+      }
+
+      if (parseInt(examData.dailySubjectTotalMarks, 10) <= 0 || parseInt(examData.dailyTestTotalMarks, 10) <= 0) {
+        alert('Total marks must be greater than 0');
         return;
       }
       
@@ -270,6 +299,19 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
       const hasMissingUnitNames = activeMockSubjects.some(subject => !examData[subject.unitField]);
       if (hasMissingUnitNames) {
         alert('Please fill unit names for all subjects in this batch');
+        return;
+      }
+
+      const hasMissingSubjectTotals = activeMockSubjects.some(subject => !examData[subject.totalField]);
+      if (hasMissingSubjectTotals || !examData.mockTestTotalMarks) {
+        alert('Please fill subject total marks and overall test total marks for mock test');
+        return;
+      }
+
+      const hasInvalidTotals = activeMockSubjects.some(subject => parseInt(examData[subject.totalField], 10) <= 0)
+        || parseInt(examData.mockTestTotalMarks, 10) <= 0;
+      if (hasInvalidTotals) {
+        alert('All total marks must be greater than 0');
         return;
       }
       
@@ -296,7 +338,9 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
           examDate: examData.examDate,
           subject: examData.subject,
           unitName: examData.unitName,
-          totalMarks: parseInt(examData.totalMarks),
+          totalMarks: parseInt(examData.dailySubjectTotalMarks, 10),
+          subjectTotalMarks: parseInt(examData.dailySubjectTotalMarks, 10),
+          testTotalMarks: parseInt(examData.dailyTestTotalMarks, 10),
           examType: examData.examType,
           studentMarks: studentMarks.map(s => ({
             id: s.rollNo,
@@ -314,6 +358,11 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
           physicsUnitNames: activeMockSubjects.some(subject => subject.key === 'physics') ? examData.physicsUnitNames : '',
           chemistryUnitNames: activeMockSubjects.some(subject => subject.key === 'chemistry') ? examData.chemistryUnitNames : '',
           biologyUnitNames: activeMockSubjects.some(subject => subject.key === 'biology') ? examData.biologyUnitNames : '',
+          mathsTotalMarks: activeMockSubjects.some(subject => subject.key === 'maths') ? parseInt(examData.mathsTotalMarks, 10) : null,
+          physicsTotalMarks: activeMockSubjects.some(subject => subject.key === 'physics') ? parseInt(examData.physicsTotalMarks, 10) : null,
+          chemistryTotalMarks: activeMockSubjects.some(subject => subject.key === 'chemistry') ? parseInt(examData.chemistryTotalMarks, 10) : null,
+          biologyTotalMarks: activeMockSubjects.some(subject => subject.key === 'biology') ? parseInt(examData.biologyTotalMarks, 10) : null,
+          testTotalMarks: parseInt(examData.mockTestTotalMarks, 10),
           studentMarks: studentMarks.map(s => ({
             id: s.rollNo,
             mathsMarks: s.mathsMarks,
@@ -446,13 +495,27 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                 </div>
 
                 <div className="form-group">
-                  <label>Total Marks *</label>
+                  <label>Subject Total Marks *</label>
                   <input
                     type="number"
-                    name="totalMarks"
-                    value={examData.totalMarks}
+                    name="dailySubjectTotalMarks"
+                    value={examData.dailySubjectTotalMarks}
                     onChange={handleExamDataChange}
                     placeholder="e.g., 100"
+                    min="1"
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Test Total Marks *</label>
+                  <input
+                    type="number"
+                    name="dailyTestTotalMarks"
+                    value={examData.dailyTestTotalMarks}
+                    onChange={handleExamDataChange}
+                    placeholder="e.g., 100"
+                    min="1"
                     required
                   />
                 </div>
@@ -475,6 +538,32 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     />
                   </div>
                 ))}
+                {activeMockSubjects.map(subject => (
+                  <div className="form-group" key={`${subject.key}-total`}>
+                    <label>{subject.label} Total Marks *</label>
+                    <input
+                      type="number"
+                      name={subject.totalField}
+                      value={examData[subject.totalField]}
+                      onChange={handleExamDataChange}
+                      placeholder={`e.g., ${subject.key === 'maths' ? '100' : '75'}`}
+                      min="1"
+                      required
+                    />
+                  </div>
+                ))}
+                <div className="form-group">
+                  <label>Overall Test Total Marks *</label>
+                  <input
+                    type="number"
+                    name="mockTestTotalMarks"
+                    value={examData.mockTestTotalMarks}
+                    onChange={handleExamDataChange}
+                    placeholder="e.g., 400"
+                    min="1"
+                    required
+                  />
+                </div>
               </>
             )}
           </div>
@@ -512,7 +601,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     <tr>
                       <th>Admission Number</th>
                       <th>Student Name</th>
-                      <th>Marks (out of {examData.totalMarks || '___'})</th>
+                      <th>Marks (out of {examData.dailySubjectTotalMarks || '___'})</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -540,7 +629,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                       <th>Admission Number</th>
                       <th>Student Name</th>
                       {activeMockSubjects.map(subject => (
-                        <th key={subject.key}>{subject.label}</th>
+                        <th key={subject.key}>{subject.label} (out of {examData[subject.totalField] || '___'})</th>
                       ))}
                     </tr>
                   </thead>
@@ -585,11 +674,11 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     type="button"
                     className="btn-download"
                     onClick={handleDownloadFormat}
-                    disabled={!examData.examName || (examData.examType === 'daily test' && !examData.totalMarks)}
+                    disabled={!examData.examName || (examData.examType === 'daily test' && !examData.dailySubjectTotalMarks)}
                   >
                     📥 Download Excel Format
                   </button>
-                  {(!examData.examName || (examData.examType === 'daily test' && !examData.totalMarks)) && (
+                  {(!examData.examName || (examData.examType === 'daily test' && !examData.dailySubjectTotalMarks)) && (
                     <small className="note">Fill exam details first</small>
                   )}
                 </div>

@@ -65,6 +65,8 @@ class DailyTestCreate(BaseModel):
     subject: str
     unitName: str
     totalMarks: int
+    subjectTotalMarks: Optional[int] = None
+    testTotalMarks: Optional[int] = None
     examType: str
     studentMarks: List[DailyTestStudentMark]
 
@@ -87,6 +89,11 @@ class MockTestCreate(BaseModel):
     physicsUnitNames: str
     chemistryUnitNames: str
     biologyUnitNames: str
+    mathsTotalMarks: Optional[int] = None
+    physicsTotalMarks: Optional[int] = None
+    chemistryTotalMarks: Optional[int] = None
+    biologyTotalMarks: Optional[int] = None
+    testTotalMarks: Optional[int] = None
     studentMarks: List[MockTestStudentMark]
 
 
@@ -128,6 +135,8 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
         # Get branch from student (we'll fetch it for each student)
         inserted_count = 0
         failed_students = []
+        subject_total_marks = exam_data.subjectTotalMarks if exam_data.subjectTotalMarks is not None else exam_data.totalMarks
+        test_total_marks = exam_data.testTotalMarks if exam_data.testTotalMarks is not None else subject_total_marks
         
         for student_mark in exam_data.studentMarks:
             try:
@@ -157,9 +166,9 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
                 cursor.execute("""
                     INSERT INTO daily_test (
                         student_id, grade, branch, test_date, 
-                        subject, unit_name, total_marks
+                        subject, unit_name, total_marks, subject_total_marks, test_total_marks
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     student_mark.id,
                     grade,
@@ -167,7 +176,9 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
                     exam_data.examDate,
                     exam_data.subject,
                     exam_data.unitName,
-                    marks
+                    marks,
+                    subject_total_marks,
+                    test_total_marks
                 ))
                 
                 inserted_count += 1
@@ -187,6 +198,8 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
             "subject": exam_data.subject,
             "unit_name": exam_data.unitName,
             "total_marks": exam_data.totalMarks,
+            "subject_total_marks": subject_total_marks,
+            "test_total_marks": test_total_marks,
             "inserted_count": inserted_count,
             "total_students": len(exam_data.studentMarks)
         }
@@ -252,6 +265,15 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
         physics_units = split_units(exam_data.physicsUnitNames) if "physics" in active_subjects else []
         chemistry_units = split_units(exam_data.chemistryUnitNames) if "chemistry" in active_subjects else []
         biology_units = split_units(exam_data.biologyUnitNames) if "biology" in active_subjects else []
+
+        maths_total_marks = exam_data.mathsTotalMarks if "maths" in active_subjects else None
+        physics_total_marks = exam_data.physicsTotalMarks if "physics" in active_subjects else None
+        chemistry_total_marks = exam_data.chemistryTotalMarks if "chemistry" in active_subjects else None
+        biology_total_marks = exam_data.biologyTotalMarks if "biology" in active_subjects else None
+        test_total_marks = exam_data.testTotalMarks
+        if test_total_marks is None:
+            total_parts = [v for v in [maths_total_marks, physics_total_marks, chemistry_total_marks, biology_total_marks] if isinstance(v, int)]
+            test_total_marks = sum(total_parts) if total_parts else None
         
         inserted_count = 0
         failed_students = []
@@ -303,9 +325,11 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
                         student_id, grade, branch, test_date,
                         maths_marks, physics_marks, chemistry_marks, biology_marks,
                         maths_unit_names, physics_unit_names, chemistry_unit_names, biology_unit_names,
-                        total_marks
+                        total_marks,
+                        maths_total_marks, physics_total_marks, chemistry_total_marks, biology_total_marks,
+                        test_total_marks
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     student_mark.id,
                     grade,
@@ -319,7 +343,12 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
                     physics_units,
                     chemistry_units,
                     biology_units,
-                    total_marks
+                    total_marks,
+                    maths_total_marks,
+                    physics_total_marks,
+                    chemistry_total_marks,
+                    biology_total_marks,
+                    test_total_marks
                 ))
                 
                 inserted_count += 1
@@ -348,6 +377,13 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
                 "chemistry": chemistry_units,
                 "biology": biology_units
             },
+            "subject_total_marks": {
+                "maths": maths_total_marks,
+                "physics": physics_total_marks,
+                "chemistry": chemistry_total_marks,
+                "biology": biology_total_marks
+            },
+            "test_total_marks": test_total_marks,
             "inserted_count": inserted_count,
             "total_students": len(exam_data.studentMarks)
         }
@@ -640,6 +676,8 @@ async def get_student_daily_tests(student_id: str, current_user: dict = Depends(
                 subject,
                 unit_name,
                 total_marks,
+                subject_total_marks,
+                test_total_marks,
                 created_at
             FROM daily_test
             WHERE student_id = %s
@@ -659,7 +697,9 @@ async def get_student_daily_tests(student_id: str, current_user: dict = Depends(
                 "subject": test[4],
                 "unit_name": test[5],
                 "total_marks": test[6],
-                "created_at": test[7].isoformat() if test[7] else None
+                "subject_total_marks": test[7],
+                "test_total_marks": test[8],
+                "created_at": test[9].isoformat() if test[9] else None
             })
         
         return {
@@ -708,6 +748,11 @@ async def get_student_mock_tests(student_id: str, current_user: dict = Depends(g
                 chemistry_unit_names,
                 biology_unit_names,
                 total_marks,
+                maths_total_marks,
+                physics_total_marks,
+                chemistry_total_marks,
+                biology_total_marks,
+                test_total_marks,
                 created_at
             FROM mock_test
             WHERE student_id = %s
@@ -733,7 +778,12 @@ async def get_student_mock_tests(student_id: str, current_user: dict = Depends(g
                 "chemistry_unit_names": test[10],
                 "biology_unit_names": test[11],
                 "total_marks": test[12],
-                "created_at": test[13].isoformat() if test[13] else None
+                "maths_total_marks": test[13],
+                "physics_total_marks": test[14],
+                "chemistry_total_marks": test[15],
+                "biology_total_marks": test[16],
+                "test_total_marks": test[17],
+                "created_at": test[18].isoformat() if test[18] else None
             })
         
         return {
@@ -858,7 +908,7 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
         if student_ids:
             cursor.execute("""
                 SELECT dt.student_id, s.student_name, dt.test_date,
-                       dt.subject, dt.unit_name, dt.total_marks
+                      dt.subject, dt.unit_name, dt.total_marks, dt.subject_total_marks, dt.test_total_marks
                 FROM daily_test dt
                 JOIN student s ON s.student_id = dt.student_id
                 WHERE dt.student_id = ANY(%s)
@@ -872,6 +922,8 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
                     "subject": r[3],
                     "unit_name": r[4],
                     "total_marks": r[5],
+                    "subject_total_marks": r[6],
+                    "test_total_marks": r[7],
                 })
 
         # 8. Fetch all mock test records for batch students
@@ -880,7 +932,9 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
             cursor.execute("""
                 SELECT mt.student_id, s.student_name, mt.test_date,
                        mt.maths_marks, mt.physics_marks,
-                       mt.chemistry_marks, mt.biology_marks, mt.total_marks
+                      mt.chemistry_marks, mt.biology_marks, mt.total_marks,
+                      mt.maths_total_marks, mt.physics_total_marks,
+                      mt.chemistry_total_marks, mt.biology_total_marks, mt.test_total_marks
                 FROM mock_test mt
                 JOIN student s ON s.student_id = mt.student_id
                 WHERE mt.student_id = ANY(%s)
@@ -896,6 +950,11 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
                     "chemistry_marks": r[5],
                     "biology_marks": r[6],
                     "total_marks": r[7],
+                    "maths_total_marks": r[8],
+                    "physics_total_marks": r[9],
+                    "chemistry_total_marks": r[10],
+                    "biology_total_marks": r[11],
+                    "test_total_marks": r[12],
                 })
 
         # Build student list
