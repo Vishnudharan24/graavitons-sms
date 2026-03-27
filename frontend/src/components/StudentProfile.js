@@ -24,7 +24,9 @@ const displayMark = (val, fallback = '-') => {
 
 const displayMarkWithTotal = (obtained, total, fallback = '-') => {
   const shownObtained = displayMark(obtained, fallback);
-  if (total === null || total === undefined || total === '') return shownObtained;
+  if (total === null || total === undefined || total === '') {
+    return shownObtained === fallback ? fallback : `${shownObtained}/N/A`;
+  }
   return `${shownObtained}/${total}`;
 };
 

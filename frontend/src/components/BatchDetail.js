@@ -8,6 +8,12 @@ import './BatchDetail.css';
 import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
 
+const formatObtainedWithTotal = (obtained, total) => {
+  if (obtained === null || obtained === undefined || obtained === '') return 'N/A';
+  if (total === null || total === undefined || total === '') return String(obtained);
+  return `${obtained}/${total}`;
+};
+
 const BatchDetail = ({ batch, onBack }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
@@ -257,7 +263,7 @@ const BatchDetail = ({ batch, onBack }) => {
       // ── Sheet 3: Daily Tests ──
       const dailyHeaders = [
         'S.No', 'Admission No', 'Student Name', 'Test Date',
-        'Subject', 'Unit Name', 'Marks Obtained'
+        'Subject', 'Unit Name', 'Marks (Obtained/Total)'
       ];
       const dailyRows = (data.daily_tests || []).map((t, i) => [
         i + 1,
@@ -266,7 +272,7 @@ const BatchDetail = ({ batch, onBack }) => {
         t.test_date || 'N/A',
         t.subject || 'N/A',
         t.unit_name || 'N/A',
-        t.total_marks != null ? t.total_marks : 'N/A',
+        formatObtainedWithTotal(t.total_marks, t.subject_total_marks ?? t.test_total_marks),
       ]);
       const wsDaily = XLSX.utils.aoa_to_sheet([dailyHeaders, ...dailyRows]);
       wsDaily['!cols'] = dailyHeaders.map(() => ({ wch: 18 }));
@@ -275,18 +281,20 @@ const BatchDetail = ({ batch, onBack }) => {
       // ── Sheet 4: Mock Tests ──
       const mockHeaders = [
         'S.No', 'Admission No', 'Student Name', 'Test Date',
-        'Maths', 'Physics', 'Chemistry', 'Biology', 'Total Marks'
+        'Maths (Obtained/Total)', 'Physics (Obtained/Total)',
+        'Chemistry (Obtained/Total)', 'Biology (Obtained/Total)',
+        'Total (Obtained/Total)'
       ];
       const mockRows = (data.mock_tests || []).map((t, i) => [
         i + 1,
         t.student_id,
         t.student_name,
         t.test_date || 'N/A',
-        t.maths_marks != null ? t.maths_marks : 'N/A',
-        t.physics_marks != null ? t.physics_marks : 'N/A',
-        t.chemistry_marks != null ? t.chemistry_marks : 'N/A',
-        t.biology_marks != null ? t.biology_marks : 'N/A',
-        t.total_marks != null ? t.total_marks : 'N/A',
+        formatObtainedWithTotal(t.maths_marks, t.maths_total_marks),
+        formatObtainedWithTotal(t.physics_marks, t.physics_total_marks),
+        formatObtainedWithTotal(t.chemistry_marks, t.chemistry_total_marks),
+        formatObtainedWithTotal(t.biology_marks, t.biology_total_marks),
+        formatObtainedWithTotal(t.total_marks, t.test_total_marks),
       ]);
       const wsMock = XLSX.utils.aoa_to_sheet([mockHeaders, ...mockRows]);
       wsMock['!cols'] = mockHeaders.map(() => ({ wch: 16 }));

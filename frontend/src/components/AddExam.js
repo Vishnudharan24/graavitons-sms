@@ -709,7 +709,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                         <tr>
                           <th>Admission Number</th>
                           <th>Student Name</th>
-                          <th>Marks</th>
+                          <th>Marks (out of {examData.dailySubjectTotalMarks || '___'})</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -717,7 +717,11 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                           <tr key={student.id}>
                             <td>{student.rollNo}</td>
                             <td>{student.name}</td>
-                            <td>{student.marks || '-'}</td>
+                            <td>
+                              {student.marks
+                                ? `${student.marks}/${examData.dailySubjectTotalMarks || '___'}`
+                                : '-'}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -729,7 +733,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                           <th>Admission Number</th>
                           <th>Student Name</th>
                           {activeMockSubjects.map(subject => (
-                            <th key={subject.key}>{subject.label}</th>
+                            <th key={subject.key}>{subject.label} (out of {examData[subject.totalField] || '___'})</th>
                           ))}
                         </tr>
                       </thead>
@@ -739,7 +743,11 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                             <td>{student.rollNo}</td>
                             <td>{student.name}</td>
                             {activeMockSubjects.map(subject => (
-                              <td key={`${student.id}-${subject.key}`}>{student[subject.marksField] || '-'}</td>
+                              <td key={`${student.id}-${subject.key}`}>
+                                {student[subject.marksField]
+                                  ? `${student[subject.marksField]}/${examData[subject.totalField] || '___'}`
+                                  : '-'}
+                              </td>
                             ))}
                           </tr>
                         ))}
