@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import './AddExam.css';
 import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
+import ManageExamMarks from './ManageExamMarks';
 
 const MOCK_SUBJECTS = [
   { key: 'maths', label: 'Maths', aliases: ['maths', 'mathematics'], marksField: 'mathsMarks', unitField: 'mathsUnitNames', totalField: 'mathsTotalMarks' },
@@ -10,6 +11,39 @@ const MOCK_SUBJECTS = [
   { key: 'chemistry', label: 'Chemistry', aliases: ['chemistry'], marksField: 'chemistryMarks', unitField: 'chemistryUnitNames', totalField: 'chemistryTotalMarks' },
   { key: 'biology', label: 'Biology', aliases: ['biology'], marksField: 'biologyMarks', unitField: 'biologyUnitNames', totalField: 'biologyTotalMarks' }
 ];
+
+const SUBJECT_LABEL_MAP = {
+  maths: 'Mathematics',
+  mathematics: 'Mathematics',
+  physics: 'Physics',
+  chemistry: 'Chemistry',
+  biology: 'Biology'
+};
+
+const normalizeSubjectLabel = (value) => {
+  const key = String(value || '').trim().toLowerCase();
+  if (!key) return '';
+  return SUBJECT_LABEL_MAP[key] || key.replace(/\s+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};
+
+const getDailySubjectOptions = (batchSubjects) => {
+  const source = Array.isArray(batchSubjects) && batchSubjects.length > 0
+    ? batchSubjects
+    : ['Physics', 'Chemistry', 'Biology', 'Mathematics'];
+
+  const seen = new Set();
+  const options = [];
+  source.forEach((subject) => {
+    const label = normalizeSubjectLabel(subject);
+    if (!label) return;
+    const key = label.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      options.push(label);
+    }
+  });
+  return options;
+};
 
 const getActiveMockSubjects = (batchSubjects) => {
   if (!Array.isArray(batchSubjects) || batchSubjects.length === 0) {
@@ -31,6 +65,8 @@ const getActiveMockSubjects = (batchSubjects) => {
 
 const AddExam = ({ batch, students, onBack, onSave }) => {
   const activeMockSubjects = getActiveMockSubjects(batch?.subjects);
+  const dailySubjectOptions = getDailySubjectOptions(batch?.subjects);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [examMode, setExamMode] = useState('manual'); // 'manual' or 'excel'
   const [examData, setExamData] = useState({
@@ -271,6 +307,8 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (isSaving) return;
+
     // Validate
     if (!examData.examName || !examData.examDate || !examData.examType) {
       alert('Please fill all required exam details');
@@ -327,6 +365,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
 
     // Prepare data for API call
     try {
+      setIsSaving(true);
       let apiUrl = '';
       let requestData = {};
 
@@ -415,11 +454,22 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
     } catch (error) {
       console.error('Error saving exam marks:', error);
       alert(`Failed to save exam marks: ${error.message}`);
+    } finally {
+      setIsSaving(false);
     }
   };
 
   return (
     <div className="add-exam">
+      {isSaving && (
+        <div className="save-overlay" role="status" aria-live="assertive" aria-busy="true">
+          <div className="save-overlay-card">
+            <div className="save-overlay-spinner" />
+            <p>Saving marks to database...</p>
+          </div>
+        </div>
+      )}
+
       <div className="add-exam-header">
         <button className="back-button" onClick={onBack}>← Back</button>
         <h2>Add New Exam - {batch.name}</h2>
@@ -472,14 +522,17 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
               <>
                 <div className="form-group">
                   <label>Subject *</label>
-                  <input
-                    type="text"
+                  <select
                     name="subject"
                     value={examData.subject}
                     onChange={handleExamDataChange}
-                    placeholder="e.g., Physics"
                     required
-                  />
+                  >
+                    <option value="">Select Subject</option>
+                    {dailySubjectOptions.map((subjectOption) => (
+                      <option key={subjectOption} value={subjectOption}>{subjectOption}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="form-group">
@@ -587,8 +640,22 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
             >
               📊 Excel Upload
             </button>
+            <button
+              type="button"
+              className={`mode-btn ${examMode === 'manage' ? 'active' : ''}`}
+              onClick={() => setExamMode('manage')}
+            >
+              🛠 Modify / Delete
+            </button>
           </div>
         </div>
+
+        {examMode === 'manage' && (
+          <div className="form-section">
+            <h3>Modify or Delete Entered Marks</h3>
+            <ManageExamMarks batchId={batch.batch_id} />
+          </div>
+        )}
 
         {/* Manual Entry Mode */}
         {examMode === 'manual' && examData.examType && (
@@ -761,14 +828,27 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
         )}
 
         {/* Form Actions */}
-        <div className="form-actions">
-          <button type="button" className="btn-cancel" onClick={onBack}>
-            Cancel
-          </button>
-          <button type="submit" className="btn-submit">
-            Save Exam Marks
-          </button>
-        </div>
+        {examMode !== 'manage' && (
+          <>
+            <div className="form-actions">
+              <button type="button" className="btn-cancel" onClick={onBack} disabled={isSaving}>
+                Cancel
+              </button>
+              <button type="submit" className="btn-submit" disabled={isSaving}>
+                {isSaving ? 'Saving Marks...' : 'Save Exam Marks'}
+              </button>
+            </div>
+ 
+            {isSaving && (
+              <div className="save-progress-container" role="status" aria-live="polite">
+                <div className="save-progress-label">Saving marks to database, please wait...</div>
+                <div className="save-progress-track">
+                  <div className="save-progress-bar" />
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </form>
     </div>
   );

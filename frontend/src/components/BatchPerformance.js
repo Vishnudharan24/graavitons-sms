@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar, RadarChart, Radar,
   PolarGrid, PolarAngleAxis, PolarRadiusAxis, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer, Cell
+  Tooltip, Legend, ResponsiveContainer, Cell, Brush
 } from 'recharts';
 import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
@@ -28,8 +28,40 @@ const TOOLTIP_STYLE = {
   labelStyle: { color: '#334155', fontWeight: 600 }
 };
 
+const INFO_TEXT = {
+  dailyTrendChart: 'Shows test-date wise class performance for daily tests. Average % is the mean normalized score of all student attempts on that date. Top Score % is the highest normalized score. Lowest % is the minimum normalized score.',
+  mockTrendChart: 'Shows test-date wise class performance for mock tests. Average %, top %, and lowest % are computed from normalized total scores for that date.',
+  subjectWiseChart: 'Compares subject performance. Daily/Mock Avg % is the average normalized score in that subject. This helps identify stronger and weaker subjects.',
+  dailyDistributionChart: 'Groups daily-test scores into score ranges and shows how many students fall in each range.',
+  mockDistributionChart: 'Groups mock-test scores into score ranges and shows how many students fall in each range.',
+  riskDashboard: 'Risk is computed from student average score, trend slope, participation rate, and non-numeric/absent mark rate. Higher score means higher concern.',
+  subjectDiagnostics: 'Unit-level summary for the selected subject or all subjects. Difficulty is computed as 100 - unit average %.',
+  topStudents: 'Top 5 students by overall average %. Overall % is derived from available daily and mock normalized scores.',
+  bottomStudents: 'Bottom 5 students by overall average %. Use this list for immediate support planning.',
+  studentCol: 'Student name and admission number.',
+  riskCol: 'Risk level and score from the risk model (avg score + trend + participation + non-numeric rate).',
+  avgPctCol: 'Average normalized percentage for the selected filter window.',
+  participationCol: 'Attempted tests / conducted tests × 100 for the selected period.',
+  unitCol: 'Chapter/topic unit name used while entering daily-test marks.',
+  difficultyCol: 'Difficulty index = 100 - average %. Higher value means more difficult unit for students.',
+  rankCol: 'Display position within the shown top/bottom list.',
+  dailyAvgCol: 'Student average percentage from daily tests only.',
+  mockAvgCol: 'Student average percentage from mock tests only.',
+  overallPctCol: 'Combined average percentage across available daily + mock tests.'
+};
+
+const renderInfoLabel = (label, key) => (
+  <span className="perf-label-with-info">
+    <span>{label}</span>
+    <span className="perf-info-icon" aria-label={INFO_TEXT[key] || ''}>i</span>
+  </span>
+);
+
 const BatchPerformance = ({ batch }) => {
   const [data, setData] = useState(null);
+  const [advancedStats, setAdvancedStats] = useState(null);
+  const [riskDashboard, setRiskDashboard] = useState(null);
+  const [subjectDiagnostics, setSubjectDiagnostics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [testType, setTestType] = useState('both');
@@ -40,6 +72,19 @@ const BatchPerformance = ({ batch }) => {
   const [trendChartType, setTrendChartType] = useState('line');
   const [subjectChartType, setSubjectChartType] = useState('bar');
   const [distributionChartType, setDistributionChartType] = useState('bar');
+  const [expandedChart, setExpandedChart] = useState(null);
+
+  const toggleChartExpand = (chartId) => {
+    setExpandedChart(prev => (prev === chartId ? null : chartId));
+  };
+
+  const getChartMinWidth = (pointsCount, minWidth = 760, widthPerPoint = 62, maxWidth = 3200) => {
+    const count = Math.max(0, Number(pointsCount || 0));
+    const calculated = Math.max(minWidth, count * widthPerPoint);
+    return Math.min(maxWidth, calculated);
+  };
+
+  const isDenseData = (pointsCount) => Number(pointsCount || 0) > 10;
 
   const fetchPerformance = useCallback(async () => {
     setLoading(true);
@@ -56,6 +101,44 @@ const BatchPerformance = ({ batch }) => {
       if (!res.ok) throw new Error('Failed to fetch performance data');
       const json = await res.json();
       setData(json);
+
+      const advancedParams = new URLSearchParams({ test_type: testType });
+      if (dateFrom) advancedParams.append('date_from', dateFrom);
+      if (dateTo) advancedParams.append('date_to', dateTo);
+      if (subject) advancedParams.append('subject', subject);
+
+      const riskParams = new URLSearchParams({ limit: '8' });
+      if (dateFrom) riskParams.append('date_from', dateFrom);
+      if (dateTo) riskParams.append('date_to', dateTo);
+
+      const diagnosticsParams = new URLSearchParams();
+      if (dateFrom) diagnosticsParams.append('date_from', dateFrom);
+      if (dateTo) diagnosticsParams.append('date_to', dateTo);
+      if (subject) diagnosticsParams.append('subject', subject);
+
+      const [advancedRes, riskRes, diagnosticsRes] = await Promise.all([
+        authFetch(`${API_BASE}/api/analysis/batch-advanced/${batch.batch_id}?${advancedParams}`),
+        authFetch(`${API_BASE}/api/analysis/risk-dashboard/${batch.batch_id}?${riskParams}`),
+        authFetch(`${API_BASE}/api/analysis/subject-diagnostics/${batch.batch_id}?${diagnosticsParams}`)
+      ]);
+
+      if (advancedRes.ok) {
+        setAdvancedStats(await advancedRes.json());
+      } else {
+        setAdvancedStats(null);
+      }
+
+      if (riskRes.ok) {
+        setRiskDashboard(await riskRes.json());
+      } else {
+        setRiskDashboard(null);
+      }
+
+      if (diagnosticsRes.ok) {
+        setSubjectDiagnostics(await diagnosticsRes.json());
+      } else {
+        setSubjectDiagnostics(null);
+      }
     } catch (err) {
       console.error(err);
       setError(err.message);
@@ -67,6 +150,17 @@ const BatchPerformance = ({ batch }) => {
   useEffect(() => {
     fetchPerformance();
   }, [fetchPerformance]);
+
+  useEffect(() => {
+    if (expandedChart) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [expandedChart]);
 
   // Gather unique subjects for filter dropdown (prefer batch subjects so options remain stable after filtering)
   const availableSubjects = batch?.subjects?.length > 0
@@ -261,183 +355,331 @@ const BatchPerformance = ({ batch }) => {
         </div>
       </div>
 
+      {advancedStats && (
+        <div className="perf-stat-cards" style={{ marginTop: '-6px' }}>
+          <div className="perf-stat-card accent-blue">
+            <h4>Median %</h4>
+            <p className="stat-value">{advancedStats.median_pct ?? 0}</p>
+          </div>
+          <div className="perf-stat-card accent-purple">
+            <h4>Std Dev</h4>
+            <p className="stat-value">{advancedStats.stddev_pct ?? 0}</p>
+          </div>
+          <div className="perf-stat-card accent-teal">
+            <h4>IQR</h4>
+            <p className="stat-value">{advancedStats.iqr_pct ?? 0}</p>
+          </div>
+          <div className="perf-stat-card accent-green">
+            <h4>P90 %</h4>
+            <p className="stat-value">{advancedStats?.percentile_bands?.p90 ?? 0}</p>
+          </div>
+          <div className="perf-stat-card accent-orange">
+            <h4>Low Outliers</h4>
+            <p className="stat-value">{advancedStats?.outliers_low?.length ?? 0}</p>
+          </div>
+          <div className="perf-stat-card accent-yellow">
+            <h4>High Outliers</h4>
+            <p className="stat-value">{advancedStats?.outliers_high?.length ?? 0}</p>
+          </div>
+        </div>
+      )}
+
+      {(riskDashboard || subjectDiagnostics) && (
+        <div className="perf-rankings" style={{ marginTop: 0 }}>
+          {riskDashboard && (
+            <div className="ranking-card">
+              <h4>{renderInfoLabel('🚨 Risk Dashboard', 'riskDashboard')}</h4>
+              <p style={{ marginTop: 0, color: '#64748b', fontSize: '13px' }}>
+                High: <strong>{riskDashboard.high_risk_count}</strong> · Medium: <strong>{riskDashboard.medium_risk_count}</strong>
+              </p>
+              <table>
+                <thead>
+                  <tr>
+                    <th>{renderInfoLabel('Student', 'studentCol')}</th>
+                    <th>{renderInfoLabel('Risk', 'riskCol')}</th>
+                    <th>{renderInfoLabel('Avg %', 'avgPctCol')}</th>
+                    <th>{renderInfoLabel('Participation', 'participationCol')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(riskDashboard.students || []).map((s) => (
+                    <tr key={s.student_id}>
+                      <td>
+                        <span className="student-name">{s.student_name}</span>
+                        <span className="student-id">{s.student_id}</span>
+                      </td>
+                      <td>{(s.risk_level || 'low').toUpperCase()} ({s.risk_score})</td>
+                      <td>{s.avg_score}%</td>
+                      <td>{s.participation_rate}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {subjectDiagnostics && (
+            <div className="ranking-card">
+              <h4>{renderInfoLabel(`🧠 Subject Diagnostics (${subjectDiagnostics.subject})`, 'subjectDiagnostics')}</h4>
+              <p style={{ marginTop: 0, color: '#64748b', fontSize: '13px' }}>
+                Subject Average: <strong>{subjectDiagnostics.subject_avg_pct}%</strong>
+              </p>
+              <table>
+                <thead>
+                  <tr>
+                    <th>{renderInfoLabel('Unit', 'unitCol')}</th>
+                    <th>{renderInfoLabel('Avg %', 'avgPctCol')}</th>
+                    <th>{renderInfoLabel('Difficulty', 'difficultyCol')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(subjectDiagnostics.unit_breakdown || []).slice(0, 6).map((u) => (
+                    <tr key={u.unit_name}>
+                      <td>{u.unit_name}</td>
+                      <td>{u.avg_pct}</td>
+                      <td>{u.difficulty_index}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Charts Grid ── */}
       <div className="perf-charts-grid">
         {/* Daily Trend Line Chart */}
         {showTrendSection && showDaily && daily_trend.length > 0 && (
-          <div className="chart-card">
-            <h4>📈 Daily Test Trend</h4>
-            {trendChartType === 'line' ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={daily_trend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
-                  <YAxis {...AXIS_STYLE} />
-                  <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
-                  <Legend />
-                  <Line type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
-                  <Line type="monotone" dataKey="low" name="Lowest %" stroke="#e53e3e" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={daily_trend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
-                  <YAxis {...AXIS_STYLE} />
-                  <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
-                  <Legend />
-                  <Area type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" fill="#5b5fc733" strokeWidth={2} />
-                  <Area type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" fill="#48bb7833" strokeWidth={1.5} />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
+          <div className={`chart-card ${expandedChart === 'dailyTrend' ? 'chart-card-expanded' : ''}`}>
+            <div className="chart-card-header">
+              <h4>{renderInfoLabel('📈 Daily Test Trend', 'dailyTrendChart')}</h4>
+              <button className="chart-expand-btn" onClick={() => toggleChartExpand('dailyTrend')}>
+                {expandedChart === 'dailyTrend' ? 'Exit Full Screen' : 'Full Screen'}
+              </button>
+            </div>
+            <div className={`chart-scroll-wrap ${isDenseData(daily_trend.length) ? 'dense' : ''}`}>
+              <div className="chart-scroll-inner" style={{ minWidth: `${getChartMinWidth(daily_trend.length)}px` }}>
+                {trendChartType === 'line' ? (
+                  <ResponsiveContainer width="100%" height={expandedChart === 'dailyTrend' ? 520 : 300}>
+                    <LineChart data={daily_trend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
+                      <YAxis {...AXIS_STYLE} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
+                      <Legend />
+                      <Line type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" strokeWidth={2} dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                      <Line type="monotone" dataKey="low" name="Lowest %" stroke="#e53e3e" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                      {daily_trend.length > 10 && <Brush dataKey="date" height={20} stroke="#5b5fc7" />}
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <ResponsiveContainer width="100%" height={expandedChart === 'dailyTrend' ? 520 : 300}>
+                    <AreaChart data={daily_trend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
+                      <YAxis {...AXIS_STYLE} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
+                      <Legend />
+                      <Area type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" fill="#5b5fc733" strokeWidth={2} />
+                      <Area type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" fill="#48bb7833" strokeWidth={1.5} />
+                      {daily_trend.length > 10 && <Brush dataKey="date" height={20} stroke="#5b5fc7" />}
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
         {/* Mock Trend Line Chart */}
         {showTrendSection && showMock && mock_trend.length > 0 && (
-          <div className="chart-card">
-            <h4>📈 Mock Test Trend</h4>
-            {trendChartType === 'line' ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={mock_trend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
-                  <YAxis {...AXIS_STYLE} />
-                  <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
-                  <Legend />
-                  <Line type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
-                  <Line type="monotone" dataKey="low" name="Lowest %" stroke="#e53e3e" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={mock_trend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
-                  <YAxis {...AXIS_STYLE} />
-                  <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
-                  <Legend />
-                  <Area type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" fill="#5b5fc733" strokeWidth={2} />
-                  <Area type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" fill="#48bb7833" strokeWidth={1.5} />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
+          <div className={`chart-card ${expandedChart === 'mockTrend' ? 'chart-card-expanded' : ''}`}>
+            <div className="chart-card-header">
+              <h4>{renderInfoLabel('📈 Mock Test Trend', 'mockTrendChart')}</h4>
+              <button className="chart-expand-btn" onClick={() => toggleChartExpand('mockTrend')}>
+                {expandedChart === 'mockTrend' ? 'Exit Full Screen' : 'Full Screen'}
+              </button>
+            </div>
+            <div className={`chart-scroll-wrap ${isDenseData(mock_trend.length) ? 'dense' : ''}`}>
+              <div className="chart-scroll-inner" style={{ minWidth: `${getChartMinWidth(mock_trend.length)}px` }}>
+                {trendChartType === 'line' ? (
+                  <ResponsiveContainer width="100%" height={expandedChart === 'mockTrend' ? 520 : 300}>
+                    <LineChart data={mock_trend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
+                      <YAxis {...AXIS_STYLE} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
+                      <Legend />
+                      <Line type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" strokeWidth={2} dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                      <Line type="monotone" dataKey="low" name="Lowest %" stroke="#e53e3e" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                      {mock_trend.length > 10 && <Brush dataKey="date" height={20} stroke="#5b5fc7" />}
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <ResponsiveContainer width="100%" height={expandedChart === 'mockTrend' ? 520 : 300}>
+                    <AreaChart data={mock_trend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
+                      <YAxis {...AXIS_STYLE} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
+                      <Legend />
+                      <Area type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" fill="#5b5fc733" strokeWidth={2} />
+                      <Area type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" fill="#48bb7833" strokeWidth={1.5} />
+                      {mock_trend.length > 10 && <Brush dataKey="date" height={20} stroke="#5b5fc7" />}
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
         {/* Subject Breakdown Bar Chart */}
         {showSubjectSection && filteredSubjectChartData.length > 0 && (
-          <div className="chart-card">
-            <h4>📊 Subject-wise Performance</h4>
-            {subjectChartType === 'bar' ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={filteredSubjectChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="subject" {...AXIS_STYLE} />
-                  <YAxis {...AXIS_STYLE} />
-                  <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
-                  <Legend />
-                  {showDaily && <Bar dataKey="Daily Avg" name="Daily Avg %" fill="#5b5fc7" radius={[4, 4, 0, 0]} />}
-                  {showMock && <Bar dataKey="Mock Avg" name="Mock Avg %" fill="#48bb78" radius={[4, 4, 0, 0]} />}
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <RadarChart data={filteredSubjectChartData}>
-                  <PolarGrid />
-                  <PolarAngleAxis dataKey="subject" tick={{ fill: '#2d3748', fontSize: 12 }} />
-                  <PolarRadiusAxis />
-                  <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
-                  <Legend />
-                  {showDaily && <Radar dataKey="Daily Avg" name="Daily Avg %" stroke="#5b5fc7" fill="#5b5fc7" fillOpacity={0.35} />}
-                  {showMock && <Radar dataKey="Mock Avg" name="Mock Avg %" stroke="#48bb78" fill="#48bb78" fillOpacity={0.25} />}
-                </RadarChart>
-              </ResponsiveContainer>
-            )}
+          <div className={`chart-card ${expandedChart === 'subjectChart' ? 'chart-card-expanded' : ''}`}>
+            <div className="chart-card-header">
+              <h4>{renderInfoLabel('📊 Subject-wise Performance', 'subjectWiseChart')}</h4>
+              <button className="chart-expand-btn" onClick={() => toggleChartExpand('subjectChart')}>
+                {expandedChart === 'subjectChart' ? 'Exit Full Screen' : 'Full Screen'}
+              </button>
+            </div>
+            <div className={`chart-scroll-wrap ${isDenseData(filteredSubjectChartData.length) ? 'dense' : ''}`}>
+              <div className="chart-scroll-inner" style={{ minWidth: `${getChartMinWidth(filteredSubjectChartData.length)}px` }}>
+                {subjectChartType === 'bar' ? (
+                  <ResponsiveContainer width="100%" height={expandedChart === 'subjectChart' ? 520 : 300}>
+                    <BarChart data={filteredSubjectChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="subject" {...AXIS_STYLE} />
+                      <YAxis {...AXIS_STYLE} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
+                      <Legend />
+                      {showDaily && <Bar dataKey="Daily Avg" name="Daily Avg %" fill="#5b5fc7" radius={[4, 4, 0, 0]} />}
+                      {showMock && <Bar dataKey="Mock Avg" name="Mock Avg %" fill="#48bb78" radius={[4, 4, 0, 0]} />}
+                      {filteredSubjectChartData.length > 8 && <Brush dataKey="subject" height={20} stroke="#5b5fc7" />}
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <ResponsiveContainer width="100%" height={expandedChart === 'subjectChart' ? 520 : 300}>
+                    <RadarChart data={filteredSubjectChartData}>
+                      <PolarGrid />
+                      <PolarAngleAxis dataKey="subject" tick={{ fill: '#2d3748', fontSize: 12 }} />
+                      <PolarRadiusAxis />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
+                      <Legend />
+                      {showDaily && <Radar dataKey="Daily Avg" name="Daily Avg %" stroke="#5b5fc7" fill="#5b5fc7" fillOpacity={0.35} />}
+                      {showMock && <Radar dataKey="Mock Avg" name="Mock Avg %" stroke="#48bb78" fill="#48bb78" fillOpacity={0.25} />}
+                    </RadarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
         {/* Score Distribution */}
         {showDistributionSection && (showDaily && daily_distribution.length > 0) && (
-          <div className="chart-card">
-            <h4>📉 Daily Score Distribution</h4>
-            {distributionChartType === 'bar' ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={daily_distribution}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="range" {...AXIS_STYLE} />
-                  <YAxis {...AXIS_STYLE} allowDecimals={false} />
-                  <Tooltip {...TOOLTIP_STYLE} />
-                  <Bar dataKey="count" name="Students" radius={[4, 4, 0, 0]}>
-                    {daily_distribution.map((_, i) => (
-                      <Cell key={i} fill={DIST_COLORS[i % DIST_COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={daily_distribution}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="range" {...AXIS_STYLE} />
-                  <YAxis {...AXIS_STYLE} allowDecimals={false} />
-                  <Tooltip {...TOOLTIP_STYLE} />
-                  <Line type="monotone" dataKey="count" name="Students" stroke="#5b5fc7" strokeWidth={3} dot={{ r: 4 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
+          <div className={`chart-card ${expandedChart === 'dailyDistribution' ? 'chart-card-expanded' : ''}`}>
+            <div className="chart-card-header">
+              <h4>{renderInfoLabel('📉 Daily Score Distribution', 'dailyDistributionChart')}</h4>
+              <button className="chart-expand-btn" onClick={() => toggleChartExpand('dailyDistribution')}>
+                {expandedChart === 'dailyDistribution' ? 'Exit Full Screen' : 'Full Screen'}
+              </button>
+            </div>
+            <div className={`chart-scroll-wrap ${isDenseData(daily_distribution.length) ? 'dense' : ''}`}>
+              <div className="chart-scroll-inner" style={{ minWidth: `${getChartMinWidth(daily_distribution.length, 680, 80)}px` }}>
+                {distributionChartType === 'bar' ? (
+                  <ResponsiveContainer width="100%" height={expandedChart === 'dailyDistribution' ? 520 : 300}>
+                    <BarChart data={daily_distribution}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="range" {...AXIS_STYLE} />
+                      <YAxis {...AXIS_STYLE} allowDecimals={false} />
+                      <Tooltip {...TOOLTIP_STYLE} />
+                      <Bar dataKey="count" name="Students" radius={[4, 4, 0, 0]}>
+                        {daily_distribution.map((_, i) => (
+                          <Cell key={i} fill={DIST_COLORS[i % DIST_COLORS.length]} />
+                        ))}
+                      </Bar>
+                      {daily_distribution.length > 8 && <Brush dataKey="range" height={20} stroke="#5b5fc7" />}
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <ResponsiveContainer width="100%" height={expandedChart === 'dailyDistribution' ? 520 : 300}>
+                    <LineChart data={daily_distribution}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="range" {...AXIS_STYLE} />
+                      <YAxis {...AXIS_STYLE} allowDecimals={false} />
+                      <Tooltip {...TOOLTIP_STYLE} />
+                      <Line type="monotone" dataKey="count" name="Students" stroke="#5b5fc7" strokeWidth={3} dot={{ r: 4 }} />
+                      {daily_distribution.length > 8 && <Brush dataKey="range" height={20} stroke="#5b5fc7" />}
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
         {showDistributionSection && (showMock && mock_distribution.length > 0) && (
-          <div className="chart-card">
-            <h4>📉 Mock Score Distribution</h4>
-            {distributionChartType === 'bar' ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={mock_distribution}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="range" {...AXIS_STYLE} />
-                  <YAxis {...AXIS_STYLE} allowDecimals={false} />
-                  <Tooltip {...TOOLTIP_STYLE} />
-                  <Bar dataKey="count" name="Students" radius={[4, 4, 0, 0]}>
-                    {mock_distribution.map((_, i) => (
-                      <Cell key={i} fill={DIST_COLORS[i % DIST_COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={mock_distribution}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="range" {...AXIS_STYLE} />
-                  <YAxis {...AXIS_STYLE} allowDecimals={false} />
-                  <Tooltip {...TOOLTIP_STYLE} />
-                  <Line type="monotone" dataKey="count" name="Students" stroke="#38b2ac" strokeWidth={3} dot={{ r: 4 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
+          <div className={`chart-card ${expandedChart === 'mockDistribution' ? 'chart-card-expanded' : ''}`}>
+            <div className="chart-card-header">
+              <h4>{renderInfoLabel('📉 Mock Score Distribution', 'mockDistributionChart')}</h4>
+              <button className="chart-expand-btn" onClick={() => toggleChartExpand('mockDistribution')}>
+                {expandedChart === 'mockDistribution' ? 'Exit Full Screen' : 'Full Screen'}
+              </button>
+            </div>
+            <div className={`chart-scroll-wrap ${isDenseData(mock_distribution.length) ? 'dense' : ''}`}>
+              <div className="chart-scroll-inner" style={{ minWidth: `${getChartMinWidth(mock_distribution.length, 680, 80)}px` }}>
+                {distributionChartType === 'bar' ? (
+                  <ResponsiveContainer width="100%" height={expandedChart === 'mockDistribution' ? 520 : 300}>
+                    <BarChart data={mock_distribution}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="range" {...AXIS_STYLE} />
+                      <YAxis {...AXIS_STYLE} allowDecimals={false} />
+                      <Tooltip {...TOOLTIP_STYLE} />
+                      <Bar dataKey="count" name="Students" radius={[4, 4, 0, 0]}>
+                        {mock_distribution.map((_, i) => (
+                          <Cell key={i} fill={DIST_COLORS[i % DIST_COLORS.length]} />
+                        ))}
+                      </Bar>
+                      {mock_distribution.length > 8 && <Brush dataKey="range" height={20} stroke="#38b2ac" />}
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <ResponsiveContainer width="100%" height={expandedChart === 'mockDistribution' ? 520 : 300}>
+                    <LineChart data={mock_distribution}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="range" {...AXIS_STYLE} />
+                      <YAxis {...AXIS_STYLE} allowDecimals={false} />
+                      <Tooltip {...TOOLTIP_STYLE} />
+                      <Line type="monotone" dataKey="count" name="Students" stroke="#38b2ac" strokeWidth={3} dot={{ r: 4 }} />
+                      {mock_distribution.length > 8 && <Brush dataKey="range" height={20} stroke="#38b2ac" />}
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>
+
+      {expandedChart && <div className="chart-fullscreen-backdrop" onClick={() => setExpandedChart(null)} />}
 
       {/* ── Top & Bottom Students ── */}
       {showRankingSection && <div className="perf-rankings">
         {top_students.length > 0 && (
           <div className="ranking-card">
-            <h4>🏆 Top 5 Students</h4>
+            <h4>{renderInfoLabel('🏆 Top 5 Students', 'topStudents')}</h4>
             <table>
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>Student</th>
-                  <th>Daily Avg</th>
-                  <th>Mock Avg</th>
-                  <th>Overall %</th>
+                  <th>{renderInfoLabel('#', 'rankCol')}</th>
+                  <th>{renderInfoLabel('Student', 'studentCol')}</th>
+                  <th>{renderInfoLabel('Daily Avg', 'dailyAvgCol')}</th>
+                  <th>{renderInfoLabel('Mock Avg', 'mockAvgCol')}</th>
+                  <th>{renderInfoLabel('Overall %', 'overallPctCol')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -460,15 +702,15 @@ const BatchPerformance = ({ batch }) => {
 
         {bottom_students.length > 0 && (
           <div className="ranking-card">
-            <h4>⚠️ Bottom 5 Students</h4>
+            <h4>{renderInfoLabel('⚠️ Bottom 5 Students', 'bottomStudents')}</h4>
             <table>
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>Student</th>
-                  <th>Daily Avg</th>
-                  <th>Mock Avg</th>
-                  <th>Overall %</th>
+                  <th>{renderInfoLabel('#', 'rankCol')}</th>
+                  <th>{renderInfoLabel('Student', 'studentCol')}</th>
+                  <th>{renderInfoLabel('Daily Avg', 'dailyAvgCol')}</th>
+                  <th>{renderInfoLabel('Mock Avg', 'mockAvgCol')}</th>
+                  <th>{renderInfoLabel('Overall %', 'overallPctCol')}</th>
                 </tr>
               </thead>
               <tbody>

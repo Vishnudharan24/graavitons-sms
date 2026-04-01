@@ -11,6 +11,24 @@ from db_pool import get_db_connection
 
 app = FastAPI(title=APP_TITLE)
 
+
+SUBJECT_CANONICAL = {
+    "maths": "Mathematics",
+    "mathematics": "Mathematics",
+    "physics": "Physics",
+    "chemistry": "Chemistry",
+    "biology": "Biology",
+}
+
+
+def normalize_subject_label(value: str) -> str:
+    key = str(value or "").strip().lower()
+    if not key:
+        return ""
+    if key in SUBJECT_CANONICAL:
+        return SUBJECT_CANONICAL[key]
+    return " ".join(part.capitalize() for part in key.split())
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
@@ -34,6 +52,22 @@ class BatchCreate(BaseModel):
         if 'start_year' in values and v <= values['start_year']:
             raise ValueError('end_year must be greater than start_year')
         return v
+
+    @validator('subjects', pre=True, always=True)
+    def normalize_subjects(cls, v):
+        subjects = v or []
+        normalized = []
+        seen = set()
+        for s in subjects:
+            label = normalize_subject_label(s)
+            if not label:
+                continue
+            key = label.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(label)
+        return normalized
 
 
 class BatchResponse(BaseModel):

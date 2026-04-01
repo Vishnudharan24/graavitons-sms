@@ -134,6 +134,8 @@
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   border: 1px solid #e2e8f0;
+  position: relative;
+  z-index: 1;
 }
 
 .chart-card h4 {
@@ -141,6 +143,114 @@
   font-weight: 600;
   color: #2d3748;
   margin: 0 0 16px;
+}
+
+.chart-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.chart-expand-btn {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chart-expand-btn:hover {
+  border-color: #5b5fc7;
+  color: #4338ca;
+}
+
+.chart-scroll-wrap {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+}
+
+.chart-scroll-wrap.dense {
+  border-radius: 8px;
+}
+
+.chart-scroll-inner {
+  width: 100%;
+  min-height: 300px;
+}
+
+.chart-card-expanded {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  bottom: 20px;
+  width: auto;
+  height: auto;
+  z-index: 1001;
+  overflow: auto;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.35);
+}
+
+.chart-card-expanded .chart-scroll-inner {
+  min-height: 520px;
+}
+
+.chart-fullscreen-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 1000;
+}
+
+.perf-label-with-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.perf-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid #94a3b8;
+  color: #475569;
+  font-size: 11px;
+  line-height: 1;
+  cursor: help;
+  position: relative;
+  background: #f8fafc;
+  font-weight: 700;
+}
+
+.perf-info-icon:hover::after {
+  content: attr(aria-label);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 130%;
+  width: 260px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.35;
+  z-index: 30;
+  white-space: normal;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.35);
 }
 
 /* Recharts text visibility */
@@ -329,4 +439,83 @@
   .perf-filters .filter-group input[type="date"] {
     width: 100%;
   }
+
+  .chart-card-expanded {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    padding: 14px;
+  }
+}
+
+/* Enterprise SaaS overrides */
+.perf-filters,
+.perf-stat-card,
+.chart-card,
+.ranking-card,
+.perf-empty,
+.perf-error {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.perf-filters .filter-group label,
+.perf-stat-card h4,
+.ranking-card th {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.perf-filters .filter-group select,
+.perf-filters .filter-group input[type="date"] {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.perf-filters .filter-group select:focus,
+.perf-filters .filter-group input[type="date"]:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.chart-card h4,
+.ranking-card h4,
+.perf-stat-card .stat-value,
+.student-name,
+.overall-score {
+  color: var(--color-text-primary);
+}
+
+.perf-stat-card.accent-blue .stat-value,
+.perf-stat-card.accent-purple .stat-value,
+.perf-stat-card.accent-teal .stat-value,
+.perf-stat-card.accent-green .stat-value,
+.perf-stat-card.accent-orange .stat-value,
+.perf-stat-card.accent-yellow .stat-value {
+  color: var(--color-primary);
+}
+
+.rank-badge.top,
+.rank-badge.bottom {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.btn-clear-filters {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.btn-clear-filters:hover {
+  background: #F3F4F6;
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.perf-spinner {
+  border-top-color: var(--color-primary);
 }

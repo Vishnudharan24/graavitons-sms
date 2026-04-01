@@ -1,42 +1,47 @@
 .dashboard {
-    padding: 24px;
-    background-color: #f8f9fa;
+    padding: var(--space-4);
+    background-color: var(--color-bg);
     min-height: 100vh;
 }
 
 .dashboard-header {
-    margin-bottom: 24px;
+    margin-bottom: var(--space-4);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 
 .breadcrumb {
-    font-size: 0.9rem;
-    color: #666;
+    font-size: 12px;
+    color: var(--color-text-secondary);
     font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
 }
 
 .filter-section {
-    margin-bottom: 24px;
+    margin-bottom: var(--space-4);
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 20px;
+    gap: var(--space-3);
 }
 
 .filter-container {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-2);
     flex: 1;
 }
 
 .filter-options {
-    background: white;
-    padding: 20px;
-    border-radius: 8px;
-    border: 1px solid #ddd;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    background: var(--color-surface);
+    padding: var(--space-3);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-sm);
     animation: slideDown 0.3s ease-out;
-    max-width: 300px;
+    max-width: 340px;
 }
 
 @keyframes slideDown {
@@ -54,112 +59,113 @@
 .filter-group {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
 }
 
 .filter-group label {
-    font-size: 0.9rem;
-    color: #555;
+    font-size: 12px;
+    color: var(--color-text-secondary);
     font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 
 .filter-group select {
     padding: 8px 12px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--color-border);
     border-radius: 6px;
-    font-size: 0.9rem;
+    font-size: 14px;
     min-width: 200px;
-    color: #333;
+    color: var(--color-text-primary);
+    background: var(--color-surface);
+}
+
+.filter-group select:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-light);
 }
 
 .filter-button {
-    background: white;
-    border: 1px solid #ddd;
-    padding: 10px 20px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    padding: 8px 16px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 0.95rem;
-    color: #555;
+    font-size: 14px;
+    color: var(--color-text-secondary);
     display: flex;
     align-items: center;
-    gap: 8px;
-    transition: all 0.2s;
+    gap: var(--space-1);
+    transition: all 150ms ease;
+    font-weight: 500;
 }
 
 .filter-button:hover {
-    background: #f5f5f5;
+    background: #F3F4F6;
+    color: var(--color-text-primary);
 }
 
 .action-buttons {
     display: flex;
-    gap: 16px;
+    gap: var(--space-2);
 }
 
-.btn-analysis {
-    background-color: #48bb78;
-    color: white;
-    border: none;
-    padding: 10px 24px;
+.btn-achievers,
+.btn-add-batch {
+    padding: 8px 16px;
     border-radius: 8px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
+    font-size: 14px;
+    font-weight: 500;
     display: flex;
     align-items: center;
-    gap: 8px;
-}
-
-.btn-analysis:hover {
-    background-color: #38a169;
-    box-shadow: 0 4px 12px rgba(72, 187, 120, 0.2);
-    transform: translateY(-1px);
+    gap: var(--space-1);
+    border: 1px solid transparent;
+    transition: all 150ms ease;
 }
 
 .btn-achievers {
-    background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
-    color: #2d3748;
-    border: none;
-    padding: 10px 24px;
-    border-radius: 8px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    background: var(--color-surface);
+    color: var(--color-primary);
+    border-color: var(--color-primary);
 }
 
 .btn-achievers:hover {
-    background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
-    box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
-    transform: translateY(-1px);
+    background: var(--color-primary-light);
 }
 
 .btn-add-batch {
-    background-color: #5b5fc7;
-    color: white;
-    border: none;
-    padding: 10px 24px;
-    border-radius: 8px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    background: var(--color-primary);
+    color: #fff;
 }
 
 .btn-add-batch:hover {
-    background-color: #4a4fb8;
-    box-shadow: 0 4px 12px rgba(91, 95, 199, 0.2);
-    transform: translateY(-1px);
+    background: var(--color-primary-hover);
 }
 
 .courses-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 30px;
+    gap: var(--space-3);
+}
+
+.dashboard-message {
+    text-align: center;
+    padding: var(--space-5);
+    grid-column: 1 / -1;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-secondary);
+    box-shadow: var(--shadow-sm);
+}
+
+.error-banner {
+    margin-bottom: var(--space-3);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid #FECACA;
+    background: #FEF2F2;
+    color: #991B1B;
+    font-size: 14px;
 }

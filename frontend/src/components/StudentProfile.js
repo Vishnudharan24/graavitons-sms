@@ -63,6 +63,10 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
   const [mockTests, setMockTests] = useState([]);
   const [feedbackList, setFeedbackList] = useState([]);
   const [analysisData, setAnalysisData] = useState(null);
+  const [studentMetrics, setStudentMetrics] = useState(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [weakTopics, setWeakTopics] = useState([]);
+  const [weakTopicsLoading, setWeakTopicsLoading] = useState(false);
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [dailyDateFrom, setDailyDateFrom] = useState('');
   const [dailyDateTo, setDailyDateTo] = useState('');
@@ -120,6 +124,40 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
         console.error('Error fetching analysis data:', err);
         // Fallback: fetch feedback separately
         await fetchFeedback();
+      }
+
+      // Fetch advanced student metrics
+      try {
+        setMetricsLoading(true);
+        const metricsResponse = await authFetch(`${API_BASE}/api/analysis/student-metrics/${studentId}`);
+        if (metricsResponse.ok) {
+          const metricsResult = await metricsResponse.json();
+          setStudentMetrics(metricsResult);
+        } else {
+          setStudentMetrics(null);
+        }
+      } catch (err) {
+        console.error('Error fetching student metrics:', err);
+        setStudentMetrics(null);
+      } finally {
+        setMetricsLoading(false);
+      }
+
+      // Fetch top weak units remediation for this student
+      try {
+        setWeakTopicsLoading(true);
+        const weakTopicsResponse = await authFetch(`${API_BASE}/api/analysis/student-weak-topics/${studentId}?limit=5`);
+        if (weakTopicsResponse.ok) {
+          const weakTopicsResult = await weakTopicsResponse.json();
+          setWeakTopics(weakTopicsResult.weak_units || []);
+        } else {
+          setWeakTopics([]);
+        }
+      } catch (err) {
+        console.error('Error fetching student weak topics:', err);
+        setWeakTopics([]);
+      } finally {
+        setWeakTopicsLoading(false);
       }
       
     } catch (err) {
@@ -379,6 +417,28 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
   const mockTestChartData = buildMockTestChartData();
   const mockTrendData = buildMockTrendData();
   const latestMockSubjectShare = buildLatestMockSubjectShare();
+
+  const metricInfo = {
+    overallAverage: 'This is your average performance across all available tests. Higher is better.',
+    batchPercentile: 'This shows where you stand in your batch. 70% means you scored better than about 70 out of 100 classmates.',
+    participationRate: 'This is how many tests you attended compared to tests conducted for your batch. 100% means you attended all.',
+    consistency: 'This shows how steady your marks are. Lower value = more consistent performance; higher value = marks are fluctuating more.',
+    trendSlope: 'This shows whether your performance is improving or dropping over time. Positive = improving, negative = declining.',
+    riskLevel: 'This is an overall alert level based on score, trend, participation, and absences/non-numeric marks. Low is good, High needs attention.'
+  };
+
+  const renderMetricLabel = (label, infoKey) => (
+    <span className="metric-label-with-help">
+      {label}
+      <span
+        className="metric-help-icon"
+        title={metricInfo[infoKey]}
+        aria-label={metricInfo[infoKey]}
+      >
+        ⓘ
+      </span>
+    </span>
+  );
 
   // Save feedback to backend API
   const handleSaveFeedback = async () => {
@@ -921,6 +981,96 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       {/* Marks & Analysis Tab */}
       {activeTab === 'marks' && (
         <div className="tab-content">
+          <div className="profile-section">
+            <h3>📌 Advanced Performance Metrics</h3>
+            {metricsLoading ? (
+              <p style={{ color: '#666', fontStyle: 'italic' }}>Loading advanced metrics...</p>
+            ) : studentMetrics ? (
+              <>
+                <div className="student-metrics-grid">
+                  <div className="student-metric-card">
+                    <label>{renderMetricLabel('Overall Average', 'overallAverage')}</label>
+                    <p>{studentMetrics.overall_avg_pct}%</p>
+                  </div>
+                  <div className="student-metric-card">
+                    <label>{renderMetricLabel('Batch Percentile', 'batchPercentile')}</label>
+                    <p>{studentMetrics.percentile_overall}%</p>
+                  </div>
+                  <div className="student-metric-card">
+                    <label>{renderMetricLabel('Participation Rate', 'participationRate')}</label>
+                    <p>{studentMetrics.participation_rate}%</p>
+                  </div>
+                  <div className="student-metric-card">
+                    <label>{renderMetricLabel('Consistency (Std Dev)', 'consistency')}</label>
+                    <p>{studentMetrics.consistency_stddev}</p>
+                  </div>
+                  <div className="student-metric-card">
+                    <label>{renderMetricLabel('Trend Slope', 'trendSlope')}</label>
+                    <p>{studentMetrics.trend_slope}</p>
+                  </div>
+                  <div className="student-metric-card">
+                    <label>{renderMetricLabel('Risk Level', 'riskLevel')}</label>
+                    <p className={`risk-pill ${studentMetrics.risk_level || 'low'}`}>
+                      {(studentMetrics.risk_level || 'low').toUpperCase()} ({studentMetrics.risk_score})
+                    </p>
+                  </div>
+                </div>
+                {studentMetrics.reasons?.length > 0 && (
+                  <div className="student-risk-reasons">
+                    <h4>Risk Reasons</h4>
+                    <ul>
+                      {studentMetrics.reasons.map((reason, idx) => (
+                        <li key={idx}>{reason}</li>
+                      ))}
+                    </ul>
+                    <p><strong>Recommended Action:</strong> {studentMetrics.recommended_action}</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p style={{ color: '#666', fontStyle: 'italic' }}>Advanced metrics unavailable for this student.</p>
+            )}
+          </div>
+
+          <div className="profile-section">
+            <h3>🧩 Weak-Topic Remediation (Top Weak Units)</h3>
+            {weakTopicsLoading ? (
+              <p style={{ color: '#666', fontStyle: 'italic' }}>Loading weak-topic remediation...</p>
+            ) : weakTopics.length > 0 ? (
+              <div className="weak-topics-grid">
+                {weakTopics.map((topic, idx) => (
+                  <div className="weak-topic-card" key={`${topic.subject}-${topic.unit_name}-${idx}`}>
+                    <div className="weak-topic-card-header">
+                      <span className="weak-topic-rank">#{idx + 1}</span>
+                      <span className="weak-topic-difficulty">Difficulty {topic.difficulty_index}</span>
+                    </div>
+                    <h4>{topic.subject}</h4>
+                    <p className="weak-topic-unit">Unit: {topic.unit_name}</p>
+                    <div className="weak-topic-stats">
+                      <div>
+                        <label>Average %</label>
+                        <strong>{topic.avg_pct}%</strong>
+                      </div>
+                      <div>
+                        <label>Attempts</label>
+                        <strong>{topic.attempts}</strong>
+                      </div>
+                      <div>
+                        <label>Latest Test</label>
+                        <strong>{topic.latest_test_date ? new Date(topic.latest_test_date).toLocaleDateString('en-IN') : 'N/A'}</strong>
+                      </div>
+                    </div>
+                    <p className="weak-topic-action"><strong>Remediation Plan:</strong> {topic.remediation_action}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ color: '#666', fontStyle: 'italic' }}>
+                No unit-level weak topics found from available daily-test data.
+              </p>
+            )}
+          </div>
+
           {/* Daily Test Performance */}
           <div className="profile-section">
             <h3>📚 Daily Test Performance</h3>

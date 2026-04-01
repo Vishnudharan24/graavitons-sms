@@ -118,3 +118,67 @@
     background-color: #4a4fb8;
     box-shadow: 0 4px 12px rgba(91, 95, 199, 0.2);
 }
+
+/* Enterprise SaaS overrides */
+.add-batch {
+    padding: var(--space-4);
+    background: var(--color-bg);
+}
+
+.add-batch-header h2 {
+    font-size: 24px;
+    color: var(--color-text-primary);
+}
+
+.add-batch-form {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-sm);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+}
+
+.add-batch .form-section h3 {
+    font-size: 16px;
+    color: var(--color-text-primary);
+    border-bottom-color: var(--color-border);
+}
+
+.add-batch .form-group label {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.add-batch .form-group input,
+.add-batch .form-group textarea,
+.add-batch .form-group select {
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+}
+
+.add-batch .form-group input:focus,
+.add-batch .form-group textarea:focus,
+.add-batch .form-group select:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.add-batch .btn-cancel {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-text-secondary);
+    font-weight: 500;
+}
+
+.add-batch .btn-submit {
+    background: var(--color-primary);
+    font-weight: 500;
+}
+
+.add-batch .btn-submit:hover {
+    background: var(--color-primary-hover);
+    box-shadow: none;
+}

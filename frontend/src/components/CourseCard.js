@@ -27,7 +27,7 @@ const CourseCard = ({ course, onDelete, onRename }) => {
         {course.type && (
           <span className="course-type">{course.type}</span>
         )}
-        <span className="course-year">{course.start_year} - {course.end_year}</span>
+        <span className="course-year">Academic Year: {course.start_year} - {course.end_year}</span>
       </div>
       {course.subjects && course.subjects.length > 0 && (
         <div className="course-subjects">

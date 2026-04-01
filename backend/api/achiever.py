@@ -190,6 +190,66 @@ async def get_achiever(achievement_id: int, current_user: dict = Depends(get_cur
             conn.close()
 
 
+@app.get("/api/achiever/students/search")
+async def search_students_for_achiever(
+    admission_query: str,
+    limit: int = 20,
+    current_user: dict = Depends(get_current_user)
+):
+    """Search students by admission number (student_id) for achiever creation."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        q = (admission_query or "").strip()
+        if len(q) < 1:
+            return {"students": [], "total": 0}
+
+        limit = max(1, min(limit, 50))
+
+        cursor.execute("""
+            SELECT
+                s.student_id,
+                s.student_name,
+                s.grade,
+                s.course,
+                s.branch,
+                s.photo_url,
+                s.batch_id,
+                b.batch_name,
+                b.start_year,
+                b.end_year
+            FROM student s
+            LEFT JOIN batch b ON b.batch_id = s.batch_id
+            WHERE LOWER(s.student_id) LIKE LOWER(%s)
+            ORDER BY s.student_id
+            LIMIT %s
+        """, (f"%{q}%", limit))
+
+        rows = cursor.fetchall()
+        students = []
+        for row in rows:
+            students.append({
+                "student_id": row[0],
+                "student_name": row[1],
+                "grade": row[2],
+                "course": row[3],
+                "branch": row[4],
+                "photo_url": row[5],
+                "batch_id": row[6],
+                "batch_name": row[7],
+                "academic_year": f"{row[8]}-{row[9]}" if row[8] and row[9] else "",
+            })
+
+        return {"students": students, "total": len(students)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if conn:
+            conn.close()
+
+
 @app.post("/api/achiever", status_code=status.HTTP_201_CREATED)
 async def create_achiever(achiever: AchieverCreate, current_user: dict = Depends(get_current_user)):
     """Create a new achiever record. The student_id must already exist in the student table."""
@@ -198,14 +258,21 @@ async def create_achiever(achiever: AchieverCreate, current_user: dict = Depends
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Verify that the student exists
-        cursor.execute("SELECT student_id FROM student WHERE student_id = %s;", (achiever.student_id,))
-        if not cursor.fetchone():
+        # Verify that the student exists and resolve batch from student if omitted
+        cursor.execute(
+            "SELECT student_id, batch_id, photo_url FROM student WHERE student_id = %s;",
+            (achiever.student_id,)
+        )
+        student_row = cursor.fetchone()
+        if not student_row:
             raise HTTPException(
                 status_code=404,
                 detail=f"Student with ID '{achiever.student_id}' not found. "
                        "The student must be registered before adding as an achiever."
             )
+
+        resolved_batch_id = achiever.batch_id if achiever.batch_id is not None else student_row[1]
+        resolved_photo_url = achiever.photo_url if achiever.photo_url else student_row[2]
 
         cursor.execute("""
             INSERT INTO achievers (student_id, batch_id, achievement, achievement_details,
@@ -214,12 +281,12 @@ async def create_achiever(achiever: AchieverCreate, current_user: dict = Depends
             RETURNING achievement_id, created_at;
         """, (
             achiever.student_id,
-            achiever.batch_id,
+            resolved_batch_id,
             achiever.achievement,
             achiever.achievement_details,
             achiever.rank,
             achiever.score,
-            achiever.photo_url,
+            resolved_photo_url,
             achiever.achieved_date,
         ))
 

@@ -1,8 +1,8 @@
 .header {
-  background-color: #ffffff;
-  color: #2d3748;
-  padding: 20px 40px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .header-content {
@@ -15,8 +15,8 @@
 .college-name {
   font-size: 18px;
   font-weight: 600;
-  letter-spacing: 0.3px;
-  color: #2d3748;
+  letter-spacing: 0.2px;
+  color: var(--color-text-primary);
 }
 
 .header-actions {
@@ -81,7 +81,7 @@
 .header-user {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
 }
 
 .user-info {
@@ -91,35 +91,58 @@
 }
 
 .user-role-badge {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 4px 12px;
-  border-radius: 12px;
+  background: #EEF2FF;
+  color: #3730A3;
+  padding: 4px 8px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
 }
 
 .user-email {
   font-size: 14px;
-  color: #4a5568;
+  color: var(--color-text-secondary);
   font-weight: 500;
 }
 
-.logout-btn {
-  padding: 8px 18px;
-  background: #fff;
-  color: #e53e3e;
-  border: 2px solid #e53e3e;
+.help-btn {
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 150ms ease;
+}
+
+.help-btn:hover {
+  background: #F3F4F6;
+  color: var(--color-text-primary);
+}
+
+.logout-btn {
+  padding: 8px 14px;
+  background: var(--color-surface);
+  color: var(--color-danger);
+  border: 1px solid var(--color-danger);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 150ms ease;
 }
 
 .logout-btn:hover {
-  background: #e53e3e;
-  color: #fff;
+  background: #FEF2F2;
+}
+
+@media (max-width: 768px) {
+  .help-btn,
+  .logout-btn {
+    width: 100%;
+  }
 }

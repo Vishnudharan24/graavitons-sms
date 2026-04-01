@@ -4,10 +4,13 @@ import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
 
 const AddAchiever = ({ onBack, onSave }) => {
-    const [batches, setBatches] = useState([]);
-    const [students, setStudents] = useState([]);
+    const [admissionQuery, setAdmissionQuery] = useState('');
+    const [searchResults, setSearchResults] = useState([]);
+    const [selectedStudent, setSelectedStudent] = useState(null);
+    const [searchLoading, setSearchLoading] = useState(false);
     const [submitLoading, setSubmitLoading] = useState(false);
     const [submitError, setSubmitError] = useState('');
+    const [searchError, setSearchError] = useState('');
 
     const [formData, setFormData] = useState({
         student_id: '',
@@ -20,41 +23,67 @@ const AddAchiever = ({ onBack, onSave }) => {
         achieved_date: ''
     });
 
-    // Fetch batches on mount
     useEffect(() => {
-        const fetchBatches = async () => {
-            try {
-                const res = await authFetch(`${API_BASE}/api/batch`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setBatches(data.batches || []);
-                }
-            } catch (err) {
-                console.error('Error fetching batches:', err);
+        const timeout = setTimeout(() => {
+            if (admissionQuery.trim().length >= 1 && !selectedStudent) {
+                handleSearchStudents(admissionQuery.trim());
+            } else if (!admissionQuery.trim()) {
+                setSearchResults([]);
+                setSearchError('');
             }
-        };
-        fetchBatches();
-    }, []);
+        }, 250);
 
-    // Fetch students when batch changes
-    useEffect(() => {
-        if (!formData.batch_id) {
-            setStudents([]);
-            return;
-        }
-        const fetchStudents = async () => {
-            try {
-                const res = await authFetch(`${API_BASE}/api/student/batch/${formData.batch_id}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setStudents(data.students || []);
-                }
-            } catch (err) {
-                console.error('Error fetching students:', err);
+        return () => clearTimeout(timeout);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [admissionQuery]);
+
+    const handleSearchStudents = async (queryText) => {
+        setSearchLoading(true);
+        setSearchError('');
+        try {
+            const res = await authFetch(
+                `${API_BASE}/api/achiever/students/search?admission_query=${encodeURIComponent(queryText)}&limit=20`
+            );
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || 'Failed to search students');
             }
-        };
-        fetchStudents();
-    }, [formData.batch_id]);
+            const data = await res.json();
+            setSearchResults(data.students || []);
+        } catch (err) {
+            console.error('Error searching students:', err);
+            setSearchError(err.message || 'Failed to search students');
+            setSearchResults([]);
+        } finally {
+            setSearchLoading(false);
+        }
+    };
+
+    const handleSelectStudent = (student) => {
+        setSelectedStudent(student);
+        setAdmissionQuery(student.student_id);
+        setSearchResults([]);
+        setSearchError('');
+        setFormData(prev => ({
+            ...prev,
+            student_id: student.student_id,
+            batch_id: student.batch_id || '',
+            photo_url: prev.photo_url || student.photo_url || ''
+        }));
+    };
+
+    const handleClearStudent = () => {
+        setSelectedStudent(null);
+        setAdmissionQuery('');
+        setSearchResults([]);
+        setSearchError('');
+        setFormData(prev => ({
+            ...prev,
+            student_id: '',
+            batch_id: '',
+            photo_url: ''
+        }));
+    };
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -66,6 +95,12 @@ const AddAchiever = ({ onBack, onSave }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        if (!formData.student_id) {
+            setSubmitError('Please select a student using admission number search');
+            return;
+        }
+
         setSubmitLoading(true);
         setSubmitError('');
 
@@ -125,39 +160,78 @@ const AddAchiever = ({ onBack, onSave }) => {
             <form onSubmit={handleSubmit}>
                 {/* Student Selection */}
                 <div className="form-section">
-                    <h3>Select Student</h3>
+                    <h3>Select Existing Student by Admission Number</h3>
                     <div className="form-grid">
                         <div className="form-group">
-                            <label>Batch *</label>
-                            <select name="batch_id" value={formData.batch_id} onChange={handleChange} required>
-                                <option value="">Select Batch</option>
-                                {batches.map(b => (
-                                    <option key={b.batch_id} value={b.batch_id}>
-                                        {b.batch_name} ({b.start_year}-{b.end_year})
-                                    </option>
-                                ))}
-                            </select>
+                            <label>Admission Number *</label>
+                            <input
+                                type="text"
+                                value={admissionQuery}
+                                onChange={(e) => {
+                                    setAdmissionQuery(e.target.value);
+                                    if (selectedStudent) {
+                                        setSelectedStudent(null);
+                                        setFormData(prev => ({ ...prev, student_id: '', batch_id: '' }));
+                                    }
+                                }}
+                                placeholder="Type admission number (e.g., 2608)"
+                                required
+                            />
+                            <div className="search-hint">Search uses admission number from existing students in DB.</div>
                         </div>
                         <div className="form-group">
-                            <label>Student *</label>
-                            <select
-                                name="student_id"
-                                value={formData.student_id}
-                                onChange={handleChange}
-                                required
-                                disabled={!formData.batch_id}
-                            >
-                                <option value="">
-                                    {formData.batch_id ? 'Select Student' : 'Select a batch first'}
-                                </option>
-                                {students.map(s => (
-                                    <option key={s.student_id} value={s.student_id}>
-                                        {s.student_name} ({s.student_id})
-                                    </option>
-                                ))}
-                            </select>
+                            <label>Selected Student</label>
+                            <input
+                                type="text"
+                                value={selectedStudent ? `${selectedStudent.student_name} (${selectedStudent.student_id})` : 'No student selected'}
+                                readOnly
+                            />
+                            {selectedStudent && (
+                                <button type="button" className="clear-student-btn" onClick={handleClearStudent}>
+                                    Clear Selection
+                                </button>
+                            )}
                         </div>
                     </div>
+
+                    {(searchLoading || searchError || searchResults.length > 0) && !selectedStudent && (
+                        <div className="student-search-results">
+                            {searchLoading && <p>Searching students...</p>}
+                            {searchError && <p className="search-error">{searchError}</p>}
+                            {!searchLoading && !searchError && searchResults.length === 0 && admissionQuery.trim() && (
+                                <p>No students found for this admission number.</p>
+                            )}
+                            {!searchLoading && searchResults.length > 0 && (
+                                <div className="result-list">
+                                    {searchResults.map((student) => (
+                                        <button
+                                            key={student.student_id}
+                                            type="button"
+                                            className="result-item"
+                                            onClick={() => handleSelectStudent(student)}
+                                        >
+                                            <strong>{student.student_id}</strong> — {student.student_name}
+                                            <span>
+                                                {student.batch_name || 'No Batch'}
+                                                {student.academic_year ? ` (${student.academic_year})` : ''}
+                                                {student.branch ? ` • ${student.branch}` : ''}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {selectedStudent && (
+                        <div className="selected-student-preview">
+                            <p><strong>Name:</strong> {selectedStudent.student_name}</p>
+                            <p><strong>Admission No:</strong> {selectedStudent.student_id}</p>
+                            <p><strong>Batch:</strong> {selectedStudent.batch_name || 'N/A'}</p>
+                            <p><strong>Course / Branch:</strong> {selectedStudent.course || 'N/A'} / {selectedStudent.branch || 'N/A'}</p>
+                            <p><strong>Grade:</strong> {selectedStudent.grade || 'N/A'}</p>
+                        </div>
+                    )}
                 </div>
 
                 {/* Achievement Details */}
@@ -235,7 +309,7 @@ const AddAchiever = ({ onBack, onSave }) => {
                     <button type="button" className="btn-cancel" onClick={onBack}>
                         Cancel
                     </button>
-                    <button type="submit" className="btn-submit" disabled={submitLoading}>
+                    <button type="submit" className="btn-submit" disabled={submitLoading || !formData.student_id}>
                         {submitLoading ? 'Adding...' : 'Add Achiever'}
                     </button>
                 </div>

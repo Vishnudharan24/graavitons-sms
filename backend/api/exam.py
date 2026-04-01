@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, Field
 from typing import List, Optional
 import psycopg2
 from psycopg2 import sql
@@ -22,6 +22,28 @@ MOCK_SUBJECT_CONFIG = {
     "biology": {"aliases": {"biology"}, "unit_field": "biologyUnitNames"},
 }
 
+SUBJECT_CANONICAL = {
+    "maths": "Mathematics",
+    "mathematics": "Mathematics",
+    "physics": "Physics",
+    "chemistry": "Chemistry",
+    "biology": "Biology",
+}
+
+
+def normalize_subject_label(value: str) -> str:
+    key = str(value or "").strip().lower()
+    if not key:
+        return ""
+    if key in SUBJECT_CANONICAL:
+        return SUBJECT_CANONICAL[key]
+    return " ".join(part.capitalize() for part in key.split())
+
+
+def normalize_subject_key(value: str) -> str:
+    label = normalize_subject_label(value)
+    return label.strip().lower()
+
 
 def get_batch_mock_subjects(batch_subjects):
     if not batch_subjects:
@@ -41,6 +63,20 @@ def split_units(unit_text: str):
     if not unit_text:
         return []
     return [u.strip() for u in unit_text.split(',') if u.strip()]
+
+
+def extract_grade_from_batch_name(batch_name: Optional[str]) -> Optional[int]:
+    if not batch_name:
+        return None
+    import re
+    grade_match = re.search(r'\d+', str(batch_name))
+    if grade_match:
+        return int(grade_match.group())
+    return None
+
+
+def normalized_subject_sql(column_name: str) -> str:
+    return f"LOWER(TRIM({column_name}))"
 
 # CORS configuration
 app.add_middleware(
@@ -97,6 +133,63 @@ class MockTestCreate(BaseModel):
     studentMarks: List[MockTestStudentMark]
 
 
+class DailyTestGroupRef(BaseModel):
+    test_date: date
+    subject: str
+    unit_name: str
+    subject_total_marks: Optional[int] = None
+    test_total_marks: Optional[int] = None
+
+
+class DailyTestMarkUpdate(BaseModel):
+    student_id: str
+    marks: str = ''
+
+
+class DailyTestGroupUpdate(BaseModel):
+    test_date: date
+    subject: str
+    unit_name: str
+    subject_total_marks: Optional[int] = None
+    test_total_marks: Optional[int] = None
+    studentMarks: List[DailyTestMarkUpdate]
+
+
+class MockTestGroupRef(BaseModel):
+    test_date: date
+    maths_unit_names: List[str] = Field(default_factory=list)
+    physics_unit_names: List[str] = Field(default_factory=list)
+    chemistry_unit_names: List[str] = Field(default_factory=list)
+    biology_unit_names: List[str] = Field(default_factory=list)
+    maths_total_marks: Optional[int] = None
+    physics_total_marks: Optional[int] = None
+    chemistry_total_marks: Optional[int] = None
+    biology_total_marks: Optional[int] = None
+    test_total_marks: Optional[int] = None
+
+
+class MockTestMarkUpdate(BaseModel):
+    student_id: str
+    maths_marks: str = ''
+    physics_marks: str = ''
+    chemistry_marks: str = ''
+    biology_marks: str = ''
+
+
+class MockTestGroupUpdate(BaseModel):
+    test_date: date
+    maths_unit_names: List[str] = Field(default_factory=list)
+    physics_unit_names: List[str] = Field(default_factory=list)
+    chemistry_unit_names: List[str] = Field(default_factory=list)
+    biology_unit_names: List[str] = Field(default_factory=list)
+    maths_total_marks: Optional[int] = None
+    physics_total_marks: Optional[int] = None
+    chemistry_total_marks: Optional[int] = None
+    biology_total_marks: Optional[int] = None
+    test_total_marks: Optional[int] = None
+    studentMarks: List[MockTestMarkUpdate]
+
+
 @app.post("/api/exam/daily-test", status_code=status.HTTP_201_CREATED)
 async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Depends(get_current_user)):
     """
@@ -111,7 +204,7 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
         
         # Get batch details to extract grade and branch
         cursor.execute("""
-            SELECT batch_name, type FROM batch WHERE batch_id = %s
+            SELECT batch_name, type, subjects FROM batch WHERE batch_id = %s
         """, (exam_data.batch_id,))
         
         batch_result = cursor.fetchone()
@@ -121,7 +214,23 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
                 detail=f"Batch with ID {exam_data.batch_id} not found"
             )
         
-        batch_name, batch_type = batch_result
+        batch_name, batch_type, batch_subjects = batch_result
+        normalized_subject = normalize_subject_label(exam_data.subject)
+        if not normalized_subject:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Subject is required"
+            )
+
+        # If batch has configured subjects, enforce subject membership (case-insensitive, alias-safe)
+        normalized_batch_subject_keys = {
+            normalize_subject_key(s) for s in (batch_subjects or []) if str(s).strip()
+        }
+        if normalized_batch_subject_keys and normalize_subject_key(normalized_subject) not in normalized_batch_subject_keys:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Subject '{exam_data.subject}' is not configured for this batch"
+            )
         
         # Extract grade from batch (assuming format like "Grade 11", "12th Grade", etc.)
         grade = None
@@ -174,7 +283,7 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
                     grade,
                     branch,
                     exam_data.examDate,
-                    exam_data.subject,
+                    normalized_subject,
                     exam_data.unitName,
                     marks,
                     subject_total_marks,
@@ -195,7 +304,7 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
             "message": "Daily test marks added successfully",
             "exam_name": exam_data.examName,
             "exam_date": str(exam_data.examDate),
-            "subject": exam_data.subject,
+            "subject": normalized_subject,
             "unit_name": exam_data.unitName,
             "total_marks": exam_data.totalMarks,
             "subject_total_marks": subject_total_marks,
@@ -401,6 +510,665 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create mock test: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.get("/api/exam/daily-test/batch/{batch_id}/groups")
+async def get_daily_test_groups(batch_id: int, current_user: dict = Depends(get_current_user)):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT batch_id FROM batch WHERE batch_id = %s", (batch_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Batch with ID {batch_id} not found")
+
+        cursor.execute("""
+            SELECT
+                dt.test_date,
+                dt.subject,
+                dt.unit_name,
+                dt.subject_total_marks,
+                dt.test_total_marks,
+                COUNT(*) AS entries_count,
+                COUNT(DISTINCT dt.student_id) AS student_count,
+                MIN(dt.created_at) AS created_at
+            FROM daily_test dt
+            JOIN student s ON s.student_id = dt.student_id
+            WHERE s.batch_id = %s
+            GROUP BY dt.test_date, dt.subject, dt.unit_name, dt.subject_total_marks, dt.test_total_marks
+            ORDER BY dt.test_date DESC, dt.subject, dt.unit_name
+        """, (batch_id,))
+
+        groups = []
+        for row in cursor.fetchall():
+            groups.append({
+                "test_date": row[0].isoformat() if row[0] else None,
+                "subject": row[1],
+                "unit_name": row[2],
+                "subject_total_marks": row[3],
+                "test_total_marks": row[4],
+                "entries_count": row[5],
+                "student_count": row[6],
+                "created_at": row[7].isoformat() if row[7] else None,
+            })
+
+        return {"groups": groups, "total_groups": len(groups)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch daily test groups: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.post("/api/exam/daily-test/batch/{batch_id}/records")
+async def get_daily_test_group_records(
+    batch_id: int,
+    group_ref: DailyTestGroupRef,
+    current_user: dict = Depends(get_current_user)
+):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        normalized_subject = normalize_subject_key(group_ref.subject)
+        cursor.execute(f"""
+            SELECT
+                s.student_id,
+                s.student_name,
+                COALESCE(dt.total_marks, '') AS marks
+            FROM student s
+            LEFT JOIN daily_test dt
+                ON dt.student_id = s.student_id
+                AND dt.test_date = %s
+                AND COALESCE(dt.unit_name, '') = COALESCE(%s, '')
+                AND {normalized_subject_sql('dt.subject')} = %s
+            WHERE s.batch_id = %s
+            ORDER BY s.student_name
+        """, (group_ref.test_date, group_ref.unit_name, normalized_subject, batch_id))
+
+        rows = cursor.fetchall()
+        return {
+            "records": [
+                {
+                    "student_id": r[0],
+                    "student_name": r[1],
+                    "marks": r[2]
+                }
+                for r in rows
+            ],
+            "total_records": len(rows)
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch daily test records: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.put("/api/exam/daily-test/batch/{batch_id}")
+async def update_daily_test_group(
+    batch_id: int,
+    payload: DailyTestGroupUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT batch_name FROM batch WHERE batch_id = %s", (batch_id,))
+        batch_row = cursor.fetchone()
+        if not batch_row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Batch with ID {batch_id} not found")
+
+        batch_grade = extract_grade_from_batch_name(batch_row[0])
+        normalized_subject_label = normalize_subject_label(payload.subject)
+        normalized_subject = normalize_subject_key(payload.subject)
+
+        cursor.execute("""
+            SELECT student_id, branch, grade
+            FROM student
+            WHERE batch_id = %s
+        """, (batch_id,))
+        student_map = {r[0]: {"branch": r[1], "grade": r[2]} for r in cursor.fetchall()}
+
+        updated_count = 0
+        inserted_count = 0
+        deleted_count = 0
+        skipped_count = 0
+
+        for student_mark in payload.studentMarks:
+            sid = student_mark.student_id
+            if sid not in student_map:
+                skipped_count += 1
+                continue
+
+            marks = (student_mark.marks or '').strip()
+
+            cursor.execute(f"""
+                SELECT test_id
+                FROM daily_test
+                WHERE student_id = %s
+                  AND test_date = %s
+                  AND COALESCE(unit_name, '') = COALESCE(%s, '')
+                  AND {normalized_subject_sql('subject')} = %s
+                LIMIT 1
+            """, (sid, payload.test_date, payload.unit_name, normalized_subject))
+            existing = cursor.fetchone()
+
+            if not marks:
+                if existing:
+                    cursor.execute("DELETE FROM daily_test WHERE test_id = %s", (existing[0],))
+                    deleted_count += 1
+                continue
+
+            if existing:
+                cursor.execute("""
+                    UPDATE daily_test
+                    SET
+                        total_marks = %s,
+                        subject_total_marks = %s,
+                        test_total_marks = %s
+                    WHERE test_id = %s
+                """, (marks, payload.subject_total_marks, payload.test_total_marks, existing[0]))
+                updated_count += 1
+            else:
+                student_meta = student_map[sid]
+                cursor.execute("""
+                    INSERT INTO daily_test (
+                        student_id, grade, branch, test_date,
+                        subject, unit_name, total_marks, subject_total_marks, test_total_marks
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    sid,
+                    student_meta["grade"] if student_meta["grade"] is not None else batch_grade,
+                    student_meta["branch"],
+                    payload.test_date,
+                    normalized_subject_label,
+                    payload.unit_name,
+                    marks,
+                    payload.subject_total_marks,
+                    payload.test_total_marks
+                ))
+                inserted_count += 1
+
+        conn.commit()
+
+        return {
+            "message": "Daily test marks updated successfully",
+            "updated_count": updated_count,
+            "inserted_count": inserted_count,
+            "deleted_count": deleted_count,
+            "skipped_count": skipped_count
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update daily test marks: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.delete("/api/exam/daily-test/batch/{batch_id}")
+async def delete_daily_test_group(
+    batch_id: int,
+    payload: DailyTestGroupRef,
+    current_user: dict = Depends(get_current_user)
+):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        normalized_subject = normalize_subject_key(payload.subject)
+        cursor.execute(f"""
+            DELETE FROM daily_test dt
+            USING student s
+            WHERE dt.student_id = s.student_id
+              AND s.batch_id = %s
+              AND dt.test_date = %s
+              AND COALESCE(dt.unit_name, '') = COALESCE(%s, '')
+              AND {normalized_subject_sql('dt.subject')} = %s
+        """, (batch_id, payload.test_date, payload.unit_name, normalized_subject))
+        deleted_count = cursor.rowcount
+
+        conn.commit()
+        return {
+            "message": "Daily test deleted successfully",
+            "deleted_count": deleted_count
+        }
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete daily test group: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.get("/api/exam/mock-test/batch/{batch_id}/groups")
+async def get_mock_test_groups(batch_id: int, current_user: dict = Depends(get_current_user)):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT subjects FROM batch WHERE batch_id = %s", (batch_id,))
+        batch_row = cursor.fetchone()
+        if not batch_row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Batch with ID {batch_id} not found")
+
+        active_subjects = get_batch_mock_subjects(batch_row[0])
+
+        cursor.execute("""
+            SELECT
+                mt.test_date,
+                COALESCE(mt.maths_unit_names, ARRAY[]::text[]) AS maths_unit_names,
+                COALESCE(mt.physics_unit_names, ARRAY[]::text[]) AS physics_unit_names,
+                COALESCE(mt.chemistry_unit_names, ARRAY[]::text[]) AS chemistry_unit_names,
+                COALESCE(mt.biology_unit_names, ARRAY[]::text[]) AS biology_unit_names,
+                mt.maths_total_marks,
+                mt.physics_total_marks,
+                mt.chemistry_total_marks,
+                mt.biology_total_marks,
+                mt.test_total_marks,
+                COUNT(*) AS entries_count,
+                COUNT(DISTINCT mt.student_id) AS student_count,
+                MIN(mt.created_at) AS created_at
+            FROM mock_test mt
+            JOIN student s ON s.student_id = mt.student_id
+            WHERE s.batch_id = %s
+            GROUP BY
+                mt.test_date,
+                mt.maths_unit_names,
+                mt.physics_unit_names,
+                mt.chemistry_unit_names,
+                mt.biology_unit_names,
+                mt.maths_total_marks,
+                mt.physics_total_marks,
+                mt.chemistry_total_marks,
+                mt.biology_total_marks,
+                mt.test_total_marks
+            ORDER BY mt.test_date DESC
+        """, (batch_id,))
+
+        groups = []
+        for row in cursor.fetchall():
+            groups.append({
+                "test_date": row[0].isoformat() if row[0] else None,
+                "maths_unit_names": row[1] or [],
+                "physics_unit_names": row[2] or [],
+                "chemistry_unit_names": row[3] or [],
+                "biology_unit_names": row[4] or [],
+                "maths_total_marks": row[5],
+                "physics_total_marks": row[6],
+                "chemistry_total_marks": row[7],
+                "biology_total_marks": row[8],
+                "test_total_marks": row[9],
+                "entries_count": row[10],
+                "student_count": row[11],
+                "created_at": row[12].isoformat() if row[12] else None,
+            })
+
+        return {"groups": groups, "active_subjects": active_subjects, "total_groups": len(groups)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch mock test groups: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.post("/api/exam/mock-test/batch/{batch_id}/records")
+async def get_mock_test_group_records(
+    batch_id: int,
+    group_ref: MockTestGroupRef,
+    current_user: dict = Depends(get_current_user)
+):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                s.student_id,
+                s.student_name,
+                COALESCE(mt.maths_marks, '') AS maths_marks,
+                COALESCE(mt.physics_marks, '') AS physics_marks,
+                COALESCE(mt.chemistry_marks, '') AS chemistry_marks,
+                COALESCE(mt.biology_marks, '') AS biology_marks
+            FROM student s
+            LEFT JOIN mock_test mt
+                ON mt.student_id = s.student_id
+                AND mt.test_date = %s
+                AND COALESCE(mt.maths_unit_names, ARRAY[]::text[]) = %s
+                AND COALESCE(mt.physics_unit_names, ARRAY[]::text[]) = %s
+                AND COALESCE(mt.chemistry_unit_names, ARRAY[]::text[]) = %s
+                AND COALESCE(mt.biology_unit_names, ARRAY[]::text[]) = %s
+                AND mt.maths_total_marks IS NOT DISTINCT FROM %s
+                AND mt.physics_total_marks IS NOT DISTINCT FROM %s
+                AND mt.chemistry_total_marks IS NOT DISTINCT FROM %s
+                AND mt.biology_total_marks IS NOT DISTINCT FROM %s
+                AND mt.test_total_marks IS NOT DISTINCT FROM %s
+            WHERE s.batch_id = %s
+            ORDER BY s.student_name
+        """, (
+            group_ref.test_date,
+            group_ref.maths_unit_names,
+            group_ref.physics_unit_names,
+            group_ref.chemistry_unit_names,
+            group_ref.biology_unit_names,
+            group_ref.maths_total_marks,
+            group_ref.physics_total_marks,
+            group_ref.chemistry_total_marks,
+            group_ref.biology_total_marks,
+            group_ref.test_total_marks,
+            batch_id
+        ))
+
+        rows = cursor.fetchall()
+        return {
+            "records": [
+                {
+                    "student_id": r[0],
+                    "student_name": r[1],
+                    "maths_marks": r[2],
+                    "physics_marks": r[3],
+                    "chemistry_marks": r[4],
+                    "biology_marks": r[5],
+                }
+                for r in rows
+            ],
+            "total_records": len(rows)
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch mock test records: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.put("/api/exam/mock-test/batch/{batch_id}")
+async def update_mock_test_group(
+    batch_id: int,
+    payload: MockTestGroupUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT batch_name, subjects FROM batch WHERE batch_id = %s", (batch_id,))
+        batch_row = cursor.fetchone()
+        if not batch_row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Batch with ID {batch_id} not found")
+
+        batch_grade = extract_grade_from_batch_name(batch_row[0])
+        active_subjects = set(get_batch_mock_subjects(batch_row[1]))
+
+        cursor.execute("""
+            SELECT student_id, branch, grade
+            FROM student
+            WHERE batch_id = %s
+        """, (batch_id,))
+        student_map = {r[0]: {"branch": r[1], "grade": r[2]} for r in cursor.fetchall()}
+
+        def safe_int(val):
+            try:
+                return int(val)
+            except (TypeError, ValueError):
+                return None
+
+        updated_count = 0
+        inserted_count = 0
+        deleted_count = 0
+        skipped_count = 0
+
+        for student_mark in payload.studentMarks:
+            sid = student_mark.student_id
+            if sid not in student_map:
+                skipped_count += 1
+                continue
+
+            maths_marks = (student_mark.maths_marks or '').strip() if 'maths' in active_subjects else ''
+            physics_marks = (student_mark.physics_marks or '').strip() if 'physics' in active_subjects else ''
+            chemistry_marks = (student_mark.chemistry_marks or '').strip() if 'chemistry' in active_subjects else ''
+            biology_marks = (student_mark.biology_marks or '').strip() if 'biology' in active_subjects else ''
+
+            cursor.execute("""
+                SELECT test_id
+                FROM mock_test
+                WHERE student_id = %s
+                  AND test_date = %s
+                  AND COALESCE(maths_unit_names, ARRAY[]::text[]) = %s
+                  AND COALESCE(physics_unit_names, ARRAY[]::text[]) = %s
+                  AND COALESCE(chemistry_unit_names, ARRAY[]::text[]) = %s
+                  AND COALESCE(biology_unit_names, ARRAY[]::text[]) = %s
+                  AND maths_total_marks IS NOT DISTINCT FROM %s
+                  AND physics_total_marks IS NOT DISTINCT FROM %s
+                  AND chemistry_total_marks IS NOT DISTINCT FROM %s
+                  AND biology_total_marks IS NOT DISTINCT FROM %s
+                  AND test_total_marks IS NOT DISTINCT FROM %s
+                LIMIT 1
+            """, (
+                sid,
+                payload.test_date,
+                payload.maths_unit_names,
+                payload.physics_unit_names,
+                payload.chemistry_unit_names,
+                payload.biology_unit_names,
+                payload.maths_total_marks,
+                payload.physics_total_marks,
+                payload.chemistry_total_marks,
+                payload.biology_total_marks,
+                payload.test_total_marks,
+            ))
+            existing = cursor.fetchone()
+
+            if not any([maths_marks, physics_marks, chemistry_marks, biology_marks]):
+                if existing:
+                    cursor.execute("DELETE FROM mock_test WHERE test_id = %s", (existing[0],))
+                    deleted_count += 1
+                continue
+
+            numeric_marks = [safe_int(v) for v in [maths_marks, physics_marks, chemistry_marks, biology_marks]]
+            valid_marks = [m for m in numeric_marks if m is not None]
+            total_marks = str(sum(valid_marks)) if valid_marks else ''
+
+            if existing:
+                cursor.execute("""
+                    UPDATE mock_test
+                    SET
+                        maths_marks = %s,
+                        physics_marks = %s,
+                        chemistry_marks = %s,
+                        biology_marks = %s,
+                        total_marks = %s,
+                        maths_total_marks = %s,
+                        physics_total_marks = %s,
+                        chemistry_total_marks = %s,
+                        biology_total_marks = %s,
+                        test_total_marks = %s
+                    WHERE test_id = %s
+                """, (
+                    maths_marks,
+                    physics_marks,
+                    chemistry_marks,
+                    biology_marks,
+                    total_marks,
+                    payload.maths_total_marks,
+                    payload.physics_total_marks,
+                    payload.chemistry_total_marks,
+                    payload.biology_total_marks,
+                    payload.test_total_marks,
+                    existing[0]
+                ))
+                updated_count += 1
+            else:
+                student_meta = student_map[sid]
+                cursor.execute("""
+                    INSERT INTO mock_test (
+                        student_id, grade, branch, test_date,
+                        maths_marks, physics_marks, chemistry_marks, biology_marks,
+                        maths_unit_names, physics_unit_names, chemistry_unit_names, biology_unit_names,
+                        total_marks,
+                        maths_total_marks, physics_total_marks, chemistry_total_marks, biology_total_marks,
+                        test_total_marks
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    sid,
+                    student_meta["grade"] if student_meta["grade"] is not None else batch_grade,
+                    student_meta["branch"],
+                    payload.test_date,
+                    maths_marks,
+                    physics_marks,
+                    chemistry_marks,
+                    biology_marks,
+                    payload.maths_unit_names,
+                    payload.physics_unit_names,
+                    payload.chemistry_unit_names,
+                    payload.biology_unit_names,
+                    total_marks,
+                    payload.maths_total_marks,
+                    payload.physics_total_marks,
+                    payload.chemistry_total_marks,
+                    payload.biology_total_marks,
+                    payload.test_total_marks,
+                ))
+                inserted_count += 1
+
+        conn.commit()
+        return {
+            "message": "Mock test marks updated successfully",
+            "updated_count": updated_count,
+            "inserted_count": inserted_count,
+            "deleted_count": deleted_count,
+            "skipped_count": skipped_count
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update mock test marks: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.delete("/api/exam/mock-test/batch/{batch_id}")
+async def delete_mock_test_group(
+    batch_id: int,
+    payload: MockTestGroupRef,
+    current_user: dict = Depends(get_current_user)
+):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            DELETE FROM mock_test mt
+            USING student s
+            WHERE mt.student_id = s.student_id
+              AND s.batch_id = %s
+              AND mt.test_date = %s
+              AND COALESCE(mt.maths_unit_names, ARRAY[]::text[]) = %s
+              AND COALESCE(mt.physics_unit_names, ARRAY[]::text[]) = %s
+              AND COALESCE(mt.chemistry_unit_names, ARRAY[]::text[]) = %s
+              AND COALESCE(mt.biology_unit_names, ARRAY[]::text[]) = %s
+              AND mt.maths_total_marks IS NOT DISTINCT FROM %s
+              AND mt.physics_total_marks IS NOT DISTINCT FROM %s
+              AND mt.chemistry_total_marks IS NOT DISTINCT FROM %s
+              AND mt.biology_total_marks IS NOT DISTINCT FROM %s
+              AND mt.test_total_marks IS NOT DISTINCT FROM %s
+        """, (
+            batch_id,
+            payload.test_date,
+            payload.maths_unit_names,
+            payload.physics_unit_names,
+            payload.chemistry_unit_names,
+            payload.biology_unit_names,
+            payload.maths_total_marks,
+            payload.physics_total_marks,
+            payload.chemistry_total_marks,
+            payload.biology_total_marks,
+            payload.test_total_marks,
+        ))
+        deleted_count = cursor.rowcount
+
+        conn.commit()
+        return {
+            "message": "Mock test deleted successfully",
+            "deleted_count": deleted_count
+        }
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete mock test group: {str(e)}"
         )
     finally:
         if cursor:

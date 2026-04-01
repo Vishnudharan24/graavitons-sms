@@ -1,7 +1,7 @@
 .app {
   display: flex;
   min-height: 100vh;
-  background-color: #f7f8fc;
+  background-color: var(--color-bg);
 }
 
 .main-content {

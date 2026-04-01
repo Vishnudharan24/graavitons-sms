@@ -179,18 +179,11 @@ const Dashboard = () => {
   return (
     <div className="dashboard">
       <div className="dashboard-header">
-        <div className="breadcrumb">HOME</div>
+        <div className="breadcrumb">Dashboard</div>
       </div>
 
       {error && (
-        <div className="error-banner" style={{
-          padding: '15px',
-          backgroundColor: '#fee',
-          color: '#c00',
-          borderRadius: '4px',
-          margin: '20px 0',
-          textAlign: 'center'
-        }}>
+        <div className="error-banner">
           {error}
         </div>
       )}
@@ -218,14 +211,14 @@ const Dashboard = () => {
         </div>
 
         <div className="action-buttons">
-          <button className="btn-achievers" onClick={() => setShowAchievers(true)}>🌟 Achievers</button>
-          <button className="btn-add-batch" onClick={handleAddBatch}>+ Add Batch</button>
+          <button className="btn-achievers" onClick={() => setShowAchievers(true)}>Achievers</button>
+          <button className="btn-add-batch" onClick={handleAddBatch}>Add Batch</button>
         </div>
       </div>
 
       <div className="courses-grid">
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px', gridColumn: '1 / -1' }}>
+          <div className="dashboard-message">
             <p>Loading batches...</p>
           </div>
         ) : filteredBatches.length > 0 ? (
@@ -239,7 +232,7 @@ const Dashboard = () => {
             </div>
           ))
         ) : (
-          <div style={{ textAlign: 'center', padding: '40px', gridColumn: '1 / -1' }}>
+          <div className="dashboard-message">
             <p>No batches found for {selectedYear}</p>
           </div>
         )}

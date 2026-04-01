@@ -4,7 +4,9 @@ from pydantic import BaseModel
 from typing import List, Optional
 import psycopg2
 from psycopg2 import sql
-from datetime import date
+from datetime import date, datetime
+from collections import defaultdict
+import math
 from config import CORS_ORIGINS, APP_TITLE
 from api.middleware import get_current_user
 from db_pool import get_db_connection
@@ -47,6 +49,135 @@ def safe_parse_mark(value):
             return None
 
 
+def compute_slope(points: List[dict]) -> float:
+    """Compute simple linear-regression slope from ordered points [{'date': ..., 'score': ...}]."""
+    if not points:
+        return 0.0
+    valid = [p for p in points if p.get("score") is not None]
+    if len(valid) < 2:
+        return 0.0
+    # Order by date if parsable, else keep insertion order
+    def _d(v):
+        try:
+            return datetime.fromisoformat(v["date"]) if isinstance(v.get("date"), str) else datetime.min
+        except Exception:
+            return datetime.min
+    valid = sorted(valid, key=_d)
+    xs = list(range(len(valid)))
+    ys = [float(v["score"]) for v in valid]
+    x_mean = sum(xs) / len(xs)
+    y_mean = sum(ys) / len(ys)
+    denominator = sum((x - x_mean) ** 2 for x in xs)
+    if denominator == 0:
+        return 0.0
+    numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(xs, ys))
+    return round(numerator / denominator, 3)
+
+
+def compute_stddev(values: List[float]) -> float:
+    if not values:
+        return 0.0
+    if len(values) == 1:
+        return 0.0
+    mean = sum(values) / len(values)
+    variance = sum((v - mean) ** 2 for v in values) / len(values)
+    return round(math.sqrt(variance), 2)
+
+
+def percentile(sorted_values: List[float], p: float) -> float:
+    """Inclusive percentile with linear interpolation; p in [0, 100]."""
+    if not sorted_values:
+        return 0.0
+    if len(sorted_values) == 1:
+        return float(sorted_values[0])
+    k = (len(sorted_values) - 1) * (p / 100.0)
+    f = math.floor(k)
+    c = math.ceil(k)
+    if f == c:
+        return float(sorted_values[int(k)])
+    d0 = sorted_values[f] * (c - k)
+    d1 = sorted_values[c] * (k - f)
+    return float(d0 + d1)
+
+
+def compute_risk_score(avg_score: float, slope: float, participation_rate: float, non_numeric_rate: float):
+    score = 0
+    reasons = []
+
+    if avg_score < 40:
+        score += 40
+        reasons.append("Low average score")
+    elif avg_score < 50:
+        score += 25
+        reasons.append("Average score below expected")
+    elif avg_score < 60:
+        score += 10
+
+    if slope <= -4:
+        score += 30
+        reasons.append("Strong downward trend")
+    elif slope <= -2:
+        score += 20
+        reasons.append("Declining performance trend")
+    elif slope < 0:
+        score += 10
+
+    if participation_rate < 50:
+        score += 20
+        reasons.append("Low test participation")
+    elif participation_rate < 70:
+        score += 10
+
+    if non_numeric_rate >= 30:
+        score += 15
+        reasons.append("High absent/non-numeric marks")
+    elif non_numeric_rate >= 15:
+        score += 8
+
+    score = min(100, round(score, 1))
+    if score >= 70:
+        level = "high"
+    elif score >= 40:
+        level = "medium"
+    else:
+        level = "low"
+
+    recommended_action = {
+        "high": "Immediate intervention: meet student/parent and set weekly remediation plan.",
+        "medium": "Track weekly and assign targeted subject practice.",
+        "low": "Continue regular monitoring and periodic feedback."
+    }[level]
+
+    return score, level, reasons, recommended_action
+
+
+SUBJECT_CANONICAL = {
+    "maths": "Mathematics",
+    "mathematics": "Mathematics",
+    "physics": "Physics",
+    "chemistry": "Chemistry",
+    "biology": "Biology",
+}
+
+
+def normalize_subject_label(value: str) -> str:
+    key = str(value or "").strip().lower()
+    if not key:
+        return ""
+    if key in SUBJECT_CANONICAL:
+        return SUBJECT_CANONICAL[key]
+    return " ".join(part.capitalize() for part in key.split())
+
+
+def normalize_subject_key(value: str) -> str:
+    label = normalize_subject_label(value)
+    return label.strip().lower()
+
+
+def normalized_subject_sql(column: str) -> str:
+    return f"CASE WHEN LOWER(TRIM({column})) IN ('maths', 'mathematics') THEN 'mathematics' ELSE LOWER(TRIM({column})) END"
+
+
 
 # ==================== FILTER OPTIONS ENDPOINTS ====================
 
@@ -82,9 +213,10 @@ async def get_filter_options(current_user: dict = Depends(get_current_user)):
                 "subjects": row[5] if row[5] else []
             })
 
-        # Get distinct subjects from daily_test
+        # Get distinct subjects from daily_test (normalized to canonical labels)
         cursor.execute("SELECT DISTINCT subject FROM daily_test WHERE subject IS NOT NULL ORDER BY subject")
-        subjects = [row[0] for row in cursor.fetchall()]
+        subject_labels = [normalize_subject_label(row[0]) for row in cursor.fetchall() if row[0]]
+        subjects = sorted(list({s for s in subject_labels if s}))
 
         # Get distinct branches
         cursor.execute("SELECT DISTINCT branch FROM student WHERE branch IS NOT NULL ORDER BY branch")
@@ -169,8 +301,8 @@ async def get_subjectwise_analysis(
             params.append(batch_id)
 
         if subject:
-            query += " AND dt.subject = %s"
-            params.append(subject)
+            query += f" AND {normalized_subject_sql('dt.subject')} = %s"
+            params.append(normalize_subject_key(subject))
 
         if from_date:
             query += " AND dt.test_date >= %s"
@@ -241,7 +373,7 @@ async def get_subjectwise_analysis(
                     "batch": row[3],
                     "subjects": {}
                 }
-            subj = row[4]
+            subj = normalize_subject_label(row[4]) if row[4] else row[4]
             if subj not in student_daily[sid]["subjects"]:
                 student_daily[sid]["subjects"][subj] = {
                     "tests": [],
@@ -410,8 +542,8 @@ async def get_branchwise_analysis(
             params.append(batch_id)
 
         if subject:
-            daily_query += " AND dt.subject = %s"
-            params.append(subject)
+            daily_query += f" AND {normalized_subject_sql('dt.subject')} = %s"
+            params.append(normalize_subject_key(subject))
 
         if from_date:
             daily_query += " AND dt.test_date >= %s"
@@ -477,7 +609,8 @@ async def get_branchwise_analysis(
             branch = row[0]
             if branch not in branches_daily:
                 branches_daily[branch] = {"subjects": {}, "student_count": 0}
-            branches_daily[branch]["subjects"][row[1]] = {
+            subject_label = normalize_subject_label(row[1]) if row[1] else row[1]
+            branches_daily[branch]["subjects"][subject_label] = {
                 "average": round(float(row[2]), 1) if row[2] else 0,
                 "top_score": row[3] or 0,
                 "lowest": row[4] or 0,
@@ -548,8 +681,8 @@ async def get_branchwise_analysis(
             student_params.append(batch_id)
 
         if subject:
-            student_query += " AND dt.subject = %s"
-            student_params.append(subject)
+            student_query += f" AND {normalized_subject_sql('dt.subject')} = %s"
+            student_params.append(normalize_subject_key(subject))
 
         if from_date:
             student_query += " AND dt.test_date >= %s"
@@ -757,9 +890,10 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
             test_date = test[4]
             test_subject = test[1]
             test_unit = test[2]
+            test_subject_key = normalize_subject_key(test_subject)
 
             # Get class average and top score for the same test
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT
                     AVG(safe_numeric(dt2.total_marks)) as class_avg,
                     MAX(safe_numeric(dt2.total_marks)) as top_score,
@@ -767,10 +901,10 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
                 FROM daily_test dt2
                 JOIN student s2 ON dt2.student_id = s2.student_id
                 WHERE s2.batch_id = %s
-                    AND dt2.subject = %s
+                    AND {normalized_subject_sql('dt2.subject')} = %s
                     AND dt2.unit_name = %s
                     AND dt2.test_date = %s
-            """, (batch_id, test_subject, test_unit, test_date))
+            """, (batch_id, test_subject_key, test_unit, test_date))
 
             stats_row = cursor.fetchone()
             class_avg = round(float(stats_row[0]), 1) if stats_row and stats_row[0] else 0
@@ -1096,8 +1230,8 @@ async def get_batch_performance(
         daily_subject_filter = ""
         daily_subject_params = []
         if subject:
-            daily_subject_filter = " AND dt.subject = %s"
-            daily_subject_params.append(subject)
+            daily_subject_filter = f" AND {normalized_subject_sql('dt.subject')} = %s"
+            daily_subject_params.append(normalize_subject_key(subject))
 
         # Score normalization expressions (percentage-based when total columns are present)
         daily_score_expr = """
@@ -1221,7 +1355,7 @@ async def get_batch_performance(
             """, [batch_id] + daily_date_params + daily_subject_params)
             for r in cursor.fetchall():
                 daily_subject_breakdown.append({
-                    "subject": r[0],
+                    "subject": normalize_subject_label(r[0]) if r[0] else r[0],
                     "avg": float(r[1]) if r[1] is not None else 0,
                     "top": float(r[2]) if r[2] is not None else 0,
                     "low": float(r[3]) if r[3] is not None else 0,
@@ -1474,6 +1608,911 @@ async def get_batch_performance(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch batch performance: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.get("/api/analysis/student-metrics/{student_id}")
+async def get_student_metrics(
+    student_id: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Advanced individual metrics: trend, consistency, participation, percentile, risk score."""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT student_id, student_name, batch_id FROM student WHERE student_id = %s", (student_id,))
+        student_row = cursor.fetchone()
+        if not student_row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Student {student_id} not found")
+
+        batch_id = student_row[2]
+
+        daily_date_filter = ""
+        mock_date_filter = ""
+        daily_params = []
+        mock_params = []
+        if date_from:
+            daily_date_filter += " AND dt.test_date >= %s"
+            mock_date_filter += " AND mt.test_date >= %s"
+            daily_params.append(date_from)
+            mock_params.append(date_from)
+        if date_to:
+            daily_date_filter += " AND dt.test_date <= %s"
+            mock_date_filter += " AND mt.test_date <= %s"
+            daily_params.append(date_to)
+            mock_params.append(date_to)
+
+        daily_score_expr = """
+            CASE
+                WHEN dt.subject_total_marks IS NOT NULL AND dt.subject_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
+                    THEN (safe_numeric(dt.total_marks) * 100.0 / dt.subject_total_marks)
+                WHEN dt.test_total_marks IS NOT NULL AND dt.test_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
+                    THEN (safe_numeric(dt.total_marks) * 100.0 / dt.test_total_marks)
+                ELSE safe_numeric(dt.total_marks)
+            END
+        """
+
+        mock_total_score_expr = """
+            CASE
+                WHEN mt.test_total_marks IS NOT NULL AND mt.test_total_marks > 0 AND safe_numeric(mt.total_marks) IS NOT NULL
+                    THEN (safe_numeric(mt.total_marks) * 100.0 / mt.test_total_marks)
+                ELSE safe_numeric(mt.total_marks)
+            END
+        """
+
+        cursor.execute(f"""
+            SELECT dt.test_date, {daily_score_expr} AS score, dt.subject
+            FROM daily_test dt
+            WHERE dt.student_id = %s {daily_date_filter}
+            ORDER BY dt.test_date
+        """, [student_id] + daily_params)
+        daily_rows = cursor.fetchall()
+
+        cursor.execute(f"""
+            SELECT mt.test_date, {mock_total_score_expr} AS score
+            FROM mock_test mt
+            WHERE mt.student_id = %s {mock_date_filter}
+            ORDER BY mt.test_date
+        """, [student_id] + mock_params)
+        mock_rows = cursor.fetchall()
+
+        score_points = []
+        score_values = []
+        subject_scores = defaultdict(list)
+
+        for r in daily_rows:
+            d = r[0].isoformat() if r[0] else None
+            score = float(r[1]) if r[1] is not None else None
+            subject = r[2]
+            score_points.append({"date": d, "score": score})
+            if score is not None:
+                score_values.append(score)
+                if subject:
+                    subject_scores[subject].append({"date": d, "score": score})
+
+        for r in mock_rows:
+            d = r[0].isoformat() if r[0] else None
+            score = float(r[1]) if r[1] is not None else None
+            score_points.append({"date": d, "score": score})
+            if score is not None:
+                score_values.append(score)
+
+        overall_avg = round(sum(score_values) / len(score_values), 1) if score_values else 0
+        trend_slope = compute_slope(score_points)
+        consistency_stddev = compute_stddev(score_values)
+
+        # Participation (tests attempted vs tests conducted in batch)
+        cursor.execute(f"""
+            SELECT COUNT(DISTINCT (dt.test_date, dt.subject, dt.unit_name))
+            FROM daily_test dt
+            JOIN student s ON s.student_id = dt.student_id
+            WHERE s.batch_id = %s {daily_date_filter}
+        """, [batch_id] + daily_params)
+        total_daily_conducted = cursor.fetchone()[0] or 0
+
+        cursor.execute(f"""
+            SELECT COUNT(DISTINCT (dt.test_date, dt.subject, dt.unit_name))
+            FROM daily_test dt
+            WHERE dt.student_id = %s {daily_date_filter}
+        """, [student_id] + daily_params)
+        student_daily_attempted = cursor.fetchone()[0] or 0
+
+        cursor.execute(f"""
+            SELECT COUNT(DISTINCT mt.test_date)
+            FROM mock_test mt
+            JOIN student s ON s.student_id = mt.student_id
+            WHERE s.batch_id = %s {mock_date_filter}
+        """, [batch_id] + mock_params)
+        total_mock_conducted = cursor.fetchone()[0] or 0
+
+        cursor.execute(f"""
+            SELECT COUNT(DISTINCT mt.test_date)
+            FROM mock_test mt
+            WHERE mt.student_id = %s {mock_date_filter}
+        """, [student_id] + mock_params)
+        student_mock_attempted = cursor.fetchone()[0] or 0
+
+        total_conducted = total_daily_conducted + total_mock_conducted
+        total_attempted = student_daily_attempted + student_mock_attempted
+        participation_rate = round((total_attempted / total_conducted) * 100, 1) if total_conducted > 0 else 0
+
+        # Non-numeric rate on student marks rows
+        cursor.execute(f"""
+            SELECT
+                COUNT(*) FILTER (WHERE dt.total_marks IS NOT NULL AND trim(dt.total_marks) <> ''),
+                COUNT(*) FILTER (WHERE dt.total_marks IS NOT NULL AND trim(dt.total_marks) <> '' AND safe_numeric(dt.total_marks) IS NULL)
+            FROM daily_test dt
+            WHERE dt.student_id = %s {daily_date_filter}
+        """, [student_id] + daily_params)
+        d_total, d_non_numeric = cursor.fetchone()
+        d_total = d_total or 0
+        d_non_numeric = d_non_numeric or 0
+
+        cursor.execute(f"""
+            SELECT
+                COUNT(*) FILTER (WHERE mt.total_marks IS NOT NULL AND trim(mt.total_marks) <> ''),
+                COUNT(*) FILTER (WHERE mt.total_marks IS NOT NULL AND trim(mt.total_marks) <> '' AND safe_numeric(mt.total_marks) IS NULL)
+            FROM mock_test mt
+            WHERE mt.student_id = %s {mock_date_filter}
+        """, [student_id] + mock_params)
+        m_total, m_non_numeric = cursor.fetchone()
+        m_total = m_total or 0
+        m_non_numeric = m_non_numeric or 0
+
+        non_numeric_rate = round(((d_non_numeric + m_non_numeric) / (d_total + m_total)) * 100, 1) if (d_total + m_total) > 0 else 0
+
+        # Subject metrics (student avg vs batch avg + slope)
+        subject_metrics = []
+        for subj, points in subject_scores.items():
+            subj_scores = [p["score"] for p in points if p.get("score") is not None]
+            if not subj_scores:
+                continue
+            student_subj_avg = round(sum(subj_scores) / len(subj_scores), 1)
+            cursor.execute(f"""
+                SELECT ROUND(AVG({daily_score_expr})::numeric, 1)
+                FROM daily_test dt
+                JOIN student s ON s.student_id = dt.student_id
+                WHERE s.batch_id = %s AND {normalized_subject_sql('dt.subject')} = %s {daily_date_filter}
+            """, [batch_id, normalize_subject_key(subj)] + daily_params)
+            batch_subj_avg_row = cursor.fetchone()
+            batch_subj_avg = float(batch_subj_avg_row[0]) if batch_subj_avg_row and batch_subj_avg_row[0] is not None else 0
+            subject_metrics.append({
+                "subject": subj,
+                "avg_pct": student_subj_avg,
+                "delta_vs_batch": round(student_subj_avg - batch_subj_avg, 1),
+                "trend_slope": compute_slope(points)
+            })
+
+        # Percentile among batch students
+        cursor.execute(f"""
+            WITH all_scores AS (
+                SELECT s.student_id,
+                    CASE
+                        WHEN dt.subject_total_marks IS NOT NULL AND dt.subject_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
+                            THEN (safe_numeric(dt.total_marks) * 100.0 / dt.subject_total_marks)
+                        WHEN dt.test_total_marks IS NOT NULL AND dt.test_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
+                            THEN (safe_numeric(dt.total_marks) * 100.0 / dt.test_total_marks)
+                        ELSE safe_numeric(dt.total_marks)
+                    END AS score
+                FROM daily_test dt
+                JOIN student s ON s.student_id = dt.student_id
+                WHERE s.batch_id = %s {daily_date_filter}
+                UNION ALL
+                SELECT s.student_id,
+                    CASE
+                        WHEN mt.test_total_marks IS NOT NULL AND mt.test_total_marks > 0 AND safe_numeric(mt.total_marks) IS NOT NULL
+                            THEN (safe_numeric(mt.total_marks) * 100.0 / mt.test_total_marks)
+                        ELSE safe_numeric(mt.total_marks)
+                    END AS score
+                FROM mock_test mt
+                JOIN student s ON s.student_id = mt.student_id
+                WHERE s.batch_id = %s {mock_date_filter}
+            ),
+            student_avg AS (
+                SELECT student_id, AVG(score) AS avg_score
+                FROM all_scores
+                WHERE score IS NOT NULL
+                GROUP BY student_id
+            ),
+            ranked AS (
+                SELECT student_id, avg_score, PERCENT_RANK() OVER (ORDER BY avg_score) AS pr
+                FROM student_avg
+            )
+            SELECT pr FROM ranked WHERE student_id = %s
+        """, [batch_id] + daily_params + [batch_id] + mock_params + [student_id])
+        pr_row = cursor.fetchone()
+        percentile_overall = round(float(pr_row[0]) * 100, 1) if pr_row and pr_row[0] is not None else 0
+
+        risk_score, risk_level, reasons, recommended_action = compute_risk_score(
+            overall_avg,
+            trend_slope,
+            participation_rate,
+            non_numeric_rate
+        )
+
+        return {
+            "student_id": student_id,
+            "student_name": student_row[1],
+            "overall_avg_pct": overall_avg,
+            "trend_slope": trend_slope,
+            "consistency_stddev": consistency_stddev,
+            "participation_rate": participation_rate,
+            "percentile_overall": percentile_overall,
+            "non_numeric_rate": non_numeric_rate,
+            "subject_metrics": sorted(subject_metrics, key=lambda x: x["avg_pct"]),
+            "risk_score": risk_score,
+            "risk_level": risk_level,
+            "reasons": reasons,
+            "recommended_action": recommended_action
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch student metrics: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.get("/api/analysis/student-weak-topics/{student_id}")
+async def get_student_weak_topics(
+    student_id: str,
+    limit: int = 5,
+    subject: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Top weak unit-level topics for a student with remediation suggestions."""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT student_id, student_name FROM student WHERE student_id = %s", (student_id,))
+        student_row = cursor.fetchone()
+        if not student_row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Student {student_id} not found")
+
+        score_expr = """
+            CASE
+                WHEN dt.subject_total_marks IS NOT NULL AND dt.subject_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
+                    THEN (safe_numeric(dt.total_marks) * 100.0 / dt.subject_total_marks)
+                WHEN dt.test_total_marks IS NOT NULL AND dt.test_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
+                    THEN (safe_numeric(dt.total_marks) * 100.0 / dt.test_total_marks)
+                ELSE safe_numeric(dt.total_marks)
+            END
+        """
+
+        filters = ""
+        params = [student_id]
+        if subject:
+            filters += f" AND {normalized_subject_sql('dt.subject')} = %s"
+            params.append(normalize_subject_key(subject))
+        if date_from:
+            filters += " AND dt.test_date >= %s"
+            params.append(date_from)
+        if date_to:
+            filters += " AND dt.test_date <= %s"
+            params.append(date_to)
+
+        normalized_limit = max(1, min(limit, 15))
+
+        cursor.execute(f"""
+            SELECT
+                dt.subject,
+                COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown') AS unit_name,
+                ROUND(AVG({score_expr})::numeric, 2) AS avg_pct,
+                COUNT(*) AS attempts,
+                MAX(dt.test_date) AS latest_test_date,
+                COUNT(*) FILTER (
+                    WHERE dt.total_marks IS NOT NULL
+                      AND TRIM(dt.total_marks) <> ''
+                      AND safe_numeric(dt.total_marks) IS NULL
+                ) AS non_numeric_attempts
+            FROM daily_test dt
+            WHERE dt.student_id = %s {filters}
+            GROUP BY dt.subject, COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown')
+            HAVING COUNT(*) > 0
+            ORDER BY avg_pct ASC NULLS LAST, attempts DESC
+            LIMIT %s
+        """, params + [normalized_limit])
+
+        weak_units = []
+        for row in cursor.fetchall():
+            avg_pct = float(row[2]) if row[2] is not None else 0.0
+
+            if avg_pct < 35:
+                action = "High-priority remediation: rebuild concepts, revise formulas."
+            elif avg_pct < 50:
+                action = "Focused remediation: teacher-led recap."
+            elif avg_pct < 65:
+                action = "Stabilize topic: mixed timed practice plus error-log revision."
+            else:
+                action = "Maintain and polish: short revision and periodic practice to retain strength."
+
+            weak_units.append({
+                "subject": normalize_subject_label(row[0] or "Unknown"),
+                "unit_name": row[1],
+                "avg_pct": round(avg_pct, 2),
+                "difficulty_index": round(max(0, 100 - avg_pct), 2),
+                "attempts": row[3],
+                "latest_test_date": row[4].isoformat() if row[4] else None,
+                "non_numeric_attempts": row[5] or 0,
+                "remediation_action": action
+            })
+
+        return {
+            "student_id": student_id,
+            "student_name": student_row[1],
+            "weak_units": weak_units,
+            "total_weak_units": len(weak_units)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch student weak topics: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.get("/api/analysis/batch-advanced/{batch_id}")
+async def get_batch_advanced_stats(
+    batch_id: int,
+    test_type: Optional[str] = Query("both", description="daily, mock, or both"),
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    subject: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Batch advanced metrics: median/quartiles/IQR/stddev/percentile-bands/outliers/difficulty."""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT batch_id FROM batch WHERE batch_id = %s", (batch_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Batch {batch_id} not found")
+
+        daily_date_filter = ""
+        mock_date_filter = ""
+        daily_subject_filter = ""
+        daily_params = []
+        mock_params = []
+        daily_subject_params = []
+
+        if date_from:
+            daily_date_filter += " AND dt.test_date >= %s"
+            mock_date_filter += " AND mt.test_date >= %s"
+            daily_params.append(date_from)
+            mock_params.append(date_from)
+        if date_to:
+            daily_date_filter += " AND dt.test_date <= %s"
+            mock_date_filter += " AND mt.test_date <= %s"
+            daily_params.append(date_to)
+            mock_params.append(date_to)
+        if subject:
+            daily_subject_filter = f" AND {normalized_subject_sql('dt.subject')} = %s"
+            daily_subject_params.append(normalize_subject_key(subject))
+
+        daily_score_expr = """
+            CASE
+                WHEN dt.subject_total_marks IS NOT NULL AND dt.subject_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
+                    THEN (safe_numeric(dt.total_marks) * 100.0 / dt.subject_total_marks)
+                WHEN dt.test_total_marks IS NOT NULL AND dt.test_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
+                    THEN (safe_numeric(dt.total_marks) * 100.0 / dt.test_total_marks)
+                ELSE safe_numeric(dt.total_marks)
+            END
+        """
+        mock_total_score_expr = """
+            CASE
+                WHEN mt.test_total_marks IS NOT NULL AND mt.test_total_marks > 0 AND safe_numeric(mt.total_marks) IS NOT NULL
+                    THEN (safe_numeric(mt.total_marks) * 100.0 / mt.test_total_marks)
+                ELSE safe_numeric(mt.total_marks)
+            END
+        """
+
+        daily_student_avgs = {}
+        mock_student_avgs = {}
+
+        if test_type in ("daily", "both"):
+            cursor.execute(f"""
+                SELECT s.student_id, s.student_name, ROUND(AVG({daily_score_expr})::numeric, 2)
+                FROM daily_test dt
+                JOIN student s ON s.student_id = dt.student_id
+                WHERE s.batch_id = %s {daily_date_filter} {daily_subject_filter}
+                GROUP BY s.student_id, s.student_name
+            """, [batch_id] + daily_params + daily_subject_params)
+            for sid, sname, avg_score in cursor.fetchall():
+                daily_student_avgs[sid] = {"student_id": sid, "student_name": sname, "avg": float(avg_score) if avg_score is not None else None}
+
+        if test_type in ("mock", "both"):
+            cursor.execute(f"""
+                SELECT s.student_id, s.student_name, ROUND(AVG({mock_total_score_expr})::numeric, 2)
+                FROM mock_test mt
+                JOIN student s ON s.student_id = mt.student_id
+                WHERE s.batch_id = %s {mock_date_filter}
+                GROUP BY s.student_id, s.student_name
+            """, [batch_id] + mock_params)
+            for sid, sname, avg_score in cursor.fetchall():
+                mock_student_avgs[sid] = {"student_id": sid, "student_name": sname, "avg": float(avg_score) if avg_score is not None else None}
+
+        # combine as existing strategy (equal weight of available daily/mock averages)
+        combined = {}
+        for sid, rec in daily_student_avgs.items():
+            combined[sid] = {
+                "student_id": sid,
+                "student_name": rec["student_name"],
+                "daily_avg": rec["avg"],
+                "mock_avg": None,
+                "overall_avg": rec["avg"] if rec["avg"] is not None else 0
+            }
+        for sid, rec in mock_student_avgs.items():
+            if sid not in combined:
+                combined[sid] = {
+                    "student_id": sid,
+                    "student_name": rec["student_name"],
+                    "daily_avg": None,
+                    "mock_avg": rec["avg"],
+                    "overall_avg": rec["avg"] if rec["avg"] is not None else 0
+                }
+            else:
+                combined[sid]["mock_avg"] = rec["avg"]
+                vals = [v for v in [combined[sid]["daily_avg"], combined[sid]["mock_avg"]] if v is not None]
+                combined[sid]["overall_avg"] = round(sum(vals) / len(vals), 2) if vals else 0
+
+        overall_scores = sorted([float(v["overall_avg"]) for v in combined.values() if v["overall_avg"] is not None])
+        q1 = percentile(overall_scores, 25)
+        median_val = percentile(overall_scores, 50)
+        q3 = percentile(overall_scores, 75)
+        iqr = q3 - q1
+        lower_fence = q1 - (1.5 * iqr)
+        upper_fence = q3 + (1.5 * iqr)
+
+        outliers_low = []
+        outliers_high = []
+        for rec in combined.values():
+            score = float(rec["overall_avg"]) if rec["overall_avg"] is not None else None
+            if score is None:
+                continue
+            if score < lower_fence:
+                outliers_low.append({"student_id": rec["student_id"], "student_name": rec["student_name"], "score": round(score, 2)})
+            elif score > upper_fence:
+                outliers_high.append({"student_id": rec["student_id"], "student_name": rec["student_name"], "score": round(score, 2)})
+
+        # difficulty by test
+        difficulty_by_test = []
+        if test_type in ("daily", "both"):
+            cursor.execute(f"""
+                SELECT
+                    dt.test_date,
+                    dt.subject,
+                    dt.unit_name,
+                    ROUND(AVG({daily_score_expr})::numeric, 2) AS avg_score,
+                    COUNT(DISTINCT dt.student_id)
+                FROM daily_test dt
+                JOIN student s ON s.student_id = dt.student_id
+                WHERE s.batch_id = %s {daily_date_filter} {daily_subject_filter}
+                GROUP BY dt.test_date, dt.subject, dt.unit_name
+            """, [batch_id] + daily_params + daily_subject_params)
+            for r in cursor.fetchall():
+                avg_score = float(r[3]) if r[3] is not None else 0
+                difficulty_by_test.append({
+                    "test_type": "daily",
+                    "test_key": f"{r[0].isoformat() if r[0] else 'NA'} | {r[1] or '-'} | {r[2] or '-'}",
+                    "avg_score": avg_score,
+                    "difficulty_index": round(max(0, 100 - avg_score), 2),
+                    "students": r[4]
+                })
+
+        if test_type in ("mock", "both"):
+            cursor.execute(f"""
+                SELECT
+                    mt.test_date,
+                    ROUND(AVG({mock_total_score_expr})::numeric, 2) AS avg_score,
+                    COUNT(DISTINCT mt.student_id)
+                FROM mock_test mt
+                JOIN student s ON s.student_id = mt.student_id
+                WHERE s.batch_id = %s {mock_date_filter}
+                GROUP BY mt.test_date
+            """, [batch_id] + mock_params)
+            for r in cursor.fetchall():
+                avg_score = float(r[1]) if r[1] is not None else 0
+                difficulty_by_test.append({
+                    "test_type": "mock",
+                    "test_key": f"{r[0].isoformat() if r[0] else 'NA'}",
+                    "avg_score": avg_score,
+                    "difficulty_index": round(max(0, 100 - avg_score), 2),
+                    "students": r[2]
+                })
+
+        difficulty_by_test = sorted(difficulty_by_test, key=lambda x: x["difficulty_index"], reverse=True)
+
+        return {
+            "student_count": len(overall_scores),
+            "median_pct": round(median_val, 2),
+            "q1_pct": round(q1, 2),
+            "q3_pct": round(q3, 2),
+            "iqr_pct": round(iqr, 2),
+            "stddev_pct": compute_stddev(overall_scores),
+            "percentile_bands": {
+                "p10": round(percentile(overall_scores, 10), 2),
+                "p25": round(q1, 2),
+                "p50": round(median_val, 2),
+                "p75": round(q3, 2),
+                "p90": round(percentile(overall_scores, 90), 2)
+            },
+            "outliers_low": outliers_low,
+            "outliers_high": outliers_high,
+            "difficulty_by_test": difficulty_by_test[:30]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch batch advanced stats: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.get("/api/analysis/risk-dashboard/{batch_id}")
+async def get_risk_dashboard(
+    batch_id: int,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    limit: int = Query(20, ge=1, le=200),
+    current_user: dict = Depends(get_current_user)
+):
+    """Batch-level risk ranking using average, trend, participation, and non-numeric rates."""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT batch_id FROM batch WHERE batch_id = %s", (batch_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Batch {batch_id} not found")
+
+        daily_date_filter = ""
+        mock_date_filter = ""
+        daily_params = []
+        mock_params = []
+        if date_from:
+            daily_date_filter += " AND dt.test_date >= %s"
+            mock_date_filter += " AND mt.test_date >= %s"
+            daily_params.append(date_from)
+            mock_params.append(date_from)
+        if date_to:
+            daily_date_filter += " AND dt.test_date <= %s"
+            mock_date_filter += " AND mt.test_date <= %s"
+            daily_params.append(date_to)
+            mock_params.append(date_to)
+
+        # students in batch
+        cursor.execute("SELECT student_id, student_name FROM student WHERE batch_id = %s", (batch_id,))
+        student_rows = cursor.fetchall()
+        students = {r[0]: r[1] for r in student_rows}
+
+        # tests conducted in batch
+        cursor.execute(f"""
+            SELECT COUNT(DISTINCT (dt.test_date, dt.subject, dt.unit_name))
+            FROM daily_test dt
+            JOIN student s ON s.student_id = dt.student_id
+            WHERE s.batch_id = %s {daily_date_filter}
+        """, [batch_id] + daily_params)
+        total_daily_conducted = cursor.fetchone()[0] or 0
+
+        cursor.execute(f"""
+            SELECT COUNT(DISTINCT mt.test_date)
+            FROM mock_test mt
+            JOIN student s ON s.student_id = mt.student_id
+            WHERE s.batch_id = %s {mock_date_filter}
+        """, [batch_id] + mock_params)
+        total_mock_conducted = cursor.fetchone()[0] or 0
+
+        # fetch all scored rows for batch in one pass
+        cursor.execute(f"""
+            SELECT
+                dt.student_id,
+                dt.test_date,
+                CASE
+                    WHEN dt.subject_total_marks IS NOT NULL AND dt.subject_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
+                        THEN (safe_numeric(dt.total_marks) * 100.0 / dt.subject_total_marks)
+                    WHEN dt.test_total_marks IS NOT NULL AND dt.test_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
+                        THEN (safe_numeric(dt.total_marks) * 100.0 / dt.test_total_marks)
+                    ELSE safe_numeric(dt.total_marks)
+                END AS score,
+                dt.total_marks,
+                dt.subject,
+                dt.unit_name
+            FROM daily_test dt
+            JOIN student s ON s.student_id = dt.student_id
+            WHERE s.batch_id = %s {daily_date_filter}
+        """, [batch_id] + daily_params)
+        daily_scores_rows = cursor.fetchall()
+
+        cursor.execute(f"""
+            SELECT
+                mt.student_id,
+                mt.test_date,
+                CASE
+                    WHEN mt.test_total_marks IS NOT NULL AND mt.test_total_marks > 0 AND safe_numeric(mt.total_marks) IS NOT NULL
+                        THEN (safe_numeric(mt.total_marks) * 100.0 / mt.test_total_marks)
+                    ELSE safe_numeric(mt.total_marks)
+                END AS score,
+                mt.total_marks
+            FROM mock_test mt
+            JOIN student s ON s.student_id = mt.student_id
+            WHERE s.batch_id = %s {mock_date_filter}
+        """, [batch_id] + mock_params)
+        mock_scores_rows = cursor.fetchall()
+
+        by_student_points = defaultdict(list)
+        by_student_values = defaultdict(list)
+        by_student_non_numeric = defaultdict(lambda: {"total": 0, "bad": 0})
+        by_student_daily_tests = defaultdict(set)
+        by_student_mock_tests = defaultdict(set)
+
+        for sid, test_date, score, raw_mark, subject, unit_name in daily_scores_rows:
+            d = test_date.isoformat() if test_date else None
+            score_f = float(score) if score is not None else None
+            by_student_points[sid].append({"date": d, "score": score_f})
+            if score_f is not None:
+                by_student_values[sid].append(score_f)
+            by_student_daily_tests[sid].add((d, subject, unit_name))
+            if raw_mark is not None and str(raw_mark).strip() != '':
+                by_student_non_numeric[sid]["total"] += 1
+                if safe_parse_mark(raw_mark) is None:
+                    by_student_non_numeric[sid]["bad"] += 1
+
+        for sid, test_date, score, raw_mark in mock_scores_rows:
+            d = test_date.isoformat() if test_date else None
+            score_f = float(score) if score is not None else None
+            by_student_points[sid].append({"date": d, "score": score_f})
+            if score_f is not None:
+                by_student_values[sid].append(score_f)
+            by_student_mock_tests[sid].add(d)
+            if raw_mark is not None and str(raw_mark).strip() != '':
+                by_student_non_numeric[sid]["total"] += 1
+                if safe_parse_mark(raw_mark) is None:
+                    by_student_non_numeric[sid]["bad"] += 1
+
+        rows = []
+        high_count = 0
+        medium_count = 0
+
+        total_conducted = total_daily_conducted + total_mock_conducted
+        for sid, sname in students.items():
+            vals = by_student_values[sid]
+            avg_score = round(sum(vals) / len(vals), 1) if vals else 0
+            slope = compute_slope(by_student_points[sid])
+            attempted = len(by_student_daily_tests[sid]) + len(by_student_mock_tests[sid])
+            participation = round((attempted / total_conducted) * 100, 1) if total_conducted > 0 else 0
+            nn_total = by_student_non_numeric[sid]["total"]
+            nn_bad = by_student_non_numeric[sid]["bad"]
+            non_numeric_rate = round((nn_bad / nn_total) * 100, 1) if nn_total > 0 else 0
+            risk_score, risk_level, reasons, recommended_action = compute_risk_score(
+                avg_score,
+                slope,
+                participation,
+                non_numeric_rate
+            )
+            if risk_level == "high":
+                high_count += 1
+            elif risk_level == "medium":
+                medium_count += 1
+
+            rows.append({
+                "student_id": sid,
+                "student_name": sname,
+                "avg_score": avg_score,
+                "trend_slope": slope,
+                "participation_rate": participation,
+                "non_numeric_rate": non_numeric_rate,
+                "risk_score": risk_score,
+                "risk_level": risk_level,
+                "reasons": reasons,
+                "recommended_action": recommended_action
+            })
+
+        rows = sorted(rows, key=lambda x: x["risk_score"], reverse=True)
+
+        return {
+            "high_risk_count": high_count,
+            "medium_risk_count": medium_count,
+            "low_risk_count": max(0, len(rows) - high_count - medium_count),
+            "students": rows[:limit]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch risk dashboard: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.get("/api/analysis/subject-diagnostics/{batch_id}")
+async def get_subject_diagnostics(
+    batch_id: int,
+    subject: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Subject diagnostics: avg, unit breakdown, weak students, improving students."""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT batch_id FROM batch WHERE batch_id = %s", (batch_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Batch {batch_id} not found")
+
+        date_filter = ""
+        params = [batch_id]
+        if date_from:
+            date_filter += " AND dt.test_date >= %s"
+            params.append(date_from)
+        if date_to:
+            date_filter += " AND dt.test_date <= %s"
+            params.append(date_to)
+        if subject:
+            date_filter += f" AND {normalized_subject_sql('dt.subject')} = %s"
+            params.append(normalize_subject_key(subject))
+
+        daily_score_expr = """
+            CASE
+                WHEN dt.subject_total_marks IS NOT NULL AND dt.subject_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
+                    THEN (safe_numeric(dt.total_marks) * 100.0 / dt.subject_total_marks)
+                WHEN dt.test_total_marks IS NOT NULL AND dt.test_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
+                    THEN (safe_numeric(dt.total_marks) * 100.0 / dt.test_total_marks)
+                ELSE safe_numeric(dt.total_marks)
+            END
+        """
+
+        cursor.execute(f"""
+            SELECT ROUND(AVG({daily_score_expr})::numeric, 2)
+            FROM daily_test dt
+            JOIN student s ON s.student_id = dt.student_id
+            WHERE s.batch_id = %s {date_filter}
+        """, params)
+        batch_avg_row = cursor.fetchone()
+        subject_avg = float(batch_avg_row[0]) if batch_avg_row and batch_avg_row[0] is not None else 0
+
+        # unit breakdown
+        cursor.execute(f"""
+            SELECT
+                COALESCE(dt.unit_name, 'Unknown') AS unit_name,
+                ROUND(AVG({daily_score_expr})::numeric, 2) AS avg_score,
+                COUNT(*) AS attempts,
+                COUNT(DISTINCT dt.student_id) AS students
+            FROM daily_test dt
+            JOIN student s ON s.student_id = dt.student_id
+            WHERE s.batch_id = %s {date_filter}
+            GROUP BY COALESCE(dt.unit_name, 'Unknown')
+            ORDER BY avg_score ASC NULLS LAST
+        """, params)
+        unit_breakdown = []
+        for row in cursor.fetchall():
+            avg_score = float(row[1]) if row[1] is not None else 0
+            unit_breakdown.append({
+                "unit_name": row[0],
+                "avg_pct": avg_score,
+                "difficulty_index": round(max(0, 100 - avg_score), 2),
+                "attempts": row[2],
+                "students": row[3]
+            })
+
+        # student averages for the selected subject context
+        cursor.execute(f"""
+            SELECT
+                s.student_id,
+                s.student_name,
+                ROUND(AVG({daily_score_expr})::numeric, 2) AS avg_score
+            FROM daily_test dt
+            JOIN student s ON s.student_id = dt.student_id
+            WHERE s.batch_id = %s {date_filter}
+            GROUP BY s.student_id, s.student_name
+            ORDER BY avg_score ASC NULLS LAST
+        """, params)
+        student_avg_rows = cursor.fetchall()
+
+        weak_students = []
+        for sid, sname, avg_score in student_avg_rows:
+            avg_val = float(avg_score) if avg_score is not None else 0
+            delta = round(avg_val - subject_avg, 2)
+            if delta <= -10:
+                weak_students.append({
+                    "student_id": sid,
+                    "student_name": sname,
+                    "avg_pct": avg_val,
+                    "delta_vs_subject": delta
+                })
+
+        # improving students by slope for the same subject context
+        cursor.execute(f"""
+            SELECT s.student_id, s.student_name, dt.test_date, {daily_score_expr} AS score
+            FROM daily_test dt
+            JOIN student s ON s.student_id = dt.student_id
+            WHERE s.batch_id = %s {date_filter}
+            ORDER BY s.student_id, dt.test_date
+        """, params)
+        points_by_student = defaultdict(list)
+        names = {}
+        for sid, sname, d, score in cursor.fetchall():
+            names[sid] = sname
+            points_by_student[sid].append({
+                "date": d.isoformat() if d else None,
+                "score": float(score) if score is not None else None
+            })
+
+        improving_students = []
+        for sid, points in points_by_student.items():
+            slope = compute_slope(points)
+            vals = [p["score"] for p in points if p["score"] is not None]
+            if len(vals) < 2:
+                continue
+            avg_val = round(sum(vals) / len(vals), 2)
+            if slope > 0:
+                improving_students.append({
+                    "student_id": sid,
+                    "student_name": names.get(sid, sid),
+                    "avg_pct": avg_val,
+                    "trend_slope": slope
+                })
+        improving_students = sorted(improving_students, key=lambda x: x["trend_slope"], reverse=True)
+
+        return {
+            "subject": subject or "All Subjects",
+            "subject_avg_pct": subject_avg,
+            "unit_breakdown": unit_breakdown,
+            "weak_students": weak_students[:10],
+            "improving_students": improving_students[:10]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch subject diagnostics: {str(e)}"
         )
     finally:
         if cursor:

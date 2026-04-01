@@ -95,6 +95,79 @@
     color: #bdc3c7;
 }
 
+.search-hint {
+    font-size: 12px;
+    color: #64748b;
+}
+
+.clear-student-btn {
+    margin-top: 6px;
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.student-search-results {
+    margin-top: 14px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
+}
+
+.search-error {
+    color: #b91c1c;
+}
+
+.result-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.result-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    padding: 10px 12px;
+    border: 1px solid #dbe4f0;
+    border-radius: 8px;
+    background: #fff;
+    text-align: left;
+    cursor: pointer;
+}
+
+.result-item:hover {
+    border-color: #5b5fc7;
+    box-shadow: 0 0 0 2px rgba(91, 95, 199, 0.1);
+}
+
+.result-item span {
+    color: #64748b;
+    font-size: 12px;
+}
+
+.selected-student-preview {
+    margin-top: 14px;
+    background: #ecfeff;
+    border: 1px solid #bae6fd;
+    border-radius: 10px;
+    padding: 12px;
+    color: #0f172a;
+}
+
+.selected-student-preview p {
+    margin: 4px 0;
+    font-size: 13px;
+}
+
 /* Form Actions */
 .add-achiever .form-actions {
     display: flex;
@@ -160,4 +233,79 @@
     .add-achiever .btn-submit {
         width: 100%;
     }
+}
+
+/* Enterprise SaaS overrides */
+.add-achiever {
+    padding: var(--space-4);
+    background: var(--color-bg);
+}
+
+.add-achiever-header h2 {
+    font-size: 24px;
+    color: var(--color-text-primary);
+}
+
+.add-achiever .back-button {
+    background: var(--color-primary);
+}
+
+.add-achiever .back-button:hover {
+    background: var(--color-primary-hover);
+    box-shadow: none;
+}
+
+.add-achiever .form-section,
+.add-achiever .form-actions,
+.student-search-results,
+.selected-student-preview {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-sm);
+}
+
+.add-achiever .form-section h3 {
+    font-size: 16px;
+    color: var(--color-text-primary);
+    border-bottom-color: var(--color-border);
+}
+
+.add-achiever .form-group label {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.add-achiever .form-group input,
+.add-achiever .form-group select,
+.result-item {
+    border-color: var(--color-border);
+}
+
+.add-achiever .form-group input:focus,
+.add-achiever .form-group select:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.add-achiever .btn-submit {
+    background: var(--color-primary);
+    color: #fff;
+    font-weight: 500;
+}
+
+.add-achiever .btn-submit:hover {
+    background: var(--color-primary-hover);
+    box-shadow: none;
+}
+
+.add-achiever .btn-cancel {
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-border);
+}
+
+.add-achiever .btn-cancel:hover {
+    background: #F3F4F6;
 }

@@ -1,0 +1,45 @@
+.graavitons-tour-popover {
+  border-radius: 12px !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.35) !important;
+  background-color: #ffffff !important;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+.graavitons-tour-popover .driver-popover-title {
+  color: #1e293b !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+}
+
+.graavitons-tour-popover .driver-popover-description {
+  color: #334155 !important;
+  line-height: 1.45 !important;
+  font-size: 13px !important;
+}
+
+.graavitons-tour-popover .driver-popover-progress-text {
+  color: #64748b !important;
+}
+
+.graavitons-tour-popover .driver-popover-next-btn,
+.graavitons-tour-popover .driver-popover-prev-btn,
+.graavitons-tour-popover .driver-popover-close-btn {
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+}
+
+.graavitons-tour-popover .driver-popover-next-btn {
+  background: linear-gradient(135deg, #5b5fc7, #3b82f6) !important;
+  color: #fff !important;
+  border: none !important;
+}
+
+.graavitons-tour-popover .driver-popover-prev-btn {
+  background: #f1f5f9 !important;
+  color: #1e293b !important;
+  border: 1px solid #cbd5e1 !important;
+}
