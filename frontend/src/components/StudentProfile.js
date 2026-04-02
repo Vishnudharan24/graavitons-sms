@@ -65,7 +65,8 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
   const [analysisData, setAnalysisData] = useState(null);
   const [studentMetrics, setStudentMetrics] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
-  const [weakTopics, setWeakTopics] = useState([]);
+  const [weeklyWeakTopics, setWeeklyWeakTopics] = useState([]);
+  const [mockWeakTopics, setMockWeakTopics] = useState([]);
   const [weakTopicsLoading, setWeakTopicsLoading] = useState(false);
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [dailyDateFrom, setDailyDateFrom] = useState('');
@@ -143,19 +144,31 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
         setMetricsLoading(false);
       }
 
-      // Fetch top weak units remediation for this student
+      // Fetch weak-topic remediation for weekly (daily-test) and mock-test views
       try {
         setWeakTopicsLoading(true);
-        const weakTopicsResponse = await authFetch(`${API_BASE}/api/analysis/student-weak-topics/${studentId}?limit=5`);
-        if (weakTopicsResponse.ok) {
-          const weakTopicsResult = await weakTopicsResponse.json();
-          setWeakTopics(weakTopicsResult.weak_units || []);
+        const [weeklyRes, mockRes] = await Promise.all([
+          authFetch(`${API_BASE}/api/analysis/student-weak-topics/${studentId}?test_type=daily&limit=5`),
+          authFetch(`${API_BASE}/api/analysis/student-weak-topics/${studentId}?test_type=mock&limit=5`)
+        ]);
+
+        if (weeklyRes.ok) {
+          const weeklyResult = await weeklyRes.json();
+          setWeeklyWeakTopics(weeklyResult.weak_units || []);
         } else {
-          setWeakTopics([]);
+          setWeeklyWeakTopics([]);
+        }
+
+        if (mockRes.ok) {
+          const mockResult = await mockRes.json();
+          setMockWeakTopics(mockResult.weak_units || []);
+        } else {
+          setMockWeakTopics([]);
         }
       } catch (err) {
         console.error('Error fetching student weak topics:', err);
-        setWeakTopics([]);
+        setWeeklyWeakTopics([]);
+        setMockWeakTopics([]);
       } finally {
         setWeakTopicsLoading(false);
       }
@@ -1033,41 +1046,81 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
           </div>
 
           <div className="profile-section">
-            <h3>🧩 Weak-Topic Remediation (Top Weak Units)</h3>
+            <h3>🧩 Topic Remediation</h3>
             {weakTopicsLoading ? (
               <p style={{ color: '#666', fontStyle: 'italic' }}>Loading weak-topic remediation...</p>
-            ) : weakTopics.length > 0 ? (
-              <div className="weak-topics-grid">
-                {weakTopics.map((topic, idx) => (
-                  <div className="weak-topic-card" key={`${topic.subject}-${topic.unit_name}-${idx}`}>
-                    <div className="weak-topic-card-header">
-                      <span className="weak-topic-rank">#{idx + 1}</span>
-                      <span className="weak-topic-difficulty">Difficulty {topic.difficulty_index}</span>
-                    </div>
-                    <h4>{topic.subject}</h4>
-                    <p className="weak-topic-unit">Unit: {topic.unit_name}</p>
-                    <div className="weak-topic-stats">
-                      <div>
-                        <label>Average %</label>
-                        <strong>{topic.avg_pct}%</strong>
-                      </div>
-                      <div>
-                        <label>Attempts</label>
-                        <strong>{topic.attempts}</strong>
-                      </div>
-                      <div>
-                        <label>Latest Test</label>
-                        <strong>{topic.latest_test_date ? new Date(topic.latest_test_date).toLocaleDateString('en-IN') : 'N/A'}</strong>
-                      </div>
-                    </div>
-                    <p className="weak-topic-action"><strong>Remediation Plan:</strong> {topic.remediation_action}</p>
-                  </div>
-                ))}
-              </div>
             ) : (
-              <p style={{ color: '#666', fontStyle: 'italic' }}>
-                No unit-level weak topics found from available daily-test data.
-              </p>
+              <>
+                <h4 style={{ marginBottom: '10px' }}>Weekly Test Topic Remediation</h4>
+                {weeklyWeakTopics.length > 0 ? (
+                  <div className="weak-topics-grid">
+                    {weeklyWeakTopics.map((topic, idx) => (
+                      <div className="weak-topic-card" key={`weekly-${topic.subject}-${topic.unit_name}-${idx}`}>
+                        <div className="weak-topic-card-header">
+                          <span className="weak-topic-rank">#{idx + 1}</span>
+                          <span className="weak-topic-difficulty">Difficulty {topic.difficulty_index}</span>
+                        </div>
+                        <h4>{topic.subject}</h4>
+                        <p className="weak-topic-unit">Unit: {topic.unit_name}</p>
+                        <div className="weak-topic-stats">
+                          <div>
+                            <label>Average %</label>
+                            <strong>{topic.avg_pct}%</strong>
+                          </div>
+                          <div>
+                            <label>Attempts</label>
+                            <strong>{topic.attempts}</strong>
+                          </div>
+                          <div>
+                            <label>Latest Test</label>
+                            <strong>{topic.latest_test_date ? new Date(topic.latest_test_date).toLocaleDateString('en-IN') : 'N/A'}</strong>
+                          </div>
+                        </div>
+                        <p className="weak-topic-action"><strong>Remediation Plan:</strong> {topic.remediation_action}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ color: '#666', fontStyle: 'italic' }}>
+                    No unit-level weak topics found from available weekly test data.
+                  </p>
+                )}
+
+                <h4 style={{ marginTop: '18px', marginBottom: '10px' }}>Mock Test Topic Remediation</h4>
+                {mockWeakTopics.length > 0 ? (
+                  <div className="weak-topics-grid">
+                    {mockWeakTopics.map((topic, idx) => (
+                      <div className="weak-topic-card" key={`mock-${topic.subject}-${topic.unit_name}-${idx}`}>
+                        <div className="weak-topic-card-header">
+                          <span className="weak-topic-rank">#{idx + 1}</span>
+                          <span className="weak-topic-difficulty">Difficulty {topic.difficulty_index}</span>
+                        </div>
+                        <h4>{topic.subject}</h4>
+                        <p className="weak-topic-unit">Unit: {topic.unit_name}</p>
+                        <div className="weak-topic-stats">
+                          <div>
+                            <label>Average %</label>
+                            <strong>{topic.avg_pct}%</strong>
+                          </div>
+                          <div>
+                            <label>Attempts</label>
+                            <strong>{topic.attempts}</strong>
+                          </div>
+                          <div>
+                            <label>Latest Test</label>
+                            <strong>{topic.latest_test_date ? new Date(topic.latest_test_date).toLocaleDateString('en-IN') : 'N/A'}</strong>
+                          </div>
+                        </div>
+                        <p className="weak-topic-action"><strong>Remediation Plan:</strong> {topic.remediation_action}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ color: '#666', fontStyle: 'italic' }}>
+                    No unit-level weak topics found from available mock test data.
+                  </p>
+                )}
+              </>
             )}
           </div>
 

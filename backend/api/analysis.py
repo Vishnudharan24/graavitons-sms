@@ -1937,6 +1937,7 @@ async def get_student_metrics(
 async def get_student_weak_topics(
     student_id: str,
     limit: int = 5,
+    test_type: str = Query("daily", description="daily or mock"),
     subject: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
@@ -1954,77 +1955,211 @@ async def get_student_weak_topics(
         if not student_row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Student {student_id} not found")
 
-        score_expr = """
-            CASE
-                WHEN dt.subject_total_marks IS NOT NULL AND dt.subject_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
-                    THEN (safe_numeric(dt.total_marks) * 100.0 / dt.subject_total_marks)
-                WHEN dt.test_total_marks IS NOT NULL AND dt.test_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
-                    THEN (safe_numeric(dt.total_marks) * 100.0 / dt.test_total_marks)
-                ELSE safe_numeric(dt.total_marks)
-            END
-        """
-
-        filters = ""
-        params = [student_id]
-        if subject:
-            filters += f" AND {normalized_subject_sql('dt.subject')} = %s"
-            params.append(normalize_subject_key(subject))
-        if date_from:
-            filters += " AND dt.test_date >= %s"
-            params.append(date_from)
-        if date_to:
-            filters += " AND dt.test_date <= %s"
-            params.append(date_to)
-
         normalized_limit = max(1, min(limit, 15))
 
-        cursor.execute(f"""
-            SELECT
-                dt.subject,
-                COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown') AS unit_name,
-                ROUND(AVG({score_expr})::numeric, 2) AS avg_pct,
-                COUNT(*) AS attempts,
-                MAX(dt.test_date) AS latest_test_date,
-                COUNT(*) FILTER (
-                    WHERE dt.total_marks IS NOT NULL
-                      AND TRIM(dt.total_marks) <> ''
-                      AND safe_numeric(dt.total_marks) IS NULL
-                ) AS non_numeric_attempts
-            FROM daily_test dt
-            WHERE dt.student_id = %s {filters}
-            GROUP BY dt.subject, COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown')
-            HAVING COUNT(*) > 0
-            ORDER BY avg_pct ASC NULLS LAST, attempts DESC
-            LIMIT %s
-        """, params + [normalized_limit])
+        selected_type = str(test_type or "daily").strip().lower()
+        if selected_type not in ("daily", "mock"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="test_type must be 'daily' or 'mock'"
+            )
 
         weak_units = []
-        for row in cursor.fetchall():
-            avg_pct = float(row[2]) if row[2] is not None else 0.0
 
-            if avg_pct < 35:
-                action = "High-priority remediation: rebuild concepts, revise formulas."
-            elif avg_pct < 50:
-                action = "Focused remediation: teacher-led recap."
-            elif avg_pct < 65:
-                action = "Stabilize topic: mixed timed practice plus error-log revision."
-            else:
-                action = "Maintain and polish: short revision and periodic practice to retain strength."
+        if selected_type == "daily":
+            score_expr = """
+                CASE
+                    WHEN dt.subject_total_marks IS NOT NULL AND dt.subject_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
+                        THEN (safe_numeric(dt.total_marks) * 100.0 / dt.subject_total_marks)
+                    WHEN dt.test_total_marks IS NOT NULL AND dt.test_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
+                        THEN (safe_numeric(dt.total_marks) * 100.0 / dt.test_total_marks)
+                    ELSE safe_numeric(dt.total_marks)
+                END
+            """
 
-            weak_units.append({
-                "subject": normalize_subject_label(row[0] or "Unknown"),
-                "unit_name": row[1],
-                "avg_pct": round(avg_pct, 2),
-                "difficulty_index": round(max(0, 100 - avg_pct), 2),
-                "attempts": row[3],
-                "latest_test_date": row[4].isoformat() if row[4] else None,
-                "non_numeric_attempts": row[5] or 0,
-                "remediation_action": action
-            })
+            filters = ""
+            params = [student_id]
+            if subject:
+                filters += f" AND {normalized_subject_sql('dt.subject')} = %s"
+                params.append(normalize_subject_key(subject))
+            if date_from:
+                filters += " AND dt.test_date >= %s"
+                params.append(date_from)
+            if date_to:
+                filters += " AND dt.test_date <= %s"
+                params.append(date_to)
+
+            cursor.execute(f"""
+                SELECT
+                    dt.subject,
+                    COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown') AS unit_name,
+                    ROUND(AVG({score_expr})::numeric, 2) AS avg_pct,
+                    COUNT(*) AS attempts,
+                    MAX(dt.test_date) AS latest_test_date,
+                    COUNT(*) FILTER (
+                        WHERE dt.total_marks IS NOT NULL
+                          AND TRIM(dt.total_marks) <> ''
+                          AND safe_numeric(dt.total_marks) IS NULL
+                    ) AS non_numeric_attempts
+                FROM daily_test dt
+                WHERE dt.student_id = %s {filters}
+                GROUP BY dt.subject, COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown')
+                HAVING COUNT(*) > 0
+                ORDER BY avg_pct ASC NULLS LAST, attempts DESC
+                LIMIT %s
+            """, params + [normalized_limit])
+
+            for row in cursor.fetchall():
+                avg_pct = float(row[2]) if row[2] is not None else 0.0
+
+                if avg_pct < 35:
+                    action = "High-priority remediation: rebuild concepts, revise formulas."
+                elif avg_pct < 50:
+                    action = "Focused remediation: teacher-led recap."
+                elif avg_pct < 65:
+                    action = "Stabilize topic: mixed timed practice plus error-log revision."
+                else:
+                    action = "Maintain and polish: short revision and periodic practice to retain strength."
+
+                weak_units.append({
+                    "subject": normalize_subject_label(row[0] or "Unknown"),
+                    "unit_name": row[1],
+                    "avg_pct": round(avg_pct, 2),
+                    "difficulty_index": round(max(0, 100 - avg_pct), 2),
+                    "attempts": row[3],
+                    "latest_test_date": row[4].isoformat() if row[4] else None,
+                    "non_numeric_attempts": row[5] or 0,
+                    "remediation_action": action
+                })
+        else:
+            filters = ""
+            params = [student_id]
+            if date_from:
+                filters += " AND mt.test_date >= %s"
+                params.append(date_from)
+            if date_to:
+                filters += " AND mt.test_date <= %s"
+                params.append(date_to)
+
+            cursor.execute(f"""
+                SELECT
+                    mt.test_date,
+                    mt.maths_marks,
+                    mt.physics_marks,
+                    mt.chemistry_marks,
+                    mt.biology_marks,
+                    mt.maths_unit_names,
+                    mt.physics_unit_names,
+                    mt.chemistry_unit_names,
+                    mt.biology_unit_names,
+                    mt.maths_total_marks,
+                    mt.physics_total_marks,
+                    mt.chemistry_total_marks,
+                    mt.biology_total_marks
+                FROM mock_test mt
+                WHERE mt.student_id = %s {filters}
+                ORDER BY mt.test_date DESC
+            """, params)
+
+            subject_filter_key = normalize_subject_key(subject) if subject else None
+            if subject_filter_key == "mathematics":
+                subject_filter_key = "maths"
+
+            subject_meta = {
+                "maths": {"label": "Mathematics", "marks_idx": 1, "units_idx": 5, "total_idx": 9},
+                "physics": {"label": "Physics", "marks_idx": 2, "units_idx": 6, "total_idx": 10},
+                "chemistry": {"label": "Chemistry", "marks_idx": 3, "units_idx": 7, "total_idx": 11},
+                "biology": {"label": "Biology", "marks_idx": 4, "units_idx": 8, "total_idx": 12},
+            }
+
+            aggregated = {}
+            for row in cursor.fetchall():
+                test_date = row[0]
+                for subject_key, meta in subject_meta.items():
+                    if subject_filter_key and subject_filter_key != subject_key:
+                        continue
+
+                    raw_mark = row[meta["marks_idx"]]
+                    mark_value = safe_parse_mark(raw_mark)
+                    total_value = safe_parse_mark(row[meta["total_idx"]])
+                    units = row[meta["units_idx"]] or []
+                    if not isinstance(units, list):
+                        units = [units]
+                    clean_units = [str(u).strip() for u in units if str(u).strip()]
+                    if not clean_units:
+                        clean_units = ["Unknown"]
+
+                    score_pct = None
+                    if mark_value is not None:
+                        if total_value is not None and total_value > 0:
+                            score_pct = (float(mark_value) * 100.0) / float(total_value)
+                        else:
+                            score_pct = float(mark_value)
+
+                    is_non_numeric = (
+                        raw_mark is not None and str(raw_mark).strip() != '' and mark_value is None
+                    )
+
+                    for unit_name in clean_units:
+                        key = (meta["label"], unit_name)
+                        if key not in aggregated:
+                            aggregated[key] = {
+                                "score_sum": 0.0,
+                                "score_count": 0,
+                                "attempts": 0,
+                                "non_numeric_attempts": 0,
+                                "latest_test_date": None,
+                            }
+
+                        aggregated[key]["attempts"] += 1
+                        if score_pct is not None:
+                            aggregated[key]["score_sum"] += score_pct
+                            aggregated[key]["score_count"] += 1
+                        if is_non_numeric:
+                            aggregated[key]["non_numeric_attempts"] += 1
+
+                        if test_date and (
+                            aggregated[key]["latest_test_date"] is None
+                            or test_date > aggregated[key]["latest_test_date"]
+                        ):
+                            aggregated[key]["latest_test_date"] = test_date
+
+            ordered_units = []
+            for (subject_label, unit_name), agg in aggregated.items():
+                if agg["score_count"] > 0:
+                    avg_pct = round(agg["score_sum"] / agg["score_count"], 2)
+                else:
+                    avg_pct = 0.0
+                ordered_units.append((subject_label, unit_name, avg_pct, agg))
+
+            ordered_units.sort(key=lambda x: (x[2], -x[3]["attempts"]))
+            ordered_units = ordered_units[:normalized_limit]
+
+            for subject_label, unit_name, avg_pct, agg in ordered_units:
+                if avg_pct < 35:
+                    action = "High-priority remediation: rebuild concepts, revise formulas."
+                elif avg_pct < 50:
+                    action = "Focused remediation: teacher-led recap."
+                elif avg_pct < 65:
+                    action = "Stabilize topic: mixed timed practice plus error-log revision."
+                else:
+                    action = "Maintain and polish: short revision and periodic practice to retain strength."
+
+                weak_units.append({
+                    "subject": subject_label,
+                    "unit_name": unit_name,
+                    "avg_pct": round(avg_pct, 2),
+                    "difficulty_index": round(max(0, 100 - avg_pct), 2),
+                    "attempts": agg["attempts"],
+                    "latest_test_date": agg["latest_test_date"].isoformat() if agg["latest_test_date"] else None,
+                    "non_numeric_attempts": agg["non_numeric_attempts"],
+                    "remediation_action": action
+                })
 
         return {
             "student_id": student_id,
             "student_name": student_row[1],
+            "test_type": selected_type,
             "weak_units": weak_units,
             "total_weak_units": len(weak_units)
         }
