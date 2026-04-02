@@ -159,6 +159,27 @@ SUBJECT_CANONICAL = {
     "biology": "Biology",
 }
 
+MOCK_SUBJECT_CONFIG = {
+    "maths": {"aliases": {"maths", "mathematics"}},
+    "physics": {"aliases": {"physics"}},
+    "chemistry": {"aliases": {"chemistry"}},
+    "biology": {"aliases": {"biology"}},
+}
+
+
+def get_batch_mock_subjects(batch_subjects):
+    if not batch_subjects:
+        return ["maths", "physics", "chemistry", "biology"]
+
+    selected = []
+    lowered = {str(s).strip().lower() for s in batch_subjects if str(s).strip()}
+    for key in ["maths", "physics", "chemistry", "biology"]:
+        aliases = MOCK_SUBJECT_CONFIG[key]["aliases"]
+        if lowered.intersection(aliases):
+            selected.append(key)
+
+    return selected if selected else ["maths", "physics", "chemistry", "biology"]
+
 
 def normalize_subject_label(value: str) -> str:
     key = str(value or "").strip().lower()
@@ -1980,7 +2001,7 @@ async def get_student_weak_topics(
         batch_row = cursor.fetchone()
         active_mock_subjects = set(get_batch_mock_subjects(batch_row[0] if batch_row else None))
 
-        normalized_limit = max(1, min(limit, 15))
+        normalized_limit = max(1, min(limit, 100))
 
         selected_type = str(test_type or "daily").strip().lower()
         if selected_type not in ("daily", "mock"):

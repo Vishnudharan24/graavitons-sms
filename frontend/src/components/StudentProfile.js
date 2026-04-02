@@ -148,8 +148,8 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       try {
         setWeakTopicsLoading(true);
         const [weeklyRes, mockRes] = await Promise.all([
-          authFetch(`${API_BASE}/api/analysis/student-weak-topics/${studentId}?test_type=daily&limit=5`),
-          authFetch(`${API_BASE}/api/analysis/student-weak-topics/${studentId}?test_type=mock&limit=5`)
+          authFetch(`${API_BASE}/api/analysis/student-weak-topics/${studentId}?test_type=daily&limit=100`),
+          authFetch(`${API_BASE}/api/analysis/student-weak-topics/${studentId}?test_type=mock&limit=100`)
         ]);
 
         if (weeklyRes.ok) {
