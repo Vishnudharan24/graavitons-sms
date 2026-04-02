@@ -486,6 +486,13 @@
   margin-top: 14px;
 }
 
+.manage-exam-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
 .btn-cancel.danger {
   background: #fee2e2;
   color: #b91c1c;

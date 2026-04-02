@@ -13,6 +13,7 @@ const ManageExamMarks = ({ batchId }) => {
   const [examType, setExamType] = useState('daily test');
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [examMeta, setExamMeta] = useState(null);
   const [records, setRecords] = useState([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [loadingRecords, setLoadingRecords] = useState(false);
@@ -25,9 +26,16 @@ const ManageExamMarks = ({ batchId }) => {
     label: subjectLabel[key] || key
   })), [activeMockSubjects]);
 
+  const toOptionalInt = (value) => {
+    if (value === '' || value === null || value === undefined) return null;
+    const parsed = parseInt(value, 10);
+    return Number.isNaN(parsed) ? null : parsed;
+  };
+
   const fetchGroups = async () => {
     setLoadingGroups(true);
     setSelectedGroup(null);
+    setExamMeta(null);
     setRecords([]);
 
     try {
@@ -62,6 +70,20 @@ const ManageExamMarks = ({ batchId }) => {
 
   const handleSelectGroup = async (group) => {
     setSelectedGroup(group);
+    setExamMeta(
+      examType === 'daily test'
+        ? {
+            subject_total_marks: group.subject_total_marks ?? null,
+            test_total_marks: group.test_total_marks ?? null,
+          }
+        : {
+            maths_total_marks: group.maths_total_marks ?? null,
+            physics_total_marks: group.physics_total_marks ?? null,
+            chemistry_total_marks: group.chemistry_total_marks ?? null,
+            biology_total_marks: group.biology_total_marks ?? null,
+            test_total_marks: group.test_total_marks ?? null,
+          }
+    );
     setLoadingRecords(true);
 
     try {
@@ -95,6 +117,13 @@ const ManageExamMarks = ({ batchId }) => {
     )));
   };
 
+  const handleMetaChange = (field, value) => {
+    setExamMeta((prev) => ({
+      ...(prev || {}),
+      [field]: toOptionalInt(value),
+    }));
+  };
+
   const handleSave = async () => {
     if (!selectedGroup) return;
     setSaving(true);
@@ -107,10 +136,22 @@ const ManageExamMarks = ({ batchId }) => {
       const payload = examType === 'daily test'
         ? {
             ...selectedGroup,
+            subject_total_marks: examMeta?.subject_total_marks ?? selectedGroup.subject_total_marks ?? null,
+            test_total_marks: examMeta?.test_total_marks ?? selectedGroup.test_total_marks ?? null,
             studentMarks: records.map((r) => ({ student_id: r.student_id, marks: r.marks || '' }))
           }
         : {
             ...selectedGroup,
+            maths_total_marks: examMeta?.maths_total_marks ?? selectedGroup.maths_total_marks ?? null,
+            physics_total_marks: examMeta?.physics_total_marks ?? selectedGroup.physics_total_marks ?? null,
+            chemistry_total_marks: examMeta?.chemistry_total_marks ?? selectedGroup.chemistry_total_marks ?? null,
+            biology_total_marks: examMeta?.biology_total_marks ?? selectedGroup.biology_total_marks ?? null,
+            test_total_marks: examMeta?.test_total_marks ?? selectedGroup.test_total_marks ?? null,
+            original_maths_total_marks: selectedGroup.maths_total_marks ?? null,
+            original_physics_total_marks: selectedGroup.physics_total_marks ?? null,
+            original_chemistry_total_marks: selectedGroup.chemistry_total_marks ?? null,
+            original_biology_total_marks: selectedGroup.biology_total_marks ?? null,
+            original_test_total_marks: selectedGroup.test_total_marks ?? null,
             studentMarks: records.map((r) => ({
               student_id: r.student_id,
               maths_marks: r.maths_marks || '',
@@ -236,6 +277,94 @@ const ManageExamMarks = ({ batchId }) => {
             <p>Loading marks...</p>
           ) : (
             <>
+              <div className="manage-exam-meta-grid">
+                {examType === 'daily test' ? (
+                  <>
+                    <div className="form-group">
+                      <label>Subject Total Marks</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={examMeta?.subject_total_marks ?? ''}
+                        onChange={(e) => handleMetaChange('subject_total_marks', e.target.value)}
+                        placeholder="Subject total"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Test Total Marks</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={examMeta?.test_total_marks ?? ''}
+                        onChange={(e) => handleMetaChange('test_total_marks', e.target.value)}
+                        placeholder="Test total"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {activeMockSubjects.includes('maths') && (
+                      <div className="form-group">
+                        <label>Maths Total</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={examMeta?.maths_total_marks ?? ''}
+                          onChange={(e) => handleMetaChange('maths_total_marks', e.target.value)}
+                          placeholder="Maths total"
+                        />
+                      </div>
+                    )}
+                    {activeMockSubjects.includes('physics') && (
+                      <div className="form-group">
+                        <label>Physics Total</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={examMeta?.physics_total_marks ?? ''}
+                          onChange={(e) => handleMetaChange('physics_total_marks', e.target.value)}
+                          placeholder="Physics total"
+                        />
+                      </div>
+                    )}
+                    {activeMockSubjects.includes('chemistry') && (
+                      <div className="form-group">
+                        <label>Chemistry Total</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={examMeta?.chemistry_total_marks ?? ''}
+                          onChange={(e) => handleMetaChange('chemistry_total_marks', e.target.value)}
+                          placeholder="Chemistry total"
+                        />
+                      </div>
+                    )}
+                    {activeMockSubjects.includes('biology') && (
+                      <div className="form-group">
+                        <label>Biology Total</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={examMeta?.biology_total_marks ?? ''}
+                          onChange={(e) => handleMetaChange('biology_total_marks', e.target.value)}
+                          placeholder="Biology total"
+                        />
+                      </div>
+                    )}
+                    <div className="form-group">
+                      <label>Test Total Marks</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={examMeta?.test_total_marks ?? ''}
+                        onChange={(e) => handleMetaChange('test_total_marks', e.target.value)}
+                        placeholder="Test total"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
               <div className="marks-entry-table">
                 {examType === 'daily test' ? (
                   <table>

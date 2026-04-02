@@ -187,6 +187,11 @@ class MockTestGroupUpdate(BaseModel):
     chemistry_total_marks: Optional[int] = None
     biology_total_marks: Optional[int] = None
     test_total_marks: Optional[int] = None
+    original_maths_total_marks: Optional[int] = None
+    original_physics_total_marks: Optional[int] = None
+    original_chemistry_total_marks: Optional[int] = None
+    original_biology_total_marks: Optional[int] = None
+    original_test_total_marks: Optional[int] = None
     studentMarks: List[MockTestMarkUpdate]
 
 
@@ -978,6 +983,12 @@ async def update_mock_test_group(
         deleted_count = 0
         skipped_count = 0
 
+        match_maths_total = payload.original_maths_total_marks if payload.original_maths_total_marks is not None else payload.maths_total_marks
+        match_physics_total = payload.original_physics_total_marks if payload.original_physics_total_marks is not None else payload.physics_total_marks
+        match_chemistry_total = payload.original_chemistry_total_marks if payload.original_chemistry_total_marks is not None else payload.chemistry_total_marks
+        match_biology_total = payload.original_biology_total_marks if payload.original_biology_total_marks is not None else payload.biology_total_marks
+        match_test_total = payload.original_test_total_marks if payload.original_test_total_marks is not None else payload.test_total_marks
+
         for student_mark in payload.studentMarks:
             sid = student_mark.student_id
             if sid not in student_map:
@@ -1011,11 +1022,11 @@ async def update_mock_test_group(
                 payload.physics_unit_names,
                 payload.chemistry_unit_names,
                 payload.biology_unit_names,
-                payload.maths_total_marks,
-                payload.physics_total_marks,
-                payload.chemistry_total_marks,
-                payload.biology_total_marks,
-                payload.test_total_marks,
+                                match_maths_total,
+                                match_physics_total,
+                                match_chemistry_total,
+                                match_biology_total,
+                                match_test_total,
             ))
             existing = cursor.fetchone()
 
