@@ -329,6 +329,11 @@ async def get_subjectwise_analysis(
                 mt.chemistry_marks,
                 mt.biology_marks,
                 mt.total_marks,
+                mt.maths_total_marks,
+                mt.physics_total_marks,
+                mt.chemistry_total_marks,
+                mt.biology_total_marks,
+                mt.test_total_marks,
                 mt.test_date
             FROM mock_test mt
             JOIN student s ON mt.student_id = s.student_id
@@ -399,24 +404,42 @@ async def get_subjectwise_analysis(
                     "student_id": row[0],
                     "student_name": row[1],
                     "maths_total": 0,
+                    "maths_count": 0,
                     "physics_total": 0,
+                    "physics_count": 0,
                     "chemistry_total": 0,
+                    "chemistry_count": 0,
                     "biology_total": 0,
-                    "count": 0
+                    "biology_count": 0
                 }
+
             m_maths = safe_parse_mark(row[4])
             m_physics = safe_parse_mark(row[5])
             m_chemistry = safe_parse_mark(row[6])
             m_biology = safe_parse_mark(row[7])
+
+            t_maths = safe_parse_mark(row[9])
+            t_physics = safe_parse_mark(row[10])
+            t_chemistry = safe_parse_mark(row[11])
+            t_biology = safe_parse_mark(row[12])
+
+            maths_score = (m_maths * 100 / t_maths) if (m_maths is not None and t_maths and t_maths > 0) else m_maths
+            physics_score = (m_physics * 100 / t_physics) if (m_physics is not None and t_physics and t_physics > 0) else m_physics
+            chemistry_score = (m_chemistry * 100 / t_chemistry) if (m_chemistry is not None and t_chemistry and t_chemistry > 0) else m_chemistry
+            biology_score = (m_biology * 100 / t_biology) if (m_biology is not None and t_biology and t_biology > 0) else m_biology
+
             if m_maths is not None:
-                student_mock[sid]["maths_total"] += m_maths
+                student_mock[sid]["maths_total"] += maths_score
+                student_mock[sid]["maths_count"] += 1
             if m_physics is not None:
-                student_mock[sid]["physics_total"] += m_physics
+                student_mock[sid]["physics_total"] += physics_score
+                student_mock[sid]["physics_count"] += 1
             if m_chemistry is not None:
-                student_mock[sid]["chemistry_total"] += m_chemistry
+                student_mock[sid]["chemistry_total"] += chemistry_score
+                student_mock[sid]["chemistry_count"] += 1
             if m_biology is not None:
-                student_mock[sid]["biology_total"] += m_biology
-            student_mock[sid]["count"] += 1
+                student_mock[sid]["biology_total"] += biology_score
+                student_mock[sid]["biology_count"] += 1
 
         # Build combined student-level results
         all_student_ids = set(list(student_daily.keys()) + list(student_mock.keys()))
@@ -435,13 +458,12 @@ async def get_subjectwise_analysis(
             }
 
             # Add mock test averages
-            if mock and mock["count"] > 0:
-                cnt = mock["count"]
+            if mock:
                 student_result["mock_averages"] = {
-                    "maths": round(mock["maths_total"] / cnt, 1),
-                    "physics": round(mock["physics_total"] / cnt, 1),
-                    "chemistry": round(mock["chemistry_total"] / cnt, 1),
-                    "biology": round(mock["biology_total"] / cnt, 1),
+                    "maths": round(mock["maths_total"] / mock["maths_count"], 1) if mock.get("maths_count", 0) > 0 else None,
+                    "physics": round(mock["physics_total"] / mock["physics_count"], 1) if mock.get("physics_count", 0) > 0 else None,
+                    "chemistry": round(mock["chemistry_total"] / mock["chemistry_count"], 1) if mock.get("chemistry_count", 0) > 0 else None,
+                    "biology": round(mock["biology_total"] / mock["biology_count"], 1) if mock.get("biology_count", 0) > 0 else None,
                 }
             else:
                 student_result["mock_averages"] = None
@@ -559,23 +581,65 @@ async def get_branchwise_analysis(
         daily_rows = cursor.fetchall()
 
         # Get mock test data grouped by branch
+        mock_maths_expr = """
+            CASE
+                WHEN mt.maths_total_marks IS NOT NULL AND mt.maths_total_marks > 0 AND safe_numeric(mt.maths_marks) IS NOT NULL
+                    THEN (safe_numeric(mt.maths_marks) * 100.0 / mt.maths_total_marks)
+                ELSE safe_numeric(mt.maths_marks)
+            END
+        """
+        mock_physics_expr = """
+            CASE
+                WHEN mt.physics_total_marks IS NOT NULL AND mt.physics_total_marks > 0 AND safe_numeric(mt.physics_marks) IS NOT NULL
+                    THEN (safe_numeric(mt.physics_marks) * 100.0 / mt.physics_total_marks)
+                ELSE safe_numeric(mt.physics_marks)
+            END
+        """
+        mock_chemistry_expr = """
+            CASE
+                WHEN mt.chemistry_total_marks IS NOT NULL AND mt.chemistry_total_marks > 0 AND safe_numeric(mt.chemistry_marks) IS NOT NULL
+                    THEN (safe_numeric(mt.chemistry_marks) * 100.0 / mt.chemistry_total_marks)
+                ELSE safe_numeric(mt.chemistry_marks)
+            END
+        """
+        mock_biology_expr = """
+            CASE
+                WHEN mt.biology_total_marks IS NOT NULL AND mt.biology_total_marks > 0 AND safe_numeric(mt.biology_marks) IS NOT NULL
+                    THEN (safe_numeric(mt.biology_marks) * 100.0 / mt.biology_total_marks)
+                ELSE safe_numeric(mt.biology_marks)
+            END
+        """
+        mock_total_expr = """
+            CASE
+                WHEN mt.test_total_marks IS NOT NULL AND mt.test_total_marks > 0 AND safe_numeric(mt.total_marks) IS NOT NULL
+                    THEN (safe_numeric(mt.total_marks) * 100.0 / mt.test_total_marks)
+                ELSE safe_numeric(mt.total_marks)
+            END
+        """
+
         mock_query = """
             SELECT
                 s.branch,
-                AVG(safe_numeric(mt.maths_marks)) as avg_maths,
-                AVG(safe_numeric(mt.physics_marks)) as avg_physics,
-                AVG(safe_numeric(mt.chemistry_marks)) as avg_chemistry,
-                AVG(safe_numeric(mt.biology_marks)) as avg_biology,
-                AVG(safe_numeric(mt.total_marks)) as avg_total,
-                MAX(safe_numeric(mt.total_marks)) as max_total,
-                MIN(safe_numeric(mt.total_marks)) as min_total,
+                AVG({mock_maths_expr}) as avg_maths,
+                AVG({mock_physics_expr}) as avg_physics,
+                AVG({mock_chemistry_expr}) as avg_chemistry,
+                AVG({mock_biology_expr}) as avg_biology,
+                AVG({mock_total_expr}) as avg_total,
+                MAX({mock_total_expr}) as max_total,
+                MIN({mock_total_expr}) as min_total,
                 COUNT(*) as test_count,
                 COUNT(DISTINCT s.student_id) as student_count
             FROM mock_test mt
             JOIN student s ON mt.student_id = s.student_id
             JOIN batch b ON s.batch_id = b.batch_id
             WHERE s.branch IS NOT NULL
-        """
+        """.format(
+            mock_maths_expr=mock_maths_expr,
+            mock_physics_expr=mock_physics_expr,
+            mock_chemistry_expr=mock_chemistry_expr,
+            mock_biology_expr=mock_biology_expr,
+            mock_total_expr=mock_total_expr,
+        )
         mock_params = []
 
         if grade:
