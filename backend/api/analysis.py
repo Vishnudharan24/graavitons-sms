@@ -1950,10 +1950,16 @@ async def get_student_weak_topics(
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT student_id, student_name FROM student WHERE student_id = %s", (student_id,))
+        cursor.execute("SELECT student_id, student_name, batch_id FROM student WHERE student_id = %s", (student_id,))
         student_row = cursor.fetchone()
         if not student_row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Student {student_id} not found")
+
+        batch_id = student_row[2]
+
+        cursor.execute("SELECT subjects FROM batch WHERE batch_id = %s", (batch_id,))
+        batch_row = cursor.fetchone()
+        active_mock_subjects = set(get_batch_mock_subjects(batch_row[0] if batch_row else None))
 
         normalized_limit = max(1, min(limit, 15))
 
@@ -2076,12 +2082,20 @@ async def get_student_weak_topics(
             for row in cursor.fetchall():
                 test_date = row[0]
                 for subject_key, meta in subject_meta.items():
+                    if subject_key not in active_mock_subjects:
+                        continue
                     if subject_filter_key and subject_filter_key != subject_key:
                         continue
 
                     raw_mark = row[meta["marks_idx"]]
                     mark_value = safe_parse_mark(raw_mark)
                     total_value = safe_parse_mark(row[meta["total_idx"]])
+
+                    mark_text = str(raw_mark).strip() if raw_mark is not None else ''
+                    has_attempt = mark_text != ''
+                    if not has_attempt:
+                        continue
+
                     units = row[meta["units_idx"]] or []
                     if not isinstance(units, list):
                         units = [units]
@@ -2090,14 +2104,11 @@ async def get_student_weak_topics(
                         clean_units = ["Unknown"]
 
                     score_pct = None
-                    if mark_value is not None:
-                        if total_value is not None and total_value > 0:
-                            score_pct = (float(mark_value) * 100.0) / float(total_value)
-                        else:
-                            score_pct = float(mark_value)
+                    if mark_value is not None and total_value is not None and total_value > 0:
+                        score_pct = (float(mark_value) * 100.0) / float(total_value)
 
                     is_non_numeric = (
-                        raw_mark is not None and str(raw_mark).strip() != '' and mark_value is None
+                        raw_mark is not None and mark_text != '' and mark_value is None
                     )
 
                     for unit_name in clean_units:

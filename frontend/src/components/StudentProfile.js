@@ -426,6 +426,27 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     return rows.filter(r => r.value > 0);
   };
 
+  const formatMockTopics = (exam) => {
+    const topics = [
+      { label: 'Maths', units: exam.maths_unit_names },
+      { label: 'Physics', units: exam.physics_unit_names },
+      { label: 'Chemistry', units: exam.chemistry_unit_names },
+      { label: 'Biology', units: exam.biology_unit_names },
+    ];
+
+    const formatted = topics
+      .map(({ label, units }) => {
+        const list = Array.isArray(units)
+          ? units.filter(Boolean)
+          : (units ? [units] : []);
+        if (list.length === 0) return null;
+        return `${label}: ${list.join(', ')}`;
+      })
+      .filter(Boolean);
+
+    return formatted.length > 0 ? formatted.join(' | ') : 'N/A';
+  };
+
   const performanceTrend = buildPerformanceTrend();
   const mockTestChartData = buildMockTestChartData();
   const mockTrendData = buildMockTrendData();
@@ -1370,6 +1391,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                     <thead>
                       <tr>
                         <th>Date</th>
+                        <th>Subject Topics</th>
                         <th>Maths</th>
                         <th>Physics</th>
                         <th>Chemistry</th>
@@ -1383,6 +1405,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                       {filteredMockTests.map((exam, index) => (
                         <tr key={exam.test_id || index}>
                           <td>{exam.test_date ? new Date(exam.test_date).toLocaleDateString('en-IN') : 'N/A'}</td>
+                          <td>{formatMockTopics(exam)}</td>
                           <td>{displayMarkWithTotal(exam.maths_marks, exam.maths_total_marks, 0)}</td>
                           <td>{displayMarkWithTotal(exam.physics_marks, exam.physics_total_marks, 0)}</td>
                           <td>{displayMarkWithTotal(exam.chemistry_marks, exam.chemistry_total_marks, 0)}</td>
