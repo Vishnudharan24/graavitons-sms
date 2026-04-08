@@ -345,8 +345,8 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     );
 
     const getSubjectValue = (obtained, total) => {
-      if (!hasMockSubjectTotals) return parseNumericMark(obtained) ?? 0;
-      return toPercentage(obtained, total) ?? (parseNumericMark(obtained) ?? 0);
+      if (!hasMockSubjectTotals) return parseNumericMark(obtained);
+      return toPercentage(obtained, total) ?? parseNumericMark(obtained);
     };
 
     return filteredMockTests.map((test, idx) => ({
@@ -367,14 +367,14 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       exam: `Mock ${idx + 1}`,
       date: test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-',
       total: hasMockTotal
-        ? (toPercentage(test.total_marks, test.test_total_marks) ?? (parseNumericMark(test.total_marks) ?? 0))
-        : (parseNumericMark(test.total_marks) ?? 0),
+        ? (toPercentage(test.total_marks, test.test_total_marks) ?? parseNumericMark(test.total_marks))
+        : parseNumericMark(test.total_marks),
       classAvg: hasMockTotal
-        ? (toPercentage(test.class_avg_total, test.test_total_marks) ?? (parseNumericMark(test.class_avg_total) ?? 0))
-        : (parseNumericMark(test.class_avg_total) ?? 0),
+        ? (toPercentage(test.class_avg_total, test.test_total_marks) ?? parseNumericMark(test.class_avg_total))
+        : parseNumericMark(test.class_avg_total),
       topScore: hasMockTotal
-        ? (toPercentage(test.top_score_total, test.test_total_marks) ?? (parseNumericMark(test.top_score_total) ?? 0))
-        : (parseNumericMark(test.top_score_total) ?? 0),
+        ? (toPercentage(test.top_score_total, test.test_total_marks) ?? parseNumericMark(test.top_score_total))
+        : parseNumericMark(test.top_score_total),
       unit: hasMockTotal ? '%' : 'marks'
     }));
   };
@@ -389,8 +389,8 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       parseNumericMark(lastMock.biology_total_marks) !== null;
 
     const getLatestValue = (obtained, total) => {
-      if (!hasMockSubjectTotals) return parseNumericMark(obtained) ?? 0;
-      return toPercentage(obtained, total) ?? (parseNumericMark(obtained) ?? 0);
+      if (!hasMockSubjectTotals) return parseNumericMark(obtained);
+      return toPercentage(obtained, total) ?? parseNumericMark(obtained);
     };
 
     const rows = [
@@ -499,19 +499,42 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       return Number.isNaN(num) ? null : Math.round(num);
     };
 
+    const sumNumericFields = (test, fields) => {
+      let sum = 0;
+      let hasAny = false;
+
+      fields.forEach((field) => {
+        const val = parseNumericMark(test[field]);
+        if (val !== null) {
+          sum += val;
+          hasAny = true;
+        }
+      });
+
+      return hasAny ? sum : null;
+    };
+
     return reportTests.map((test, index) => {
-      const student = toPercentage(test.total_marks, test.test_total_marks)
-        ?? parseNumericMark(test.total_marks)
-        ?? null;
-      const high = toPercentage(test.top_score_total, test.test_total_marks)
-        ?? parseNumericMark(test.top_score_total)
-        ?? null;
-      const average = toPercentage(test.class_avg_total, test.test_total_marks)
-        ?? parseNumericMark(test.class_avg_total)
-        ?? null;
-      const low = toPercentage(test.class_low_total, test.test_total_marks)
-        ?? parseNumericMark(test.class_low_total)
-        ?? null;
+      const student = parseNumericMark(test.report_student_total)
+        ?? sumNumericFields(
+        test,
+        reportSubjectKeys.map((key) => `${key}_marks`)
+      );
+      const high = parseNumericMark(test.report_class_high_total)
+        ?? sumNumericFields(
+        test,
+        reportSubjectKeys.map((key) => `class_high_${key}`)
+      );
+      const average = parseNumericMark(test.report_class_avg_total)
+        ?? sumNumericFields(
+        test,
+        reportSubjectKeys.map((key) => `class_avg_${key}`)
+      );
+      const low = parseNumericMark(test.report_class_low_total)
+        ?? sumNumericFields(
+        test,
+        reportSubjectKeys.map((key) => `class_low_${key}`)
+      );
 
       return {
         label: buildReportPointLabel(test, index),
@@ -521,7 +544,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
         low: roundedOrNull(low)
       };
     });
-  }, [reportTests]);
+  }, [reportTests, reportSubjectKeys]);
 
   const buildMockSubjectVsClassData = useCallback((subjectKey) => {
     return reportTests.map((test, index) => {

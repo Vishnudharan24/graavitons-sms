@@ -516,8 +516,9 @@ async def get_subjectwise_analysis(
             for subj, subj_data in data["subjects"].items():
                 if subj not in subject_stats:
                     subject_stats[subj] = {"scores": [], "count": 0}
-                avg_score = subj_data["total_marks"] / subj_data["count"] if subj_data["count"] > 0 else 0
-                subject_stats[subj]["scores"].append(avg_score)
+                avg_score = subj_data["total_marks"] / subj_data["count"] if subj_data["count"] > 0 else None
+                if avg_score is not None:
+                    subject_stats[subj]["scores"].append(avg_score)
                 subject_stats[subj]["count"] += subj_data["count"]
 
         stats_summary = {}
@@ -715,9 +716,9 @@ async def get_branchwise_analysis(
                 branches_daily[branch] = {"subjects": {}, "student_count": 0}
             subject_label = normalize_subject_label(row[1]) if row[1] else row[1]
             branches_daily[branch]["subjects"][subject_label] = {
-                "average": round(float(row[2]), 1) if row[2] else 0,
-                "top_score": row[3] or 0,
-                "lowest": row[4] or 0,
+                "average": round(float(row[2]), 1) if row[2] is not None else None,
+                "top_score": row[3] if row[3] is not None else None,
+                "lowest": row[4] if row[4] is not None else None,
                 "test_count": row[5]
             }
             branches_daily[branch]["student_count"] = max(
@@ -729,13 +730,13 @@ async def get_branchwise_analysis(
         for row in mock_rows:
             branch = row[0]
             branches_mock[branch] = {
-                "maths": round(float(row[1]), 1) if row[1] else 0,
-                "physics": round(float(row[2]), 1) if row[2] else 0,
-                "chemistry": round(float(row[3]), 1) if row[3] else 0,
-                "biology": round(float(row[4]), 1) if row[4] else 0,
-                "avg_total": round(float(row[5]), 1) if row[5] else 0,
-                "top_total": row[6] or 0,
-                "lowest_total": row[7] or 0,
+                "maths": round(float(row[1]), 1) if row[1] is not None else None,
+                "physics": round(float(row[2]), 1) if row[2] is not None else None,
+                "chemistry": round(float(row[3]), 1) if row[3] is not None else None,
+                "biology": round(float(row[4]), 1) if row[4] is not None else None,
+                "avg_total": round(float(row[5]), 1) if row[5] is not None else None,
+                "top_total": row[6] if row[6] is not None else None,
+                "lowest_total": row[7] if row[7] is not None else None,
                 "test_count": row[8],
                 "student_count": row[9]
             }
@@ -977,6 +978,14 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
         }
 
         batch_id = student_row[10]
+        report_subject_keys = get_batch_mock_subjects(student_info["batch_subjects"])
+        if len(report_subject_keys) < 3:
+            for key in ["maths", "physics", "chemistry", "biology"]:
+                if key not in report_subject_keys:
+                    report_subject_keys.append(key)
+                if len(report_subject_keys) >= 3:
+                    break
+        report_subject_keys = report_subject_keys[:3]
 
         # 2. Get daily test performance
         cursor.execute("""
@@ -1026,9 +1035,9 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
                 row[2]
             )
             daily_stats_map[daily_key] = {
-                "class_avg": float(row[3]) if row[3] is not None else 0,
-                "class_high": row[4] if row[4] is not None else 0,
-                "class_low": row[5] if row[5] is not None else 0,
+                "class_avg": float(row[3]) if row[3] is not None else None,
+                "class_high": row[4] if row[4] is not None else None,
+                "class_low": row[5] if row[5] is not None else None,
             }
 
         for test in daily_tests_raw:
@@ -1036,9 +1045,9 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
             test_subject_key = normalize_subject_key(test[1])
             test_unit_key = (test[2] or '').strip() or 'Unknown'
             stats_row = daily_stats_map.get((test_date, test_subject_key, test_unit_key), {
-                "class_avg": 0,
-                "class_high": 0,
-                "class_low": 0,
+                "class_avg": None,
+                "class_high": None,
+                "class_low": None,
             })
 
             daily_tests.append({
@@ -1051,7 +1060,7 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
                 "branch": test[6],
                 "subject_total_marks": test[7],
                 "test_total_marks": test[8],
-                "class_avg": round(float(stats_row["class_avg"]), 1) if stats_row["class_avg"] else 0,
+                "class_avg": round(float(stats_row["class_avg"]), 1) if stats_row["class_avg"] is not None else None,
                 "top_score": stats_row["class_high"],
                 "class_low": stats_row["class_low"]
             })
@@ -1074,6 +1083,27 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
 
         mock_tests_raw = cursor.fetchall()
         mock_tests = []
+
+        mock_mark_index = {
+            "maths": 2,
+            "physics": 3,
+            "chemistry": 4,
+            "biology": 5,
+        }
+
+        def sum_selected_subject_marks(mark_getter, subject_keys, require_all=True):
+            values = []
+            for key in subject_keys:
+                parsed = safe_parse_mark(mark_getter(key))
+                if parsed is None:
+                    if require_all:
+                        return None
+                    continue
+                values.append(float(parsed))
+
+            if not values:
+                return None
+            return sum(values)
 
         # Fetch all required mock class stats in one query (avoids N+1)
         cursor.execute("""
@@ -1109,44 +1139,90 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
         mock_stats_map = {}
         for row in cursor.fetchall():
             mock_stats_map[row[0]] = {
-                "class_avg_total": float(row[1]) if row[1] is not None else 0,
-                "class_high_total": row[2] if row[2] is not None else 0,
-                "class_low_total": row[3] if row[3] is not None else 0,
-                "class_avg_maths": float(row[4]) if row[4] is not None else 0,
-                "class_high_maths": row[5] if row[5] is not None else 0,
-                "class_low_maths": row[6] if row[6] is not None else 0,
-                "class_avg_physics": float(row[7]) if row[7] is not None else 0,
-                "class_high_physics": row[8] if row[8] is not None else 0,
-                "class_low_physics": row[9] if row[9] is not None else 0,
-                "class_avg_chemistry": float(row[10]) if row[10] is not None else 0,
-                "class_high_chemistry": row[11] if row[11] is not None else 0,
-                "class_low_chemistry": row[12] if row[12] is not None else 0,
-                "class_avg_biology": float(row[13]) if row[13] is not None else 0,
-                "class_high_biology": row[14] if row[14] is not None else 0,
-                "class_low_biology": row[15] if row[15] is not None else 0,
+                "class_avg_total": float(row[1]) if row[1] is not None else None,
+                "class_high_total": row[2] if row[2] is not None else None,
+                "class_low_total": row[3] if row[3] is not None else None,
+                "class_avg_maths": float(row[4]) if row[4] is not None else None,
+                "class_high_maths": row[5] if row[5] is not None else None,
+                "class_low_maths": row[6] if row[6] is not None else None,
+                "class_avg_physics": float(row[7]) if row[7] is not None else None,
+                "class_high_physics": row[8] if row[8] is not None else None,
+                "class_low_physics": row[9] if row[9] is not None else None,
+                "class_avg_chemistry": float(row[10]) if row[10] is not None else None,
+                "class_high_chemistry": row[11] if row[11] is not None else None,
+                "class_low_chemistry": row[12] if row[12] is not None else None,
+                "class_avg_biology": float(row[13]) if row[13] is not None else None,
+                "class_high_biology": row[14] if row[14] is not None else None,
+                "class_low_biology": row[15] if row[15] is not None else None,
             }
+
+        # Class band for report chart: sum of selected three subject marks per student per test date
+        cursor.execute("""
+            WITH student_mock_dates AS (
+                SELECT DISTINCT mt.test_date
+                FROM mock_test mt
+                WHERE mt.student_id = %s
+            )
+            SELECT
+                d.test_date,
+                mt2.student_id,
+                safe_numeric(mt2.maths_marks) AS maths_marks,
+                safe_numeric(mt2.physics_marks) AS physics_marks,
+                safe_numeric(mt2.chemistry_marks) AS chemistry_marks,
+                safe_numeric(mt2.biology_marks) AS biology_marks
+            FROM student_mock_dates d
+            JOIN mock_test mt2 ON mt2.test_date = d.test_date
+            JOIN student s2 ON s2.student_id = mt2.student_id
+            WHERE s2.batch_id = %s
+        """, (student_id, batch_id))
+
+        report_total_class_stats_map = {}
+        for row in cursor.fetchall():
+            test_date = row[0]
+            subject_values = {
+                "maths": row[2],
+                "physics": row[3],
+                "chemistry": row[4],
+                "biology": row[5],
+            }
+
+            total_sum = sum_selected_subject_marks(lambda key: subject_values.get(key), report_subject_keys, True)
+            if total_sum is None:
+                continue
+
+            report_total_class_stats_map.setdefault(test_date, []).append(total_sum)
+
+        report_total_class_stats_map = {
+            test_date: {
+                "report_class_avg_total": round(sum(totals) / len(totals), 1) if totals else None,
+                "report_class_high_total": max(totals) if totals else None,
+                "report_class_low_total": min(totals) if totals else None,
+            }
+            for test_date, totals in report_total_class_stats_map.items()
+        }
 
         for test in mock_tests_raw:
             test_date = test[1]
             mock_stats = mock_stats_map.get(test_date, {
-                "class_avg_total": 0,
-                "class_high_total": 0,
-                "class_low_total": 0,
-                "class_avg_maths": 0,
-                "class_high_maths": 0,
-                "class_low_maths": 0,
-                "class_avg_physics": 0,
-                "class_high_physics": 0,
-                "class_low_physics": 0,
-                "class_avg_chemistry": 0,
-                "class_high_chemistry": 0,
-                "class_low_chemistry": 0,
-                "class_avg_biology": 0,
-                "class_high_biology": 0,
-                "class_low_biology": 0,
+                "class_avg_total": None,
+                "class_high_total": None,
+                "class_low_total": None,
+                "class_avg_maths": None,
+                "class_high_maths": None,
+                "class_low_maths": None,
+                "class_avg_physics": None,
+                "class_high_physics": None,
+                "class_low_physics": None,
+                "class_avg_chemistry": None,
+                "class_high_chemistry": None,
+                "class_low_chemistry": None,
+                "class_avg_biology": None,
+                "class_high_biology": None,
+                "class_low_biology": None,
             })
 
             mock_tests.append({
+                "report_subject_keys": report_subject_keys,
                 "test_id": test[0],
                 "test_date": test[1].isoformat() if test[1] else None,
                 "maths_marks": test[2],
@@ -1165,21 +1241,25 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
                 "chemistry_total_marks": test[15],
                 "biology_total_marks": test[16],
                 "test_total_marks": test[17],
-                "class_avg_total": round(float(mock_stats["class_avg_total"]), 1) if mock_stats["class_avg_total"] else 0,
+                "class_avg_total": round(float(mock_stats["class_avg_total"]), 1) if mock_stats["class_avg_total"] is not None else None,
                 "top_score_total": mock_stats["class_high_total"],
                 "class_low_total": mock_stats["class_low_total"],
-                "class_avg_maths": round(float(mock_stats["class_avg_maths"]), 1) if mock_stats["class_avg_maths"] else 0,
+                "class_avg_maths": round(float(mock_stats["class_avg_maths"]), 1) if mock_stats["class_avg_maths"] is not None else None,
                 "class_high_maths": mock_stats["class_high_maths"],
                 "class_low_maths": mock_stats["class_low_maths"],
-                "class_avg_physics": round(float(mock_stats["class_avg_physics"]), 1) if mock_stats["class_avg_physics"] else 0,
+                "class_avg_physics": round(float(mock_stats["class_avg_physics"]), 1) if mock_stats["class_avg_physics"] is not None else None,
                 "class_high_physics": mock_stats["class_high_physics"],
                 "class_low_physics": mock_stats["class_low_physics"],
-                "class_avg_chemistry": round(float(mock_stats["class_avg_chemistry"]), 1) if mock_stats["class_avg_chemistry"] else 0,
+                "class_avg_chemistry": round(float(mock_stats["class_avg_chemistry"]), 1) if mock_stats["class_avg_chemistry"] is not None else None,
                 "class_high_chemistry": mock_stats["class_high_chemistry"],
                 "class_low_chemistry": mock_stats["class_low_chemistry"],
-                "class_avg_biology": round(float(mock_stats["class_avg_biology"]), 1) if mock_stats["class_avg_biology"] else 0,
+                "class_avg_biology": round(float(mock_stats["class_avg_biology"]), 1) if mock_stats["class_avg_biology"] is not None else None,
                 "class_high_biology": mock_stats["class_high_biology"],
-                "class_low_biology": mock_stats["class_low_biology"]
+                "class_low_biology": mock_stats["class_low_biology"],
+                "report_student_total": sum_selected_subject_marks(lambda key: test[mock_mark_index[key]], report_subject_keys, True),
+                "report_class_avg_total": report_total_class_stats_map.get(test_date, {}).get("report_class_avg_total"),
+                "report_class_high_total": report_total_class_stats_map.get(test_date, {}).get("report_class_high_total"),
+                "report_class_low_total": report_total_class_stats_map.get(test_date, {}).get("report_class_low_total"),
             })
 
         # 4. Get feedback history
@@ -1479,7 +1559,7 @@ async def get_batch_performance(
 
         # ==================== DAILY TEST STATS ====================
         daily_stats = {
-            "avg_score": 0, "top_score": 0, "lowest_score": 0,
+            "avg_score": None, "top_score": None, "lowest_score": None,
             "total_tests": 0, "students_tested": 0
         }
         daily_trend = []
@@ -1490,9 +1570,9 @@ async def get_batch_performance(
             # Overall daily stats
             cursor.execute(f"""
                 SELECT
-                    COALESCE(ROUND(AVG({daily_score_expr})::numeric, 1), 0),
-                    COALESCE(MAX({daily_score_expr}), 0),
-                    COALESCE(MIN({daily_score_expr}), 0),
+                    ROUND(AVG({daily_score_expr})::numeric, 1),
+                    MAX({daily_score_expr}),
+                    MIN({daily_score_expr}),
                     COUNT(DISTINCT (dt.test_date, dt.subject, dt.unit_name)),
                     COUNT(DISTINCT dt.student_id)
                 FROM daily_test dt
@@ -1501,9 +1581,9 @@ async def get_batch_performance(
             """, [batch_id] + daily_date_params + daily_subject_params)
             row = cursor.fetchone()
             daily_stats = {
-                "avg_score": float(row[0]) if row[0] is not None else 0,
-                "top_score": float(row[1]) if row[1] is not None else 0,
-                "lowest_score": float(row[2]) if row[2] is not None else 0,
+                "avg_score": float(row[0]) if row[0] is not None else None,
+                "top_score": float(row[1]) if row[1] is not None else None,
+                "lowest_score": float(row[2]) if row[2] is not None else None,
                 "total_tests": row[3],
                 "students_tested": row[4]
             }
@@ -1525,9 +1605,9 @@ async def get_batch_performance(
             for r in cursor.fetchall():
                 daily_trend.append({
                     "date": r[0].isoformat() if r[0] else None,
-                    "avg": float(r[1]) if r[1] is not None else 0,
-                    "top": float(r[2]) if r[2] is not None else 0,
-                    "low": float(r[3]) if r[3] is not None else 0,
+                    "avg": float(r[1]) if r[1] is not None else None,
+                    "top": float(r[2]) if r[2] is not None else None,
+                    "low": float(r[3]) if r[3] is not None else None,
                     "students": r[4]
                 })
 
@@ -1549,9 +1629,9 @@ async def get_batch_performance(
             for r in cursor.fetchall():
                 daily_subject_breakdown.append({
                     "subject": normalize_subject_label(r[0]) if r[0] else r[0],
-                    "avg": float(r[1]) if r[1] is not None else 0,
-                    "top": float(r[2]) if r[2] is not None else 0,
-                    "low": float(r[3]) if r[3] is not None else 0,
+                    "avg": float(r[1]) if r[1] is not None else None,
+                    "top": float(r[2]) if r[2] is not None else None,
+                    "low": float(r[3]) if r[3] is not None else None,
                     "tests": r[4],
                     "students": r[5]
                 })
@@ -1577,7 +1657,7 @@ async def get_batch_performance(
 
         # ==================== MOCK TEST STATS ====================
         mock_stats = {
-            "avg_score": 0, "top_score": 0, "lowest_score": 0,
+            "avg_score": None, "top_score": None, "lowest_score": None,
             "total_tests": 0, "students_tested": 0
         }
         mock_trend = []
@@ -1588,9 +1668,9 @@ async def get_batch_performance(
             # Overall mock stats
             cursor.execute(f"""
                 SELECT
-                    COALESCE(ROUND(AVG({mock_total_score_expr})::numeric, 1), 0),
-                    COALESCE(MAX({mock_total_score_expr}), 0),
-                    COALESCE(MIN({mock_total_score_expr}), 0),
+                    ROUND(AVG({mock_total_score_expr})::numeric, 1),
+                    MAX({mock_total_score_expr}),
+                    MIN({mock_total_score_expr}),
                     COUNT(DISTINCT mt.test_date),
                     COUNT(DISTINCT mt.student_id)
                 FROM mock_test mt
@@ -1599,9 +1679,9 @@ async def get_batch_performance(
             """, [batch_id] + mock_date_params)
             row = cursor.fetchone()
             mock_stats = {
-                "avg_score": float(row[0]) if row[0] is not None else 0,
-                "top_score": float(row[1]) if row[1] is not None else 0,
-                "lowest_score": float(row[2]) if row[2] is not None else 0,
+                "avg_score": float(row[0]) if row[0] is not None else None,
+                "top_score": float(row[1]) if row[1] is not None else None,
+                "lowest_score": float(row[2]) if row[2] is not None else None,
                 "total_tests": row[3],
                 "students_tested": row[4]
             }
@@ -1623,9 +1703,9 @@ async def get_batch_performance(
             for r in cursor.fetchall():
                 mock_trend.append({
                     "date": r[0].isoformat() if r[0] else None,
-                    "avg": float(r[1]) if r[1] is not None else 0,
-                    "top": float(r[2]) if r[2] is not None else 0,
-                    "low": float(r[3]) if r[3] is not None else 0,
+                    "avg": float(r[1]) if r[1] is not None else None,
+                    "top": float(r[2]) if r[2] is not None else None,
+                    "low": float(r[3]) if r[3] is not None else None,
                     "students": r[4]
                 })
 
@@ -1651,8 +1731,8 @@ async def get_batch_performance(
                         continue
                     mock_subject_breakdown.append({
                         "subject": subj,
-                        "avg": avg_val if avg_val is not None else 0,
-                        "top": top_val if top_val is not None else 0
+                        "avg": avg_val,
+                        "top": top_val
                     })
 
             # Per-student mock average
@@ -1684,7 +1764,7 @@ async def get_batch_performance(
                 "student_name": s["student_name"],
                 "daily_avg": s["avg"],
                 "daily_tests": s["tests"],
-                "mock_avg": 0,
+                "mock_avg": None,
                 "mock_tests": 0
             }
         for s in mock_student_avgs:
@@ -1696,7 +1776,7 @@ async def get_batch_performance(
                 student_scores[sid] = {
                     "student_id": sid,
                     "student_name": s["student_name"],
-                    "daily_avg": 0,
+                    "daily_avg": None,
                     "daily_tests": 0,
                     "mock_avg": s["avg"],
                     "mock_tests": s["tests"]
@@ -1712,9 +1792,10 @@ async def get_batch_performance(
             if data["mock_tests"] > 0:
                 total += data["mock_avg"]
                 count += 1
-            data["overall_avg"] = round(total / count, 1) if count > 0 else 0
+            data["overall_avg"] = round(total / count, 1) if count > 0 else None
 
-        ranked = sorted(student_scores.values(), key=lambda x: x["overall_avg"], reverse=True)
+        ranked = [s for s in student_scores.values() if s["overall_avg"] is not None]
+        ranked = sorted(ranked, key=lambda x: x["overall_avg"], reverse=True)
         top_students = ranked[:5]
         bottom_students = list(reversed(ranked[-5:])) if len(ranked) >= 5 else list(reversed(ranked))
 
@@ -1919,7 +2000,7 @@ async def get_student_metrics(
             if score is not None:
                 score_values.append(score)
 
-        overall_avg = round(sum(score_values) / len(score_values), 1) if score_values else 0
+        overall_avg = round(sum(score_values) / len(score_values), 1) if score_values else None
         trend_slope = compute_slope(score_points)
         consistency_stddev = compute_stddev(score_values)
 
@@ -2426,7 +2507,7 @@ async def get_student_test_insights(
             daily_group = defaultdict(list)
             for row in batch_daily_rows:
                 date_key, subject_key, unit_name, sid, marks, subject_total, test_total = row
-                score = None if is_absent_mark(marks) else to_pct_or_raw(marks, subject_total if subject_total else test_total)
+                score = None if is_absent_mark(marks) else safe_parse_mark(marks)
                 daily_group[(date_key, subject_key, unit_name)].append({"sid": sid, "score": score})
 
             prev_score_by_subject = {}
@@ -2453,7 +2534,7 @@ async def get_student_test_insights(
                 class_high = group_scores[0]["score"] if rank_total > 0 else None
                 class_low = group_scores[-1]["score"] if rank_total > 0 else None
 
-                score = None if is_absent_mark(marks) else to_pct_or_raw(marks, subject_total if subject_total else test_total)
+                score = None if is_absent_mark(marks) else safe_parse_mark(marks)
                 achievements = []
                 red_flags = []
 
@@ -2586,11 +2667,11 @@ async def get_student_test_insights(
                 ) = row
                 mock_group[test_date].append({
                     "sid": sid,
-                    "overall": None if is_absent_mark(total_marks) else to_pct_or_raw(total_marks, test_total_marks),
-                    "maths": None if is_absent_mark(maths_marks) else to_pct_or_raw(maths_marks, maths_total),
-                    "physics": None if is_absent_mark(physics_marks) else to_pct_or_raw(physics_marks, physics_total),
-                    "chemistry": None if is_absent_mark(chemistry_marks) else to_pct_or_raw(chemistry_marks, chemistry_total),
-                    "biology": None if is_absent_mark(biology_marks) else to_pct_or_raw(biology_marks, biology_total),
+                    "overall": None if is_absent_mark(total_marks) else safe_parse_mark(total_marks),
+                    "maths": None if is_absent_mark(maths_marks) else safe_parse_mark(maths_marks),
+                    "physics": None if is_absent_mark(physics_marks) else safe_parse_mark(physics_marks),
+                    "chemistry": None if is_absent_mark(chemistry_marks) else safe_parse_mark(chemistry_marks),
+                    "biology": None if is_absent_mark(biology_marks) else safe_parse_mark(biology_marks),
                 })
 
             prev_total_score = None
@@ -2603,12 +2684,12 @@ async def get_student_test_insights(
                     maths_total, physics_total, chemistry_total, biology_total
                 ) = row
 
-                student_total = None if is_absent_mark(total_marks) else to_pct_or_raw(total_marks, test_total_marks)
+                student_total = None if is_absent_mark(total_marks) else safe_parse_mark(total_marks)
                 student_subjects = {
-                    "maths": None if is_absent_mark(maths_marks) else to_pct_or_raw(maths_marks, maths_total),
-                    "physics": None if is_absent_mark(physics_marks) else to_pct_or_raw(physics_marks, physics_total),
-                    "chemistry": None if is_absent_mark(chemistry_marks) else to_pct_or_raw(chemistry_marks, chemistry_total),
-                    "biology": None if is_absent_mark(biology_marks) else to_pct_or_raw(biology_marks, biology_total),
+                    "maths": None if is_absent_mark(maths_marks) else safe_parse_mark(maths_marks),
+                    "physics": None if is_absent_mark(physics_marks) else safe_parse_mark(physics_marks),
+                    "chemistry": None if is_absent_mark(chemistry_marks) else safe_parse_mark(chemistry_marks),
+                    "biology": None if is_absent_mark(biology_marks) else safe_parse_mark(biology_marks),
                 }
 
                 batch_rows = mock_group.get(test_date, [])
@@ -2876,7 +2957,7 @@ async def get_batch_advanced_stats(
                 "student_name": rec["student_name"],
                 "daily_avg": rec["avg"],
                 "mock_avg": None,
-                "overall_avg": rec["avg"] if rec["avg"] is not None else 0
+                "overall_avg": rec["avg"] if rec["avg"] is not None else None
             }
         for sid, rec in mock_student_avgs.items():
             if sid not in combined:
@@ -2885,12 +2966,12 @@ async def get_batch_advanced_stats(
                     "student_name": rec["student_name"],
                     "daily_avg": None,
                     "mock_avg": rec["avg"],
-                    "overall_avg": rec["avg"] if rec["avg"] is not None else 0
+                    "overall_avg": rec["avg"] if rec["avg"] is not None else None
                 }
             else:
                 combined[sid]["mock_avg"] = rec["avg"]
                 vals = [v for v in [combined[sid]["daily_avg"], combined[sid]["mock_avg"]] if v is not None]
-                combined[sid]["overall_avg"] = round(sum(vals) / len(vals), 2) if vals else 0
+                combined[sid]["overall_avg"] = round(sum(vals) / len(vals), 2) if vals else None
 
         overall_scores = sorted([float(v["overall_avg"]) for v in combined.values() if v["overall_avg"] is not None])
         q1 = percentile(overall_scores, 25)
@@ -2927,12 +3008,12 @@ async def get_batch_advanced_stats(
                 GROUP BY dt.test_date, dt.subject, dt.unit_name
             """, [batch_id] + daily_params + daily_subject_params)
             for r in cursor.fetchall():
-                avg_score = float(r[3]) if r[3] is not None else 0
+                avg_score = float(r[3]) if r[3] is not None else None
                 difficulty_by_test.append({
                     "test_type": "daily",
                     "test_key": f"{r[0].isoformat() if r[0] else 'NA'} | {r[1] or '-'} | {r[2] or '-'}",
                     "avg_score": avg_score,
-                    "difficulty_index": round(max(0, 100 - avg_score), 2),
+                    "difficulty_index": round(max(0, 100 - avg_score), 2) if avg_score is not None else None,
                     "students": r[4]
                 })
 
@@ -2948,16 +3029,19 @@ async def get_batch_advanced_stats(
                 GROUP BY mt.test_date
             """, [batch_id] + mock_params)
             for r in cursor.fetchall():
-                avg_score = float(r[1]) if r[1] is not None else 0
+                avg_score = float(r[1]) if r[1] is not None else None
                 difficulty_by_test.append({
                     "test_type": "mock",
                     "test_key": f"{r[0].isoformat() if r[0] else 'NA'}",
                     "avg_score": avg_score,
-                    "difficulty_index": round(max(0, 100 - avg_score), 2),
+                    "difficulty_index": round(max(0, 100 - avg_score), 2) if avg_score is not None else None,
                     "students": r[2]
                 })
 
-        difficulty_by_test = sorted(difficulty_by_test, key=lambda x: x["difficulty_index"], reverse=True)
+        difficulty_by_test = sorted(
+            difficulty_by_test,
+            key=lambda x: (x["difficulty_index"] is None, -(x["difficulty_index"] or 0))
+        )
 
         return {
             "student_count": len(overall_scores),
@@ -3222,7 +3306,7 @@ async def get_subject_diagnostics(
             WHERE s.batch_id = %s {date_filter}
         """, params)
         batch_avg_row = cursor.fetchone()
-        subject_avg = float(batch_avg_row[0]) if batch_avg_row and batch_avg_row[0] is not None else 0
+        subject_avg = float(batch_avg_row[0]) if batch_avg_row and batch_avg_row[0] is not None else None
 
         # unit breakdown
         cursor.execute(f"""
@@ -3239,11 +3323,11 @@ async def get_subject_diagnostics(
         """, params)
         unit_breakdown = []
         for row in cursor.fetchall():
-            avg_score = float(row[1]) if row[1] is not None else 0
+            avg_score = float(row[1]) if row[1] is not None else None
             unit_breakdown.append({
                 "unit_name": row[0],
                 "avg_pct": avg_score,
-                "difficulty_index": round(max(0, 100 - avg_score), 2),
+                "difficulty_index": round(max(0, 100 - avg_score), 2) if avg_score is not None else None,
                 "attempts": row[2],
                 "students": row[3]
             })
@@ -3264,7 +3348,9 @@ async def get_subject_diagnostics(
 
         weak_students = []
         for sid, sname, avg_score in student_avg_rows:
-            avg_val = float(avg_score) if avg_score is not None else 0
+            if avg_score is None or subject_avg is None:
+                continue
+            avg_val = float(avg_score)
             delta = round(avg_val - subject_avg, 2)
             if delta <= -10:
                 weak_students.append({

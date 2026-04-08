@@ -28,6 +28,21 @@ const TOOLTIP_STYLE = {
   labelStyle: { color: '#334155', fontWeight: 600 }
 };
 
+const formatPercentMetric = (value) => {
+  if (value === null || value === undefined || value === '') return '—';
+  return `${value}%`;
+};
+
+const formatPlainMetric = (value) => {
+  if (value === null || value === undefined || value === '') return '—';
+  return value;
+};
+
+const formatTooltipMetric = (value, name) => {
+  if (name === 'Students') return [formatPlainMetric(value), name];
+  return [formatPercentMetric(value), name];
+};
+
 const INFO_TEXT = {
   dailyTrendChart: 'Shows test-date wise class performance for daily tests. Average % is the mean normalized score of all student attempts on that date. Top Score % is the highest normalized score. Lowest % is the minimum normalized score.',
   mockTrendChart: 'Shows test-date wise class performance for mock tests. Average %, top %, and lowest % are computed from normalized total scores for that date.',
@@ -317,7 +332,7 @@ const BatchPerformance = ({ batch }) => {
           <>
             <div className="perf-stat-card accent-blue">
               <h4>Daily Test Avg %</h4>
-              <p className="stat-value">{daily_stats.avg_score}%</p>
+              <p className="stat-value">{formatPercentMetric(daily_stats.avg_score)}</p>
             </div>
             {/* <div className="perf-stat-card accent-green">
               <h4>Daily Top Score</h4>
@@ -333,11 +348,11 @@ const BatchPerformance = ({ batch }) => {
           <>
             <div className="perf-stat-card accent-purple">
               <h4>Mock Test Avg %</h4>
-              <p className="stat-value">{mock_stats.avg_score}%</p>
+              <p className="stat-value">{formatPercentMetric(mock_stats.avg_score)}</p>
             </div>
             <div className="perf-stat-card accent-teal">
               <h4>Mock Top Score %</h4>
-              <p className="stat-value">{mock_stats.top_score}%</p>
+              <p className="stat-value">{formatPercentMetric(mock_stats.top_score)}</p>
             </div>
             <div className="perf-stat-card accent-yellow">
               <h4>Mock Tests</h4>
@@ -359,27 +374,27 @@ const BatchPerformance = ({ batch }) => {
         <div className="perf-stat-cards" style={{ marginTop: '-6px' }}>
           <div className="perf-stat-card accent-blue">
             <h4>Median %</h4>
-            <p className="stat-value">{advancedStats.median_pct ?? 0}</p>
+            <p className="stat-value">{formatPlainMetric(advancedStats.median_pct)}</p>
           </div>
           <div className="perf-stat-card accent-purple">
             <h4>Std Dev</h4>
-            <p className="stat-value">{advancedStats.stddev_pct ?? 0}</p>
+            <p className="stat-value">{formatPlainMetric(advancedStats.stddev_pct)}</p>
           </div>
           <div className="perf-stat-card accent-teal">
             <h4>IQR</h4>
-            <p className="stat-value">{advancedStats.iqr_pct ?? 0}</p>
+            <p className="stat-value">{formatPlainMetric(advancedStats.iqr_pct)}</p>
           </div>
           <div className="perf-stat-card accent-green">
             <h4>P90 %</h4>
-            <p className="stat-value">{advancedStats?.percentile_bands?.p90 ?? 0}</p>
+            <p className="stat-value">{formatPlainMetric(advancedStats?.percentile_bands?.p90)}</p>
           </div>
           <div className="perf-stat-card accent-orange">
             <h4>Low Outliers</h4>
-            <p className="stat-value">{advancedStats?.outliers_low?.length ?? 0}</p>
+            <p className="stat-value">{formatPlainMetric(advancedStats?.outliers_low?.length)}</p>
           </div>
           <div className="perf-stat-card accent-yellow">
             <h4>High Outliers</h4>
-            <p className="stat-value">{advancedStats?.outliers_high?.length ?? 0}</p>
+            <p className="stat-value">{formatPlainMetric(advancedStats?.outliers_high?.length)}</p>
           </div>
         </div>
       )}
@@ -466,7 +481,7 @@ const BatchPerformance = ({ batch }) => {
                       <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                       <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
                       <YAxis {...AXIS_STYLE} />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={formatTooltipMetric} />
                       <Legend />
                       <Line type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" strokeWidth={2} dot={{ r: 3 }} />
                       <Line type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
@@ -480,7 +495,7 @@ const BatchPerformance = ({ batch }) => {
                       <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                       <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
                       <YAxis {...AXIS_STYLE} />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={formatTooltipMetric} />
                       <Legend />
                       <Area type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" fill="#5b5fc733" strokeWidth={2} />
                       <Area type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" fill="#48bb7833" strokeWidth={1.5} />
@@ -510,7 +525,7 @@ const BatchPerformance = ({ batch }) => {
                       <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                       <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
                       <YAxis {...AXIS_STYLE} />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={formatTooltipMetric} />
                       <Legend />
                       <Line type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" strokeWidth={2} dot={{ r: 3 }} />
                       <Line type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
@@ -524,7 +539,7 @@ const BatchPerformance = ({ batch }) => {
                       <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                       <XAxis dataKey="date" {...AXIS_STYLE} angle={-30} textAnchor="end" height={60} />
                       <YAxis {...AXIS_STYLE} />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={formatTooltipMetric} />
                       <Legend />
                       <Area type="monotone" dataKey="avg" name="Average %" stroke="#5b5fc7" fill="#5b5fc733" strokeWidth={2} />
                       <Area type="monotone" dataKey="top" name="Top Score %" stroke="#48bb78" fill="#48bb7833" strokeWidth={1.5} />
@@ -554,7 +569,7 @@ const BatchPerformance = ({ batch }) => {
                       <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                       <XAxis dataKey="subject" {...AXIS_STYLE} />
                       <YAxis {...AXIS_STYLE} />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={formatTooltipMetric} />
                       <Legend />
                       {showDaily && <Bar dataKey="Daily Avg" name="Daily Avg %" fill="#5b5fc7" radius={[4, 4, 0, 0]} />}
                       {showMock && <Bar dataKey="Mock Avg" name="Mock Avg %" fill="#48bb78" radius={[4, 4, 0, 0]} />}
@@ -567,7 +582,7 @@ const BatchPerformance = ({ batch }) => {
                       <PolarGrid />
                       <PolarAngleAxis dataKey="subject" tick={{ fill: '#2d3748', fontSize: 12 }} />
                       <PolarRadiusAxis />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(value, name) => [name === 'Students' ? value : `${value}%`, name]} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={formatTooltipMetric} />
                       <Legend />
                       {showDaily && <Radar dataKey="Daily Avg" name="Daily Avg %" stroke="#5b5fc7" fill="#5b5fc7" fillOpacity={0.35} />}
                       {showMock && <Radar dataKey="Mock Avg" name="Mock Avg %" stroke="#48bb78" fill="#48bb78" fillOpacity={0.25} />}
