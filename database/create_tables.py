@@ -284,6 +284,17 @@ def create_tables():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+
+        # Create indexes for report and analysis performance
+        print("Creating performance indexes...")
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_student_batch_id ON student(batch_id);
+            CREATE INDEX IF NOT EXISTS idx_daily_test_student_date ON daily_test(student_id, test_date);
+            CREATE INDEX IF NOT EXISTS idx_daily_test_batch_key ON daily_test(test_date, subject, unit_name);
+            CREATE INDEX IF NOT EXISTS idx_mock_test_student_date ON mock_test(student_id, test_date);
+            CREATE INDEX IF NOT EXISTS idx_mock_test_date ON mock_test(test_date);
+            CREATE INDEX IF NOT EXISTS idx_feedback_student_date ON feedback(student_id, feedback_date DESC);
+        """)
         
         # Commit all changes
         conn.commit()

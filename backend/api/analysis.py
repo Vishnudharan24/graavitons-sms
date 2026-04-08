@@ -49,6 +49,25 @@ def safe_parse_mark(value):
             return None
 
 
+def is_absent_mark(value) -> bool:
+    """Treat A/a/ab as absent marks."""
+    if value is None:
+        return False
+    normalized = str(value).strip().lower()
+    return normalized in {"a", "ab"}
+
+
+def to_pct_or_raw(mark_value, total_value):
+    """Convert mark to percentage when total is available, else return raw numeric mark."""
+    mark_num = safe_parse_mark(mark_value)
+    total_num = safe_parse_mark(total_value)
+    if mark_num is None:
+        return None
+    if total_num is not None and total_num > 0:
+        return round((float(mark_num) * 100.0) / float(total_num), 2)
+    return float(mark_num)
+
+
 def compute_slope(points: List[dict]) -> float:
     """Compute simple linear-regression slope from ordered points [{'date': ..., 'score': ...}]."""
     if not points:
@@ -929,7 +948,7 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
             SELECT
                 s.student_id, s.student_name, s.course, s.branch, s.grade,
                 s.photo_url, s.gender, s.email, s.student_mobile,
-                b.batch_name, b.batch_id
+                b.batch_name, b.batch_id, b.subjects
             FROM student s
             JOIN batch b ON s.batch_id = b.batch_id
             WHERE s.student_id = %s
@@ -953,12 +972,13 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
             "email": student_row[7],
             "student_mobile": student_row[8],
             "batch_name": student_row[9],
-            "batch_id": student_row[10]
+            "batch_id": student_row[10],
+            "batch_subjects": student_row[11] if student_row[11] else []
         }
 
         batch_id = student_row[10]
 
-        # 2. Get daily test performance with class stats
+        # 2. Get daily test performance
         cursor.execute("""
             SELECT
                 dt.test_id, dt.subject, dt.unit_name, dt.total_marks, dt.test_date,
@@ -971,29 +991,55 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
         daily_tests_raw = cursor.fetchall()
         daily_tests = []
 
+        # Fetch all required daily class stats in one query (avoids N+1)
+        cursor.execute(f"""
+            WITH student_tests AS (
+                SELECT DISTINCT
+                    dt.test_date,
+                    COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown') AS unit_name,
+                    {normalized_subject_sql('dt.subject')} AS normalized_subject
+                FROM daily_test dt
+                WHERE dt.student_id = %s
+            )
+            SELECT
+                st.test_date,
+                st.normalized_subject,
+                st.unit_name,
+                ROUND(AVG(safe_numeric(dt2.total_marks))::numeric, 1) AS class_avg,
+                MAX(safe_numeric(dt2.total_marks)) AS class_high,
+                MIN(safe_numeric(dt2.total_marks)) AS class_low
+            FROM student_tests st
+            JOIN daily_test dt2
+                ON dt2.test_date = st.test_date
+                AND COALESCE(NULLIF(TRIM(dt2.unit_name), ''), 'Unknown') = st.unit_name
+                AND {normalized_subject_sql('dt2.subject')} = st.normalized_subject
+            JOIN student s2 ON s2.student_id = dt2.student_id
+            WHERE s2.batch_id = %s
+            GROUP BY st.test_date, st.normalized_subject, st.unit_name
+        """, (student_id, batch_id))
+
+        daily_stats_map = {}
+        for row in cursor.fetchall():
+            daily_key = (
+                row[0],
+                row[1],
+                row[2]
+            )
+            daily_stats_map[daily_key] = {
+                "class_avg": float(row[3]) if row[3] is not None else 0,
+                "class_high": row[4] if row[4] is not None else 0,
+                "class_low": row[5] if row[5] is not None else 0,
+            }
+
         for test in daily_tests_raw:
             test_date = test[4]
-            test_subject = test[1]
-            test_unit = test[2]
-            test_subject_key = normalize_subject_key(test_subject)
-
-            # Get class average and top score for the same test
-            cursor.execute(f"""
-                SELECT
-                    AVG(safe_numeric(dt2.total_marks)) as class_avg,
-                    MAX(safe_numeric(dt2.total_marks)) as top_score,
-                    COUNT(DISTINCT dt2.student_id) as student_count
-                FROM daily_test dt2
-                JOIN student s2 ON dt2.student_id = s2.student_id
-                WHERE s2.batch_id = %s
-                    AND {normalized_subject_sql('dt2.subject')} = %s
-                    AND dt2.unit_name = %s
-                    AND dt2.test_date = %s
-            """, (batch_id, test_subject_key, test_unit, test_date))
-
-            stats_row = cursor.fetchone()
-            class_avg = round(float(stats_row[0]), 1) if stats_row and stats_row[0] else 0
-            top_score = stats_row[1] if stats_row else 0
+            test_subject_key = normalize_subject_key(test[1])
+            test_unit_key = (test[2] or '').strip() or 'Unknown'
+            stats_row = daily_stats_map.get((test_date, test_subject_key, test_unit_key), {
+                "class_avg": 0,
+                "class_high": 0,
+                "class_low": 0,
+            })
 
             daily_tests.append({
                 "test_id": test[0],
@@ -1005,11 +1051,12 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
                 "branch": test[6],
                 "subject_total_marks": test[7],
                 "test_total_marks": test[8],
-                "class_avg": class_avg,
-                "top_score": top_score
+                "class_avg": round(float(stats_row["class_avg"]), 1) if stats_row["class_avg"] else 0,
+                "top_score": stats_row["class_high"],
+                "class_low": stats_row["class_low"]
             })
 
-        # 3. Get mock test performance with class stats
+        # 3. Get mock test performance
         cursor.execute("""
             SELECT
                 mt.test_id, mt.test_date, mt.maths_marks, mt.physics_marks,
@@ -1028,24 +1075,76 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
         mock_tests_raw = cursor.fetchall()
         mock_tests = []
 
+        # Fetch all required mock class stats in one query (avoids N+1)
+        cursor.execute("""
+            WITH student_mock_dates AS (
+                SELECT DISTINCT mt.test_date
+                FROM mock_test mt
+                WHERE mt.student_id = %s
+            )
+            SELECT
+                d.test_date,
+                ROUND(AVG(safe_numeric(mt2.total_marks))::numeric, 1) AS class_avg_total,
+                MAX(safe_numeric(mt2.total_marks)) AS class_high_total,
+                MIN(safe_numeric(mt2.total_marks)) AS class_low_total,
+                ROUND(AVG(safe_numeric(mt2.maths_marks))::numeric, 1) AS class_avg_maths,
+                MAX(safe_numeric(mt2.maths_marks)) AS class_high_maths,
+                MIN(safe_numeric(mt2.maths_marks)) AS class_low_maths,
+                ROUND(AVG(safe_numeric(mt2.physics_marks))::numeric, 1) AS class_avg_physics,
+                MAX(safe_numeric(mt2.physics_marks)) AS class_high_physics,
+                MIN(safe_numeric(mt2.physics_marks)) AS class_low_physics,
+                ROUND(AVG(safe_numeric(mt2.chemistry_marks))::numeric, 1) AS class_avg_chemistry,
+                MAX(safe_numeric(mt2.chemistry_marks)) AS class_high_chemistry,
+                MIN(safe_numeric(mt2.chemistry_marks)) AS class_low_chemistry,
+                ROUND(AVG(safe_numeric(mt2.biology_marks))::numeric, 1) AS class_avg_biology,
+                MAX(safe_numeric(mt2.biology_marks)) AS class_high_biology,
+                MIN(safe_numeric(mt2.biology_marks)) AS class_low_biology
+            FROM student_mock_dates d
+            JOIN mock_test mt2 ON mt2.test_date = d.test_date
+            JOIN student s2 ON s2.student_id = mt2.student_id
+            WHERE s2.batch_id = %s
+            GROUP BY d.test_date
+        """, (student_id, batch_id))
+
+        mock_stats_map = {}
+        for row in cursor.fetchall():
+            mock_stats_map[row[0]] = {
+                "class_avg_total": float(row[1]) if row[1] is not None else 0,
+                "class_high_total": row[2] if row[2] is not None else 0,
+                "class_low_total": row[3] if row[3] is not None else 0,
+                "class_avg_maths": float(row[4]) if row[4] is not None else 0,
+                "class_high_maths": row[5] if row[5] is not None else 0,
+                "class_low_maths": row[6] if row[6] is not None else 0,
+                "class_avg_physics": float(row[7]) if row[7] is not None else 0,
+                "class_high_physics": row[8] if row[8] is not None else 0,
+                "class_low_physics": row[9] if row[9] is not None else 0,
+                "class_avg_chemistry": float(row[10]) if row[10] is not None else 0,
+                "class_high_chemistry": row[11] if row[11] is not None else 0,
+                "class_low_chemistry": row[12] if row[12] is not None else 0,
+                "class_avg_biology": float(row[13]) if row[13] is not None else 0,
+                "class_high_biology": row[14] if row[14] is not None else 0,
+                "class_low_biology": row[15] if row[15] is not None else 0,
+            }
+
         for test in mock_tests_raw:
             test_date = test[1]
-
-            # Get class average and top score for mock tests on same date
-            cursor.execute("""
-                SELECT
-                    AVG(safe_numeric(mt2.total_marks)) as class_avg,
-                    MAX(safe_numeric(mt2.total_marks)) as top_score,
-                    AVG(safe_numeric(mt2.maths_marks)) as avg_maths,
-                    AVG(safe_numeric(mt2.physics_marks)) as avg_physics,
-                    AVG(safe_numeric(mt2.chemistry_marks)) as avg_chemistry,
-                    AVG(safe_numeric(mt2.biology_marks)) as avg_biology
-                FROM mock_test mt2
-                JOIN student s2 ON mt2.student_id = s2.student_id
-                WHERE s2.batch_id = %s AND mt2.test_date = %s
-            """, (batch_id, test_date))
-
-            mock_stats = cursor.fetchone()
+            mock_stats = mock_stats_map.get(test_date, {
+                "class_avg_total": 0,
+                "class_high_total": 0,
+                "class_low_total": 0,
+                "class_avg_maths": 0,
+                "class_high_maths": 0,
+                "class_low_maths": 0,
+                "class_avg_physics": 0,
+                "class_high_physics": 0,
+                "class_low_physics": 0,
+                "class_avg_chemistry": 0,
+                "class_high_chemistry": 0,
+                "class_low_chemistry": 0,
+                "class_avg_biology": 0,
+                "class_high_biology": 0,
+                "class_low_biology": 0,
+            })
 
             mock_tests.append({
                 "test_id": test[0],
@@ -1066,12 +1165,21 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
                 "chemistry_total_marks": test[15],
                 "biology_total_marks": test[16],
                 "test_total_marks": test[17],
-                "class_avg_total": round(float(mock_stats[0]), 1) if mock_stats and mock_stats[0] else 0,
-                "top_score_total": mock_stats[1] if mock_stats else 0,
-                "class_avg_maths": round(float(mock_stats[2]), 1) if mock_stats and mock_stats[2] else 0,
-                "class_avg_physics": round(float(mock_stats[3]), 1) if mock_stats and mock_stats[3] else 0,
-                "class_avg_chemistry": round(float(mock_stats[4]), 1) if mock_stats and mock_stats[4] else 0,
-                "class_avg_biology": round(float(mock_stats[5]), 1) if mock_stats and mock_stats[5] else 0
+                "class_avg_total": round(float(mock_stats["class_avg_total"]), 1) if mock_stats["class_avg_total"] else 0,
+                "top_score_total": mock_stats["class_high_total"],
+                "class_low_total": mock_stats["class_low_total"],
+                "class_avg_maths": round(float(mock_stats["class_avg_maths"]), 1) if mock_stats["class_avg_maths"] else 0,
+                "class_high_maths": mock_stats["class_high_maths"],
+                "class_low_maths": mock_stats["class_low_maths"],
+                "class_avg_physics": round(float(mock_stats["class_avg_physics"]), 1) if mock_stats["class_avg_physics"] else 0,
+                "class_high_physics": mock_stats["class_high_physics"],
+                "class_low_physics": mock_stats["class_low_physics"],
+                "class_avg_chemistry": round(float(mock_stats["class_avg_chemistry"]), 1) if mock_stats["class_avg_chemistry"] else 0,
+                "class_high_chemistry": mock_stats["class_high_chemistry"],
+                "class_low_chemistry": mock_stats["class_low_chemistry"],
+                "class_avg_biology": round(float(mock_stats["class_avg_biology"]), 1) if mock_stats["class_avg_biology"] else 0,
+                "class_high_biology": mock_stats["class_high_biology"],
+                "class_low_biology": mock_stats["class_low_biology"]
             })
 
         # 4. Get feedback history
@@ -1828,6 +1936,9 @@ async def get_student_metrics(
             SELECT COUNT(DISTINCT (dt.test_date, dt.subject, dt.unit_name))
             FROM daily_test dt
             WHERE dt.student_id = %s {daily_date_filter}
+              AND dt.total_marks IS NOT NULL
+              AND trim(dt.total_marks) <> ''
+              AND LOWER(TRIM(dt.total_marks)) NOT IN ('a', 'ab')
         """, [student_id] + daily_params)
         student_daily_attempted = cursor.fetchone()[0] or 0
 
@@ -1843,6 +1954,20 @@ async def get_student_metrics(
             SELECT COUNT(DISTINCT mt.test_date)
             FROM mock_test mt
             WHERE mt.student_id = %s {mock_date_filter}
+                  AND NOT (
+                          LOWER(TRIM(COALESCE(mt.total_marks, ''))) IN ('a', 'ab')
+                      OR LOWER(TRIM(COALESCE(mt.maths_marks, ''))) IN ('a', 'ab')
+                      OR LOWER(TRIM(COALESCE(mt.physics_marks, ''))) IN ('a', 'ab')
+                      OR LOWER(TRIM(COALESCE(mt.chemistry_marks, ''))) IN ('a', 'ab')
+                      OR LOWER(TRIM(COALESCE(mt.biology_marks, ''))) IN ('a', 'ab')
+                  )
+                  AND (
+                          trim(COALESCE(mt.total_marks, '')) <> ''
+                      OR trim(COALESCE(mt.maths_marks, '')) <> ''
+                      OR trim(COALESCE(mt.physics_marks, '')) <> ''
+                      OR trim(COALESCE(mt.chemistry_marks, '')) <> ''
+                      OR trim(COALESCE(mt.biology_marks, '')) <> ''
+                  )
         """, [student_id] + mock_params)
         student_mock_attempted = cursor.fetchone()[0] or 0
 
@@ -1951,6 +2076,10 @@ async def get_student_metrics(
             "trend_slope": trend_slope,
             "consistency_stddev": consistency_stddev,
             "participation_rate": participation_rate,
+            "daily_tests_conducted": total_daily_conducted,
+            "daily_tests_attended": student_daily_attempted,
+            "mock_tests_conducted": total_mock_conducted,
+            "mock_tests_attended": student_mock_attempted,
             "percentile_overall": percentile_overall,
             "non_numeric_rate": non_numeric_rate,
             "subject_metrics": sorted(subject_metrics, key=lambda x: x["avg_pct"]),
@@ -2220,6 +2349,434 @@ async def get_student_weak_topics(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch student weak topics: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.get("/api/analysis/student-test-insights/{student_id}")
+async def get_student_test_insights(
+    student_id: str,
+    test_type: str = Query("both", description="daily, mock, or both"),
+    limit: int = Query(12, ge=1, le=100),
+    current_user: dict = Depends(get_current_user)
+):
+    """Per-test insight cards for remediation UI (achievements + red flags)."""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT s.student_id, s.student_name, s.batch_id, b.subjects
+            FROM student s
+            JOIN batch b ON b.batch_id = s.batch_id
+            WHERE s.student_id = %s
+        """, (student_id,))
+        student_row = cursor.fetchone()
+        if not student_row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Student {student_id} not found")
+
+        student_name = student_row[1]
+        batch_id = student_row[2]
+
+        selected_type = str(test_type or "both").strip().lower()
+        if selected_type not in ("daily", "mock", "both"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="test_type must be 'daily', 'mock', or 'both'")
+
+        daily_insights = []
+        mock_insights = []
+
+        if selected_type in ("daily", "both"):
+            cursor.execute("""
+                SELECT
+                    dt.test_id,
+                    dt.test_date,
+                    dt.subject,
+                    dt.unit_name,
+                    dt.total_marks,
+                    dt.subject_total_marks,
+                    dt.test_total_marks
+                FROM daily_test dt
+                WHERE dt.student_id = %s
+                ORDER BY dt.test_date ASC, dt.test_id ASC
+            """, (student_id,))
+            student_daily_rows = cursor.fetchall()
+
+            cursor.execute(f"""
+                SELECT
+                    dt.test_date,
+                    {normalized_subject_sql('dt.subject')} AS subject_key,
+                    COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown') AS unit_name,
+                    dt.student_id,
+                    dt.total_marks,
+                    dt.subject_total_marks,
+                    dt.test_total_marks
+                FROM daily_test dt
+                JOIN student s ON s.student_id = dt.student_id
+                WHERE s.batch_id = %s
+                ORDER BY dt.test_date ASC
+            """, (batch_id,))
+            batch_daily_rows = cursor.fetchall()
+
+            daily_group = defaultdict(list)
+            for row in batch_daily_rows:
+                date_key, subject_key, unit_name, sid, marks, subject_total, test_total = row
+                score = None if is_absent_mark(marks) else to_pct_or_raw(marks, subject_total if subject_total else test_total)
+                daily_group[(date_key, subject_key, unit_name)].append({"sid": sid, "score": score})
+
+            prev_score_by_subject = {}
+            prev_rank_by_subject = {}
+
+            for idx, row in enumerate(student_daily_rows):
+                test_id, test_date, subject, unit_name, marks, subject_total, test_total = row
+                subject_key = normalize_subject_key(subject)
+                unit_key = (unit_name or '').strip() or 'Unknown'
+                test_key = (test_date, subject_key, unit_key)
+
+                group_scores = [r for r in daily_group.get(test_key, []) if r["score"] is not None]
+                group_scores.sort(key=lambda x: x["score"], reverse=True)
+
+                rank = None
+                rank_total = len(group_scores)
+                rank_map = {}
+                for pos, item in enumerate(group_scores, start=1):
+                    rank_map.setdefault(item["sid"], pos)
+                if student_id in rank_map:
+                    rank = rank_map[student_id]
+
+                class_avg = round(sum(r["score"] for r in group_scores) / rank_total, 2) if rank_total > 0 else None
+                class_high = group_scores[0]["score"] if rank_total > 0 else None
+                class_low = group_scores[-1]["score"] if rank_total > 0 else None
+
+                score = None if is_absent_mark(marks) else to_pct_or_raw(marks, subject_total if subject_total else test_total)
+                achievements = []
+                red_flags = []
+
+                if score is None:
+                    red_flags.append({
+                        "type": "least_attempted",
+                        "title": "Missed This Test",
+                        "detail": "Marked as A/AB in this test.",
+                        "metric": {"mark": str(marks) if marks is not None else "A"},
+                        "remediation_action": "Re-attempt this unit test in the next practice cycle."
+                    })
+                else:
+                    prev_score = prev_score_by_subject.get(subject_key)
+                    prev_rank = prev_rank_by_subject.get(subject_key)
+                    if prev_score is not None:
+                        delta = round(score - prev_score, 2)
+                        if delta >= 8:
+                            achievements.append({
+                                "type": "score_jump",
+                                "title": "Big Improvement",
+                                "detail": f"{normalize_subject_label(subject)} improved strongly from previous test.",
+                                "metric": {"delta": delta, "previous": prev_score, "current": score},
+                                "remediation_action": "Sustain momentum with one revision drill on this unit."
+                            })
+                        elif delta <= -8:
+                            red_flags.append({
+                                "type": "score_drop",
+                                "title": "Score Went Down",
+                                "detail": f"{normalize_subject_label(subject)} dropped vs previous test.",
+                                "metric": {"delta": delta, "previous": prev_score, "current": score},
+                                "remediation_action": "Review error log and redo the last two worksheets for this unit."
+                            })
+
+                    if class_avg is not None and score - class_avg >= 10:
+                        achievements.append({
+                            "type": "efficient_scorer",
+                            "title": "Scored Above Average",
+                            "detail": "Scored well above class average.",
+                            "metric": {"student": score, "class_avg": class_avg, "delta": round(score - class_avg, 2)},
+                            "remediation_action": "Promote to advanced mixed-problem set for this subject."
+                        })
+
+                    if rank is not None and rank <= 3:
+                        achievements.append({
+                            "type": "top_in_topic",
+                            "title": "Among the Best in Class",
+                            "detail": f"Rank {rank} in class for this topic test.",
+                            "metric": {"rank": rank, "total": rank_total},
+                            "remediation_action": "Maintain accuracy with spaced recall mini-tests."
+                        })
+
+                    if prev_rank is not None and rank is not None and rank - prev_rank >= 5:
+                        red_flags.append({
+                            "type": "rank_drop",
+                            "title": "Rank Went Down",
+                            "detail": "Class rank dropped noticeably from previous test.",
+                            "metric": {"previous_rank": prev_rank, "current_rank": rank, "delta": rank - prev_rank},
+                            "remediation_action": "Run a targeted remediation session before the next test."
+                        })
+
+                    prev_score_by_subject[subject_key] = score
+                    if rank is not None:
+                        prev_rank_by_subject[subject_key] = rank
+
+                daily_insights.append({
+                    "test_type": "daily",
+                    "test_id": test_id,
+                    "test_date": test_date.isoformat() if test_date else None,
+                    "test_label": f"DT-{idx + 1}",
+                    "subject": normalize_subject_label(subject),
+                    "unit_name": unit_key,
+                    "score": score,
+                    "class_avg": class_avg,
+                    "class_high": class_high,
+                    "class_low": class_low,
+                    "rank": rank,
+                    "rank_total": rank_total,
+                    "achievements": achievements,
+                    "red_flags": red_flags
+                })
+
+        if selected_type in ("mock", "both"):
+            cursor.execute("""
+                SELECT
+                    mt.test_id,
+                    mt.test_date,
+                    mt.total_marks,
+                    mt.test_total_marks,
+                    mt.maths_marks,
+                    mt.physics_marks,
+                    mt.chemistry_marks,
+                    mt.biology_marks,
+                    mt.maths_total_marks,
+                    mt.physics_total_marks,
+                    mt.chemistry_total_marks,
+                    mt.biology_total_marks
+                FROM mock_test mt
+                WHERE mt.student_id = %s
+                ORDER BY mt.test_date ASC, mt.test_id ASC
+            """, (student_id,))
+            student_mock_rows = cursor.fetchall()
+
+            cursor.execute("""
+                SELECT
+                    mt.test_date,
+                    mt.student_id,
+                    mt.total_marks,
+                    mt.test_total_marks,
+                    mt.maths_marks,
+                    mt.physics_marks,
+                    mt.chemistry_marks,
+                    mt.biology_marks,
+                    mt.maths_total_marks,
+                    mt.physics_total_marks,
+                    mt.chemistry_total_marks,
+                    mt.biology_total_marks
+                FROM mock_test mt
+                JOIN student s ON s.student_id = mt.student_id
+                WHERE s.batch_id = %s
+                ORDER BY mt.test_date ASC
+            """, (batch_id,))
+            batch_mock_rows = cursor.fetchall()
+
+            mock_group = defaultdict(list)
+            for row in batch_mock_rows:
+                (
+                    test_date, sid, total_marks, test_total_marks,
+                    maths_marks, physics_marks, chemistry_marks, biology_marks,
+                    maths_total, physics_total, chemistry_total, biology_total
+                ) = row
+                mock_group[test_date].append({
+                    "sid": sid,
+                    "overall": None if is_absent_mark(total_marks) else to_pct_or_raw(total_marks, test_total_marks),
+                    "maths": None if is_absent_mark(maths_marks) else to_pct_or_raw(maths_marks, maths_total),
+                    "physics": None if is_absent_mark(physics_marks) else to_pct_or_raw(physics_marks, physics_total),
+                    "chemistry": None if is_absent_mark(chemistry_marks) else to_pct_or_raw(chemistry_marks, chemistry_total),
+                    "biology": None if is_absent_mark(biology_marks) else to_pct_or_raw(biology_marks, biology_total),
+                })
+
+            prev_total_score = None
+            prev_rank = None
+
+            for idx, row in enumerate(student_mock_rows):
+                (
+                    test_id, test_date, total_marks, test_total_marks,
+                    maths_marks, physics_marks, chemistry_marks, biology_marks,
+                    maths_total, physics_total, chemistry_total, biology_total
+                ) = row
+
+                student_total = None if is_absent_mark(total_marks) else to_pct_or_raw(total_marks, test_total_marks)
+                student_subjects = {
+                    "maths": None if is_absent_mark(maths_marks) else to_pct_or_raw(maths_marks, maths_total),
+                    "physics": None if is_absent_mark(physics_marks) else to_pct_or_raw(physics_marks, physics_total),
+                    "chemistry": None if is_absent_mark(chemistry_marks) else to_pct_or_raw(chemistry_marks, chemistry_total),
+                    "biology": None if is_absent_mark(biology_marks) else to_pct_or_raw(biology_marks, biology_total),
+                }
+
+                batch_rows = mock_group.get(test_date, [])
+                overall_rows = [r for r in batch_rows if r["overall"] is not None]
+                overall_rows.sort(key=lambda x: x["overall"], reverse=True)
+                rank_total = len(overall_rows)
+                rank_map = {}
+                for pos, item in enumerate(overall_rows, start=1):
+                    rank_map.setdefault(item["sid"], pos)
+                rank = rank_map.get(student_id)
+
+                class_avg = round(sum(r["overall"] for r in overall_rows) / rank_total, 2) if rank_total > 0 else None
+                class_high = overall_rows[0]["overall"] if rank_total > 0 else None
+                class_low = overall_rows[-1]["overall"] if rank_total > 0 else None
+
+                subject_ranks = {}
+                for subject_key in ["maths", "physics", "chemistry", "biology"]:
+                    rows = [r for r in batch_rows if r[subject_key] is not None]
+                    rows.sort(key=lambda x: x[subject_key], reverse=True)
+                    rank_map_sub = {}
+                    for pos, item in enumerate(rows, start=1):
+                        rank_map_sub.setdefault(item["sid"], pos)
+                    subject_ranks[subject_key] = {
+                        "rank": rank_map_sub.get(student_id),
+                        "total": len(rows),
+                        "class_avg": round(sum(r[subject_key] for r in rows) / len(rows), 2) if rows else None
+                    }
+
+                achievements = []
+                red_flags = []
+
+                if student_total is None:
+                    red_flags.append({
+                        "type": "least_attempted",
+                        "title": "Missed This Mock Test",
+                        "detail": "Mock test marked absent (A/AB).",
+                        "metric": {"mark": str(total_marks) if total_marks is not None else "A"},
+                        "remediation_action": "Schedule full mock re-attempt under timed conditions."
+                    })
+                else:
+                    if prev_total_score is not None:
+                        delta = round(student_total - prev_total_score, 2)
+                        if delta >= 5:
+                            achievements.append({
+                                "type": "score_jump",
+                                "title": "Big Improvement",
+                                "detail": "Overall mock score improved from previous test.",
+                                "metric": {"delta": delta, "previous": prev_total_score, "current": student_total},
+                                "remediation_action": "Continue current study plan with mixed revision."
+                            })
+                        elif delta <= -5:
+                            red_flags.append({
+                                "type": "score_drop",
+                                "title": "Score Went Down",
+                                "detail": "Overall mock score dropped from previous test.",
+                                "metric": {"delta": delta, "previous": prev_total_score, "current": student_total},
+                                "remediation_action": "Prioritize weak chapters and run one targeted mock this week."
+                            })
+
+                    if class_avg is not None and student_total - class_avg >= 8:
+                        achievements.append({
+                            "type": "efficient_scorer",
+                            "title": "Scored Above Average",
+                            "detail": "Overall score is well above class average.",
+                            "metric": {"student": student_total, "class_avg": class_avg, "delta": round(student_total - class_avg, 2)},
+                            "remediation_action": "Attempt higher-difficulty question sets for edge gains."
+                        })
+
+                    if rank is not None and rank <= 3:
+                        achievements.append({
+                            "type": "consistent_growth",
+                            "title": "Among Top Performers",
+                            "detail": f"Overall rank {rank} in this mock.",
+                            "metric": {"rank": rank, "total": rank_total},
+                            "remediation_action": "Maintain consistency with spaced mock practice."
+                        })
+
+                    if prev_rank is not None and rank is not None and rank - prev_rank >= 5:
+                        red_flags.append({
+                            "type": "rank_drop",
+                            "title": "Rank Went Down",
+                            "detail": "Overall rank dropped noticeably vs previous mock.",
+                            "metric": {"previous_rank": prev_rank, "current_rank": rank, "delta": rank - prev_rank},
+                            "remediation_action": "Run exam-strategy review and time-management correction."
+                        })
+
+                    best_subject = None
+                    best_delta = None
+                    for subject_key, score in student_subjects.items():
+                        if score is None:
+                            continue
+                        cls_avg = subject_ranks[subject_key]["class_avg"]
+                        if cls_avg is None:
+                            continue
+                        delta = round(score - cls_avg, 2)
+                        if best_delta is None or delta > best_delta:
+                            best_delta = delta
+                            best_subject = subject_key
+                    if best_subject and best_delta is not None and best_delta >= 10:
+                        achievements.append({
+                            "type": "top_in_topic",
+                            "title": "Strong in This Subject",
+                            "detail": f"{normalize_subject_label(best_subject)} is a strong positive differentiator.",
+                            "metric": {
+                                "subject": normalize_subject_label(best_subject),
+                                "delta_vs_avg": best_delta,
+                                "rank": subject_ranks[best_subject]["rank"],
+                                "total": subject_ranks[best_subject]["total"]
+                            },
+                            "remediation_action": "Leverage this subject strength to improve aggregate score."
+                        })
+
+                    low_subjects = [
+                        subject_key for subject_key, score in student_subjects.items()
+                        if score is not None and subject_ranks[subject_key]["class_avg"] is not None and score - subject_ranks[subject_key]["class_avg"] <= -12
+                    ]
+                    if low_subjects:
+                        red_flags.append({
+                            "type": "high_effort_low_return",
+                            "title": "Worked Hard, Score Still Low",
+                            "detail": "One or more subjects are significantly below class average.",
+                            "metric": {"subjects": [normalize_subject_label(s) for s in low_subjects]},
+                            "remediation_action": "Allocate two focused remediation blocks for these subjects before next mock."
+                        })
+
+                    prev_total_score = student_total
+                    if rank is not None:
+                        prev_rank = rank
+
+                mock_insights.append({
+                    "test_type": "mock",
+                    "test_id": test_id,
+                    "test_date": test_date.isoformat() if test_date else None,
+                    "test_label": f"MT-{idx + 1}",
+                    "score": student_total,
+                    "class_avg": class_avg,
+                    "class_high": class_high,
+                    "class_low": class_low,
+                    "rank": rank,
+                    "rank_total": rank_total,
+                    "achievements": achievements,
+                    "red_flags": red_flags
+                })
+
+        daily_payload = list(reversed(daily_insights))
+        mock_payload = list(reversed(mock_insights))
+        combined = sorted(daily_payload + mock_payload, key=lambda x: x.get("test_date") or "", reverse=True)
+
+        return {
+            "student_id": student_id,
+            "student_name": student_name,
+            "insights": {
+                "daily": daily_payload,
+                "mock": mock_payload,
+                "combined_latest": combined[:limit]
+            },
+            "count": {
+                "daily": len(daily_payload),
+                "mock": len(mock_payload),
+                "combined_latest": min(limit, len(combined))
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch student test insights: {str(e)}"
         )
     finally:
         if cursor:

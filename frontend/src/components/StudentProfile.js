@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
 } from 'recharts';
 import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import './StudentProfile.css';
 import { API_BASE, DEFAULT_AVATAR } from '../config';
 import { authFetch } from '../utils/api';
@@ -37,6 +39,12 @@ const toPercentage = (obtained, total) => {
   return Number(((obtainedNum * 100) / totalNum).toFixed(1));
 };
 
+const isAbsentMark = (value) => {
+  if (value === null || value === undefined) return false;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === 'a' || normalized === 'ab';
+};
+
 const chartAxisStyle = {
   tick: { fontSize: 12, fill: '#2d3748' },
   axisLine: { stroke: '#94a3b8' },
@@ -65,9 +73,9 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
   const [analysisData, setAnalysisData] = useState(null);
   const [studentMetrics, setStudentMetrics] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
-  const [weeklyWeakTopics, setWeeklyWeakTopics] = useState([]);
-  const [mockWeakTopics, setMockWeakTopics] = useState([]);
-  const [weakTopicsLoading, setWeakTopicsLoading] = useState(false);
+  const [studentTestInsights, setStudentTestInsights] = useState({ daily: [], mock: [], combined_latest: [] });
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightTab, setInsightTab] = useState('mock');
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [dailyDateFrom, setDailyDateFrom] = useState('');
   const [dailyDateTo, setDailyDateTo] = useState('');
@@ -75,6 +83,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
   const [mockDateTo, setMockDateTo] = useState('');
   const [dailyChartType, setDailyChartType] = useState('line');
   const [mockChartType, setMockChartType] = useState('grouped');
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [currentFeedback, setCurrentFeedback] = useState({
     date: new Date().toISOString().split('T')[0],
     teacherFeedback: '',
@@ -83,6 +92,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     studentSignature: '',
     parentSignature: ''
   });
+  const reportExportRef = useRef(null);
 
   // Resolve student ID from various possible props (BatchDetail uses rollNo, AchieversSection uses admissionNo)
   const studentId = student?.rollNo || student?.admissionNo || student?.student_id || null;
@@ -107,32 +117,42 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       
       const data = await response.json();
       setStudentData(data);
-      
-      // Fetch analysis data (includes daily tests, mock tests with class avg/top scores, and feedback)
+
+      // Fetch analysis + metrics + per-test insights in parallel for faster page load
+      setMetricsLoading(true);
+      setInsightsLoading(true);
+      const [analysisReq, metricsReq, insightsReq] = await Promise.allSettled([
+        authFetch(`${API_BASE}/api/analysis/individual/${studentId}`),
+        authFetch(`${API_BASE}/api/analysis/student-metrics/${studentId}`),
+        authFetch(`${API_BASE}/api/analysis/student-test-insights/${studentId}?test_type=both&limit=6`)
+      ]);
+
+      // Analysis bundle
       try {
-        const analysisResponse = await authFetch(`${API_BASE}/api/analysis/individual/${studentId}`);
-        if (analysisResponse.ok) {
-          const analysisResult = await analysisResponse.json();
+        if (analysisReq.status === 'fulfilled' && analysisReq.value.ok) {
+          const analysisResult = await analysisReq.value.json();
           setAnalysisData(analysisResult);
           setDailyTests(analysisResult.daily_tests || []);
           setMockTests(analysisResult.mock_tests || []);
           setFeedbackList(analysisResult.feedback || []);
         } else {
-          // Fallback: fetch feedback separately if analysis endpoint fails
+          setAnalysisData(null);
+          setDailyTests([]);
+          setMockTests([]);
           await fetchFeedback();
         }
       } catch (err) {
-        console.error('Error fetching analysis data:', err);
-        // Fallback: fetch feedback separately
+        console.error('Error resolving analysis data:', err);
+        setAnalysisData(null);
+        setDailyTests([]);
+        setMockTests([]);
         await fetchFeedback();
       }
 
-      // Fetch advanced student metrics
+      // Metrics
       try {
-        setMetricsLoading(true);
-        const metricsResponse = await authFetch(`${API_BASE}/api/analysis/student-metrics/${studentId}`);
-        if (metricsResponse.ok) {
-          const metricsResult = await metricsResponse.json();
+        if (metricsReq.status === 'fulfilled' && metricsReq.value.ok) {
+          const metricsResult = await metricsReq.value.json();
           setStudentMetrics(metricsResult);
         } else {
           setStudentMetrics(null);
@@ -144,38 +164,26 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
         setMetricsLoading(false);
       }
 
-      // Fetch weak-topic remediation for weekly (daily-test) and mock-test views
+      // Per-test insights
       try {
-        setWeakTopicsLoading(true);
-        const [weeklyRes, mockRes] = await Promise.all([
-          authFetch(`${API_BASE}/api/analysis/student-weak-topics/${studentId}?test_type=daily&limit=100`),
-          authFetch(`${API_BASE}/api/analysis/student-weak-topics/${studentId}?test_type=mock&limit=100`)
-        ]);
-
-        if (weeklyRes.ok) {
-          const weeklyResult = await weeklyRes.json();
-          setWeeklyWeakTopics(weeklyResult.weak_units || []);
+        if (insightsReq.status === 'fulfilled' && insightsReq.value.ok) {
+          const insightsResult = await insightsReq.value.json();
+          setStudentTestInsights(insightsResult.insights || { daily: [], mock: [], combined_latest: [] });
         } else {
-          setWeeklyWeakTopics([]);
-        }
-
-        if (mockRes.ok) {
-          const mockResult = await mockRes.json();
-          setMockWeakTopics(mockResult.weak_units || []);
-        } else {
-          setMockWeakTopics([]);
+          setStudentTestInsights({ daily: [], mock: [], combined_latest: [] });
         }
       } catch (err) {
-        console.error('Error fetching student weak topics:', err);
-        setWeeklyWeakTopics([]);
-        setMockWeakTopics([]);
+        console.error('Error fetching student test insights:', err);
+        setStudentTestInsights({ daily: [], mock: [], combined_latest: [] });
       } finally {
-        setWeakTopicsLoading(false);
+        setInsightsLoading(false);
       }
       
     } catch (err) {
       console.error('Error fetching student data:', err);
       setError(err.message);
+      setMetricsLoading(false);
+      setInsightsLoading(false);
     } finally {
       setLoading(false);
     }
@@ -193,39 +201,6 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     }
   };
 
-  // Show loading state
-  if (loading) {
-    return (
-      <div className="student-profile">
-        <div className="profile-header">
-          <button className="back-button" onClick={onBack}>← Back to Students</button>
-        </div>
-        <div style={{ padding: '40px', textAlign: 'center', fontSize: '18px', color: '#5b5fc7' }}>
-          Loading student data...
-        </div>
-      </div>
-    );
-  }
-
-  // Show error state
-  if (error || !studentData) {
-    return (
-      <div className="student-profile">
-        <div className="profile-header">
-          <button className="back-button" onClick={onBack}>← Back to Students</button>
-        </div>
-        <div style={{ padding: '40px', textAlign: 'center' }}>
-          <div style={{ color: '#c00', marginBottom: '20px' }}>
-            <strong>Error:</strong> {error || 'Student data not found'}
-          </div>
-          <button onClick={fetchStudentData} style={{ padding: '10px 20px', cursor: 'pointer' }}>
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // Helper function to format date
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -237,81 +212,82 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
   };
 
   // Prepare display data from fetched API data
+  const safeStudentData = studentData || {};
   const displayData = {
     // Basic Information
-    name: studentData.student_name || 'N/A',
-    dob: formatDate(studentData.dob),
-    grade: studentData.grade || 'N/A',
-    community: studentData.community || 'N/A',
-    academicYear: studentData.enrollment_year || 'N/A',
-    course: studentData.course || 'N/A',
-    branch: studentData.branch || 'N/A',
-    rollNo: studentData.student_id || 'N/A',
-    gender: studentData.gender || 'N/A',
+    name: safeStudentData.student_name || 'N/A',
+    dob: formatDate(safeStudentData.dob),
+    grade: safeStudentData.grade || 'N/A',
+    community: safeStudentData.community || 'N/A',
+    academicYear: safeStudentData.enrollment_year || 'N/A',
+    course: safeStudentData.course || 'N/A',
+    branch: safeStudentData.branch || 'N/A',
+    rollNo: safeStudentData.student_id || 'N/A',
+    gender: safeStudentData.gender || 'N/A',
 
     // Contact Information
-    studentMobile: studentData.student_mobile || 'N/A',
-    aadharNumber: studentData.aadhar_no || 'N/A',
-    aasarId: studentData.apaar_id || 'N/A',
-    emailId: studentData.email || 'N/A',
+    studentMobile: safeStudentData.student_mobile || 'N/A',
+    aadharNumber: safeStudentData.aadhar_no || 'N/A',
+    aasarId: safeStudentData.apaar_id || 'N/A',
+    emailId: safeStudentData.email || 'N/A',
 
     // Personal Information
-    schoolName: studentData.school_name || 'N/A',
-    guardianName: studentData.guardian_name || 'N/A',
-    guardianOccupation: studentData.guardian_occupation || 'N/A',
-    guardianContact: studentData.guardian_mobile || 'N/A',
-    guardianEmail: studentData.guardian_email || 'N/A',
-    fatherName: studentData.father_name || 'N/A',
-    fatherOccupation: studentData.father_occupation || 'N/A',
-    fatherContact: studentData.father_mobile || 'N/A',
-    fatherEmail: studentData.father_email || 'N/A',
-    motherName: studentData.mother_name || 'N/A',
-    motherOccupation: studentData.mother_occupation || 'N/A',
-    motherContact: studentData.mother_mobile || 'N/A',
-    motherEmail: studentData.mother_email || 'N/A',
-    siblingName: studentData.sibling_name || 'N/A',
-    siblingGrade: studentData.sibling_grade || 'N/A',
-    siblingSchool: studentData.sibling_school || 'N/A',
-    siblingCollege: studentData.sibling_college || 'N/A',
+    schoolName: safeStudentData.school_name || 'N/A',
+    guardianName: safeStudentData.guardian_name || 'N/A',
+    guardianOccupation: safeStudentData.guardian_occupation || 'N/A',
+    guardianContact: safeStudentData.guardian_mobile || 'N/A',
+    guardianEmail: safeStudentData.guardian_email || 'N/A',
+    fatherName: safeStudentData.father_name || 'N/A',
+    fatherOccupation: safeStudentData.father_occupation || 'N/A',
+    fatherContact: safeStudentData.father_mobile || 'N/A',
+    fatherEmail: safeStudentData.father_email || 'N/A',
+    motherName: safeStudentData.mother_name || 'N/A',
+    motherOccupation: safeStudentData.mother_occupation || 'N/A',
+    motherContact: safeStudentData.mother_mobile || 'N/A',
+    motherEmail: safeStudentData.mother_email || 'N/A',
+    siblingName: safeStudentData.sibling_name || 'N/A',
+    siblingGrade: safeStudentData.sibling_grade || 'N/A',
+    siblingSchool: safeStudentData.sibling_school || 'N/A',
+    siblingCollege: safeStudentData.sibling_college || 'N/A',
 
     // 10th Standard Marks
     std10Marks: {
-      schoolName: studentData.tenth_school_name || 'N/A',
-      yearOfPassing: studentData.tenth_year_of_passing || 'N/A',
-      boardOfStudy: studentData.tenth_board_of_study || 'N/A',
-      english: displayMark(studentData.tenth_english),
-      tamil: displayMark(studentData.tenth_tamil),
-      hindi: displayMark(studentData.tenth_hindi),
-      maths: displayMark(studentData.tenth_maths),
-      science: displayMark(studentData.tenth_science),
-      socialScience: displayMark(studentData.tenth_social_science),
-      total: displayMark(studentData.tenth_total_marks)
+      schoolName: safeStudentData.tenth_school_name || 'N/A',
+      yearOfPassing: safeStudentData.tenth_year_of_passing || 'N/A',
+      boardOfStudy: safeStudentData.tenth_board_of_study || 'N/A',
+      english: displayMark(safeStudentData.tenth_english),
+      tamil: displayMark(safeStudentData.tenth_tamil),
+      hindi: displayMark(safeStudentData.tenth_hindi),
+      maths: displayMark(safeStudentData.tenth_maths),
+      science: displayMark(safeStudentData.tenth_science),
+      socialScience: displayMark(safeStudentData.tenth_social_science),
+      total: displayMark(safeStudentData.tenth_total_marks)
     },
 
     // 12th Standard Marks
     std12Marks: {
-      schoolName: studentData.twelfth_school_name || 'N/A',
-      yearOfPassing: studentData.twelfth_year_of_passing || 'N/A',
-      boardOfStudy: studentData.twelfth_board_of_study || 'N/A',
-      english: displayMark(studentData.twelfth_english),
-      tamil: displayMark(studentData.twelfth_tamil),
-      physics: displayMark(studentData.twelfth_physics),
-      chemistry: displayMark(studentData.twelfth_chemistry),
-      mathematics: displayMark(studentData.twelfth_maths),
-      biology: displayMark(studentData.twelfth_biology),
-      computerScience: displayMark(studentData.twelfth_computer_science),
-      total: displayMark(studentData.twelfth_total_marks)
+      schoolName: safeStudentData.twelfth_school_name || 'N/A',
+      yearOfPassing: safeStudentData.twelfth_year_of_passing || 'N/A',
+      boardOfStudy: safeStudentData.twelfth_board_of_study || 'N/A',
+      english: displayMark(safeStudentData.twelfth_english),
+      tamil: displayMark(safeStudentData.twelfth_tamil),
+      physics: displayMark(safeStudentData.twelfth_physics),
+      chemistry: displayMark(safeStudentData.twelfth_chemistry),
+      mathematics: displayMark(safeStudentData.twelfth_maths),
+      biology: displayMark(safeStudentData.twelfth_biology),
+      computerScience: displayMark(safeStudentData.twelfth_computer_science),
+      total: displayMark(safeStudentData.twelfth_total_marks)
     },
 
     // Entrance Exam Marks
-    entranceExams: studentData.entrance_exams || [],
+    entranceExams: safeStudentData.entrance_exams || [],
 
     // Counselling Details
     counselling: {
-      forum: studentData.counselling_forum || 'N/A',
-      round: studentData.counselling_round || 'N/A',
-      collegeAlloted: studentData.counselling_college_alloted || 'N/A',
-      yearOfCompletion: studentData.counselling_year_of_completion || 'N/A'
+      forum: safeStudentData.counselling_forum || 'N/A',
+      round: safeStudentData.counselling_round || 'N/A',
+      collegeAlloted: safeStudentData.counselling_college_alloted || 'N/A',
+      yearOfCompletion: safeStudentData.counselling_year_of_completion || 'N/A'
     }
   };
 
@@ -452,6 +428,323 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
   const mockTrendData = buildMockTrendData();
   const latestMockSubjectShare = buildLatestMockSubjectShare();
 
+  const reportTests = useMemo(() => {
+    if (!mockTests || mockTests.length === 0) return [];
+    return [...mockTests]
+      .filter((test) => test?.test_date)
+      .sort((a, b) => new Date(a.test_date) - new Date(b.test_date));
+  }, [mockTests]);
+
+  const reportSubjectMeta = useMemo(() => ({
+    maths: { label: 'Maths', color: '#f59e0b' },
+    physics: { label: 'Physics', color: '#3366ff' },
+    chemistry: { label: 'Chemistry', color: '#00b894' },
+    biology: { label: 'Biology', color: '#ff1744' }
+  }), []);
+
+  const reportSubjectKeys = useMemo(() => {
+    const normalizedFromBatch = (analysisData?.student?.batch_subjects || [])
+      .map((raw) => String(raw || '').trim().toLowerCase())
+      .map((raw) => (raw === 'mathematics' ? 'maths' : raw))
+      .filter((key) => ['maths', 'physics', 'chemistry', 'biology'].includes(key));
+
+    const uniqueFromBatch = [...new Set(normalizedFromBatch)];
+    if (uniqueFromBatch.length >= 3) return uniqueFromBatch.slice(0, 3);
+
+    const fallbackPriority = ['maths', 'physics', 'chemistry', 'biology'];
+    const presentInMock = fallbackPriority.filter((key) =>
+      reportTests.some((test) => parseNumericMark(test[`${key}_marks`]) !== null)
+    );
+
+    const merged = [...new Set([...uniqueFromBatch, ...presentInMock, ...fallbackPriority])];
+    return merged.slice(0, 3);
+  }, [analysisData, reportTests]);
+
+  const buildReportPointLabel = (test, index) => {
+    if (test?.test_name) return test.test_name;
+    return `MT-${index + 1}`;
+  };
+
+  const dailySubjectComparisonReportData = useMemo(() => {
+    const timeline = {};
+    (dailyTests || []).forEach((test) => {
+      if (!test?.test_date || !test?.subject) return;
+      const subjectKey = String(test.subject).trim().toLowerCase() === 'mathematics'
+        ? 'maths'
+        : String(test.subject).trim().toLowerCase();
+
+      if (!reportSubjectKeys.includes(subjectKey)) return;
+
+      if (!timeline[test.test_date]) {
+        timeline[test.test_date] = { label: `DT-${Object.keys(timeline).length + 1}` };
+      }
+
+      const score = toPercentage(test.marks, test.subject_total_marks ?? test.test_total_marks)
+        ?? parseNumericMark(test.marks);
+
+      if (score !== null) {
+        timeline[test.test_date][subjectKey] = Math.round(score);
+      }
+    });
+
+    return Object.entries(timeline)
+      .sort((a, b) => new Date(a[0]) - new Date(b[0]))
+      .map(([, row], idx) => ({ ...row, label: `DT-${idx + 1}` }));
+  }, [dailyTests, reportSubjectKeys]);
+
+  const totalComparisonReportData = useMemo(() => {
+    const roundedOrNull = (value) => {
+      if (value === null || value === undefined || value === '') return null;
+      const num = Number(value);
+      return Number.isNaN(num) ? null : Math.round(num);
+    };
+
+    return reportTests.map((test, index) => {
+      const student = toPercentage(test.total_marks, test.test_total_marks)
+        ?? parseNumericMark(test.total_marks)
+        ?? null;
+      const high = toPercentage(test.top_score_total, test.test_total_marks)
+        ?? parseNumericMark(test.top_score_total)
+        ?? null;
+      const average = toPercentage(test.class_avg_total, test.test_total_marks)
+        ?? parseNumericMark(test.class_avg_total)
+        ?? null;
+      const low = toPercentage(test.class_low_total, test.test_total_marks)
+        ?? parseNumericMark(test.class_low_total)
+        ?? null;
+
+      return {
+        label: buildReportPointLabel(test, index),
+        student: roundedOrNull(student),
+        high: roundedOrNull(high),
+        average: roundedOrNull(average),
+        low: roundedOrNull(low)
+      };
+    });
+  }, [reportTests]);
+
+  const buildMockSubjectVsClassData = useCallback((subjectKey) => {
+    return reportTests.map((test, index) => {
+      const student = toPercentage(test[`${subjectKey}_marks`], test[`${subjectKey}_total_marks`])
+        ?? parseNumericMark(test[`${subjectKey}_marks`]);
+      const average = toPercentage(test[`class_avg_${subjectKey}`], test[`${subjectKey}_total_marks`])
+        ?? parseNumericMark(test[`class_avg_${subjectKey}`]);
+      const high = toPercentage(test[`class_high_${subjectKey}`], test[`${subjectKey}_total_marks`])
+        ?? parseNumericMark(test[`class_high_${subjectKey}`]);
+      const low = toPercentage(test[`class_low_${subjectKey}`], test[`${subjectKey}_total_marks`])
+        ?? parseNumericMark(test[`class_low_${subjectKey}`]);
+
+      return {
+        label: buildReportPointLabel(test, index),
+        student: student !== null ? Math.round(student) : null,
+        high: high !== null ? Math.round(high) : null,
+        average: average !== null ? Math.round(average) : null,
+        low: low !== null ? Math.round(low) : null
+      };
+    });
+  }, [reportTests]);
+
+  const mockSubjectVsClassReportData = useMemo(() => {
+    const report = {};
+    reportSubjectKeys.forEach((subjectKey) => {
+      report[subjectKey] = buildMockSubjectVsClassData(subjectKey);
+    });
+    return report;
+  }, [reportSubjectKeys, buildMockSubjectVsClassData]);
+
+  const dailyAttemptedCount = useMemo(() => {
+    const keySet = new Set(
+      (dailyTests || [])
+        .filter((t) => !isAbsentMark(t.marks))
+        .map((t) => `${t.test_date || ''}::${(t.subject || '').toLowerCase()}::${t.unit_name || ''}`)
+    );
+    return keySet.size;
+  }, [dailyTests]);
+
+  const mockAttemptedCount = useMemo(() => {
+    const hasAbsentInMockTest = (test) => {
+      const markFields = [
+        test?.total_marks,
+        test?.maths_marks,
+        test?.physics_marks,
+        test?.chemistry_marks,
+        test?.biology_marks
+      ];
+      return markFields.some((value) => isAbsentMark(value));
+    };
+
+    const keySet = new Set(
+      (mockTests || [])
+        .filter((t) => !hasAbsentInMockTest(t))
+        .map((t) => `${t.test_id || ''}::${t.test_date || ''}`)
+    );
+    return keySet.size;
+  }, [mockTests]);
+
+  const attendanceSummaryRows = useMemo(() => {
+    const weeklyConducted = Number(studentMetrics?.daily_tests_conducted ?? dailyAttemptedCount);
+    const weeklyAttended = Number(studentMetrics?.daily_tests_attended ?? dailyAttemptedCount);
+    const mockConducted = Number(studentMetrics?.mock_tests_conducted ?? mockAttemptedCount);
+    const mockAttended = Number(studentMetrics?.mock_tests_attended ?? mockAttemptedCount);
+
+    return [
+      {
+        testType: 'Weekly (Daily Test)',
+        conducted: weeklyConducted,
+        attended: weeklyAttended,
+        summary: `${weeklyAttended}/${weeklyConducted || 0}`
+      },
+      {
+        testType: 'Mock Test',
+        conducted: mockConducted,
+        attended: mockAttended,
+        summary: `${mockAttended}/${mockConducted || 0}`
+      }
+    ];
+  }, [studentMetrics, dailyAttemptedCount, mockAttemptedCount]);
+
+  const activeInsightRows = useMemo(() => {
+    if (insightTab === 'daily') return studentTestInsights?.daily || [];
+    return studentTestInsights?.mock || [];
+  }, [insightTab, studentTestInsights]);
+
+  const pdfInsightRows = useMemo(() => {
+    return (studentTestInsights?.combined_latest || []).slice(0, 6);
+  }, [studentTestInsights]);
+
+  const pdfChartMargin = { top: 20, right: 26, left: 30, bottom: 8 };
+  const pdfAxisTickStyle = { fontSize: 13, fill: '#374151', fontWeight: 500 };
+  const pdfXAxisProps = {
+    tick: pdfAxisTickStyle,
+    tickMargin: 10,
+    axisLine: { stroke: '#d1d5db' },
+    tickLine: { stroke: '#d1d5db' },
+    padding: { left: 24, right: 18 }
+  };
+  const pdfYAxisProps = {
+    tick: pdfAxisTickStyle,
+    axisLine: { stroke: '#d1d5db' },
+    tickLine: { stroke: '#d1d5db' }
+  };
+  const pdfLegendProps = {
+    iconType: 'circle',
+    wrapperStyle: {
+      fontSize: 11,
+      color: '#374151',
+      paddingTop: 4
+    }
+  };
+
+  const renderPdfDotWithValue = (color, yOffset = 0, seriesKeys = []) => ({ cx, cy, payload, dataKey }) => {
+    const rawValue = payload?.[dataKey];
+    const num = Number(rawValue);
+    const isNumeric = rawValue !== null && rawValue !== undefined && rawValue !== '' && !Number.isNaN(num);
+
+    if (!isNumeric || !Number.isFinite(Number(cx)) || !Number.isFinite(Number(cy))) {
+      return null;
+    }
+
+    const nearYAxis = Number(cx) <= 96;
+    const labelX = nearYAxis ? Number(cx) + 24 : Number(cx);
+    const labelAnchor = nearYAxis ? 'start' : 'middle';
+
+    let stackedOffset = 0;
+    if (Array.isArray(seriesKeys) && seriesKeys.length > 0 && payload) {
+      const seriesValues = seriesKeys
+        .map((key) => {
+          const value = Number(payload[key]);
+          return Number.isNaN(value) ? null : { key, value };
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+          if (b.value !== a.value) return b.value - a.value;
+          return a.key.localeCompare(b.key);
+        });
+
+      const rank = seriesValues.findIndex((entry) => entry.key === dataKey);
+      const rankOffsets = [-20, -8, 8, 20, 32];
+      if (rank >= 0) stackedOffset = rankOffsets[Math.min(rank, rankOffsets.length - 1)];
+    }
+
+    const baseY = Number(cy) + stackedOffset + yOffset;
+    const labelY = baseY < 14 ? Number(cy) + 14 : (baseY > 244 ? Number(cy) - 10 : baseY);
+
+    const shown = isNumeric ? String(Math.round(num)) : '';
+
+    return (
+      <g>
+        <circle cx={cx} cy={cy} r={2.8} fill={color} stroke={color} strokeWidth={1} />
+        {isNumeric && (
+          <text
+            x={labelX}
+            y={labelY}
+            fill={color}
+            fontSize={11}
+            fontWeight={600}
+            textAnchor={labelAnchor}
+            stroke="#ffffff"
+            strokeWidth={2}
+            paintOrder="stroke"
+          >
+            {shown}
+          </text>
+        )}
+      </g>
+    );
+  };
+
+  const exportStudentPdfReport = async () => {
+    const hasMockData = reportTests.length > 0;
+    const hasDailyData = dailySubjectComparisonReportData.length > 0;
+
+    if (exportingPdf || (!hasMockData && !hasDailyData)) {
+      if (!hasMockData && !hasDailyData) {
+        alert('No mock/daily test data available to generate PDF report.');
+      }
+      return;
+    }
+
+    const root = reportExportRef.current;
+    if (!root) return;
+
+    try {
+      setExportingPdf(true);
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+      const pages = Array.from(root.querySelectorAll('.student-pdf-page'));
+
+      for (let i = 0; i < pages.length; i += 1) {
+        const page = pages[i];
+        const canvas = await html2canvas(page, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          logging: false
+        });
+
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const imgWidth = canvas.width;
+        const imgHeight = canvas.height;
+        const ratio = Math.min(pageWidth / imgWidth, pageHeight / imgHeight);
+        const renderWidth = imgWidth * ratio;
+        const renderHeight = imgHeight * ratio;
+        const x = (pageWidth - renderWidth) / 2;
+        const y = (pageHeight - renderHeight) / 2;
+
+        if (i > 0) pdf.addPage();
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, renderWidth, renderHeight, undefined, 'FAST');
+      }
+
+      const fileName = `${displayData.name.replace(/\s+/g, '_')}_${displayData.rollNo}_Progress_Report.pdf`;
+      pdf.save(fileName);
+    } catch (err) {
+      console.error('Failed to generate PDF report:', err);
+      alert('Failed to generate PDF report. Please try again.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   const metricInfo = {
     overallAverage: 'This is your average performance across all available tests. Higher is better.',
     batchPercentile: 'This shows where you stand in your batch. 70% means you scored better than about 70 out of 100 classmates.',
@@ -459,6 +752,42 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     consistency: 'This shows how steady your marks are. Lower value = more consistent performance; higher value = marks are fluctuating more.',
     trendSlope: 'This shows whether your performance is improving or dropping over time. Positive = improving, negative = declining.',
     riskLevel: 'This is an overall alert level based on score, trend, participation, and absences/non-numeric marks. Low is good, High needs attention.'
+  };
+
+  const renderInsightMetric = (metric = {}) => {
+    if (metric.delta !== undefined && metric.delta !== null) {
+      const val = Number(metric.delta);
+      const sign = val > 0 ? '+' : '';
+      return `${sign}${val}`;
+    }
+    if (metric.rank !== undefined && metric.total !== undefined) {
+      return `#${metric.rank}/${metric.total}`;
+    }
+    if (metric.subjects && Array.isArray(metric.subjects)) {
+      return metric.subjects.join(', ');
+    }
+    if (metric.delta_vs_avg !== undefined && metric.delta_vs_avg !== null) {
+      const val = Number(metric.delta_vs_avg);
+      const sign = val > 0 ? '+' : '';
+      return `${sign}${val} vs avg`;
+    }
+    return null;
+  };
+
+  const renderPdfScoreSummary = (testInsight) => {
+    const parts = [];
+    if (testInsight?.score !== null && testInsight?.score !== undefined) {
+      const scoreVal = Number(testInsight.score);
+      if (!Number.isNaN(scoreVal)) parts.push(`Score: ${Math.round(scoreVal)}`);
+    }
+    if (testInsight?.class_avg !== null && testInsight?.class_avg !== undefined) {
+      const avgVal = Number(testInsight.class_avg);
+      if (!Number.isNaN(avgVal)) parts.push(`Class Avg: ${Math.round(avgVal)}`);
+    }
+    if (testInsight?.rank && testInsight?.rank_total) {
+      parts.push(`Rank: #${testInsight.rank}/${testInsight.rank_total}`);
+    }
+    return parts.length > 0 ? parts.join(' • ') : 'No score summary available';
   };
 
   const renderMetricLabel = (label, infoKey) => (
@@ -682,11 +1011,47 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     XLSX.writeFile(wb, fileName);
   };
 
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="student-profile">
+        <div className="profile-header">
+          <button className="back-button" onClick={onBack}>← Back to Students</button>
+        </div>
+        <div style={{ padding: '40px', textAlign: 'center', fontSize: '18px', color: '#5b5fc7' }}>
+          Loading student data...
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error || !studentData) {
+    return (
+      <div className="student-profile">
+        <div className="profile-header">
+          <button className="back-button" onClick={onBack}>← Back to Students</button>
+        </div>
+        <div style={{ padding: '40px', textAlign: 'center' }}>
+          <div style={{ color: '#c00', marginBottom: '20px' }}>
+            <strong>Error:</strong> {error || 'Student data not found'}
+          </div>
+          <button onClick={fetchStudentData} style={{ padding: '10px 20px', cursor: 'pointer' }}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="student-profile">
       <div className="profile-header">
         <div className="profile-header-actions">
           <button className="back-button" onClick={onBack}>← Back to Students</button>
+          <button className="btn-download-report" onClick={exportStudentPdfReport} disabled={exportingPdf}>
+            {exportingPdf ? '⏳ Generating PDF...' : '📄 Download Progress PDF'}
+          </button>
           <button className="btn-download-report" onClick={generateExcelReport}>
             📊 Download Report
           </button>
@@ -1067,81 +1432,60 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
           </div>
 
           <div className="profile-section">
-            <h3>🧩 Topic Remediation</h3>
-            {weakTopicsLoading ? (
-              <p style={{ color: '#666', fontStyle: 'italic' }}>Loading weak-topic remediation...</p>
-            ) : (
-              <>
-                <h4 style={{ marginBottom: '10px' }}>Weekly Test Topic Remediation</h4>
-                {weeklyWeakTopics.length > 0 ? (
-                  <div className="weak-topics-grid">
-                    {weeklyWeakTopics.map((topic, idx) => (
-                      <div className="weak-topic-card" key={`weekly-${topic.subject}-${topic.unit_name}-${idx}`}>
-                        <div className="weak-topic-card-header">
-                          <span className="weak-topic-rank">#{idx + 1}</span>
-                          <span className="weak-topic-difficulty">Difficulty {topic.difficulty_index}</span>
-                        </div>
-                        <h4>{topic.subject}</h4>
-                        <p className="weak-topic-unit">Unit: {topic.unit_name}</p>
-                        <div className="weak-topic-stats">
-                          <div>
-                            <label>Average %</label>
-                            <strong>{topic.avg_pct}%</strong>
-                          </div>
-                          <div>
-                            <label>Attempts</label>
-                            <strong>{topic.attempts}</strong>
-                          </div>
-                          <div>
-                            <label>Latest Test</label>
-                            <strong>{topic.latest_test_date ? new Date(topic.latest_test_date).toLocaleDateString('en-IN') : 'N/A'}</strong>
-                          </div>
-                        </div>
-                        <p className="weak-topic-action"><strong>Remediation Plan:</strong> {topic.remediation_action}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p style={{ color: '#666', fontStyle: 'italic' }}>
-                    No unit-level weak topics found from available weekly test data.
-                  </p>
-                )}
+            <h3>🧩 Per-Test Remediation Insights</h3>
+            <div className="insight-tab-row">
+              <button className={`insight-tab-btn ${insightTab === 'mock' ? 'active' : ''}`} onClick={() => setInsightTab('mock')}>
+                Mock Test Insights
+              </button>
+              <button className={`insight-tab-btn ${insightTab === 'daily' ? 'active' : ''}`} onClick={() => setInsightTab('daily')}>
+                Daily Test Insights
+              </button>
+            </div>
 
-                <h4 style={{ marginTop: '18px', marginBottom: '10px' }}>Mock Test Topic Remediation</h4>
-                {mockWeakTopics.length > 0 ? (
-                  <div className="weak-topics-grid">
-                    {mockWeakTopics.map((topic, idx) => (
-                      <div className="weak-topic-card" key={`mock-${topic.subject}-${topic.unit_name}-${idx}`}>
-                        <div className="weak-topic-card-header">
-                          <span className="weak-topic-rank">#{idx + 1}</span>
-                          <span className="weak-topic-difficulty">Difficulty {topic.difficulty_index}</span>
+            {insightsLoading ? (
+              <p style={{ color: '#666', fontStyle: 'italic' }}>Loading per-test remediation insights...</p>
+            ) : activeInsightRows.length > 0 ? (
+              <div className="insight-lane-grid">
+                {activeInsightRows.map((testInsight) => (
+                  <div className="insight-test-column" key={`${testInsight.test_type}-${testInsight.test_id}`}>
+                    <div className="insight-test-title">
+                      <strong>{testInsight.test_label}</strong>
+                      <span>{testInsight.test_date ? new Date(testInsight.test_date).toLocaleDateString('en-IN') : 'N/A'}</span>
+                    </div>
+
+                    <div className="insight-section-title achievement">● ACHIEVEMENTS ({(testInsight.achievements || []).length})</div>
+                    {(testInsight.achievements || []).length > 0 ? (
+                      (testInsight.achievements || []).map((item, idx) => (
+                        <div className="insight-item achievement" key={`ach-${testInsight.test_id}-${idx}`}>
+                          <div className="insight-item-title">{item.title}</div>
+                          <div className="insight-item-detail">{item.detail}</div>
+                          {renderInsightMetric(item.metric) && <div className="insight-item-metric">{renderInsightMetric(item.metric)}</div>}
                         </div>
-                        <h4>{topic.subject}</h4>
-                        <p className="weak-topic-unit">Unit: {topic.unit_name}</p>
-                        <div className="weak-topic-stats">
-                          <div>
-                            <label>Average %</label>
-                            <strong>{topic.avg_pct}%</strong>
-                          </div>
-                          <div>
-                            <label>Attempts</label>
-                            <strong>{topic.attempts}</strong>
-                          </div>
-                          <div>
-                            <label>Latest Test</label>
-                            <strong>{topic.latest_test_date ? new Date(topic.latest_test_date).toLocaleDateString('en-IN') : 'N/A'}</strong>
-                          </div>
+                      ))
+                    ) : (
+                      <div className="insight-empty">No achievements for this test.</div>
+                    )}
+
+                    <div className="insight-section-title redflag">● RED FLAGS ({(testInsight.red_flags || []).length})</div>
+                    {(testInsight.red_flags || []).length > 0 ? (
+                      (testInsight.red_flags || []).map((item, idx) => (
+                        <div className="insight-item redflag" key={`red-${testInsight.test_id}-${idx}`}>
+                          <div className="insight-item-title">{item.title}</div>
+                          <div className="insight-item-detail">{item.detail}</div>
+                          {renderInsightMetric(item.metric) && <div className="insight-item-metric">{renderInsightMetric(item.metric)}</div>}
+                          <div className="insight-remedy">Plan: {item.remediation_action}</div>
                         </div>
-                        <p className="weak-topic-action"><strong>Remediation Plan:</strong> {topic.remediation_action}</p>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      <div className="insight-empty">No red flags for this test.</div>
+                    )}
                   </div>
-                ) : (
-                  <p style={{ color: '#666', fontStyle: 'italic' }}>
-                    No unit-level weak topics found from available mock test data.
-                  </p>
-                )}
-              </>
+                ))}
+              </div>
+            ) : (
+              <p style={{ color: '#666', fontStyle: 'italic' }}>
+                No per-test remediation insights available.
+              </p>
             )}
           </div>
 
@@ -1573,6 +1917,177 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
           </div>
         </div>
       )}
+
+      <div className="student-pdf-export-root" ref={reportExportRef}>
+        <div className="student-pdf-page">
+          <div className="student-pdf-header">Progress Charts - {displayData.name} | Graavitons</div>
+          <h1>Student Progress Charts</h1>
+          <p style={{ margin: '0 0 10px', color: '#64748b', fontSize: '14px' }}>Daily test and mock test performance report</p>
+          <div className="student-pdf-info-grid">
+            <div>
+              <p><strong>School:</strong> {displayData.schoolName}</p>
+              <p><strong>Name:</strong> {displayData.name}</p>
+              <p><strong>Roll No:</strong> {displayData.rollNo}</p>
+            </div>
+            <div>
+              <p><strong>Grade:</strong> {displayData.grade}</p>
+              <p><strong>Program:</strong> {displayData.course}</p>
+              <p><strong>Series:</strong> {analysisData?.student?.batch_name || 'N/A'}</p>
+            </div>
+          </div>
+
+          <div className="student-pdf-chart-block student-pdf-chart-panel">
+            <h3>Subject Comparison - Daily Test</h3>
+            <p>Student subject-wise trend across daily tests ({dailySubjectComparisonReportData.length} points)</p>
+            <LineChart width={720} height={250} data={dailySubjectComparisonReportData} margin={pdfChartMargin}>
+              <CartesianGrid strokeDasharray="0" stroke="#d1d5db" />
+              <XAxis dataKey="label" {...pdfXAxisProps} />
+              <YAxis {...pdfYAxisProps} />
+              <Tooltip />
+              <Legend {...pdfLegendProps} />
+              {reportSubjectKeys.map((subjectKey) => (
+                <Line
+                  key={subjectKey}
+                  type="monotone"
+                  dataKey={subjectKey}
+                  stroke={reportSubjectMeta[subjectKey]?.color || '#64748b'}
+                  strokeWidth={2.2}
+                  activeDot={{ r: 4, fill: '#111827', stroke: '#111827', strokeWidth: 1 }}
+                  dot={renderPdfDotWithValue(reportSubjectMeta[subjectKey]?.color || '#64748b', 0, reportSubjectKeys)}
+                  name={reportSubjectMeta[subjectKey]?.label || subjectKey}
+                  connectNulls
+                />
+              ))}
+            </LineChart>
+          </div>
+
+          <div className="student-pdf-chart-block student-pdf-chart-panel">
+            <h3>Total Score vs Class High / Average / Low - Mock Test</h3>
+            <p>Mock total comparison against class band ({reportTests.length} tests)</p>
+            <LineChart width={720} height={250} data={totalComparisonReportData} margin={pdfChartMargin}>
+              <CartesianGrid strokeDasharray="0" stroke="#d1d5db" />
+              <XAxis dataKey="label" {...pdfXAxisProps} />
+              <YAxis {...pdfYAxisProps} />
+              <Tooltip />
+              <Legend {...pdfLegendProps} />
+              <Line type="monotone" dataKey="student" stroke="#111827" strokeWidth={2.8} dot={renderPdfDotWithValue('#111827', 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
+              <Line type="monotone" dataKey="high" stroke="#64748b" strokeWidth={2.2} dot={renderPdfDotWithValue('#64748b', 0, ['high', 'student', 'average', 'low'])} name="High" connectNulls />
+              <Line type="monotone" dataKey="average" stroke="#94a3b8" strokeWidth={2.2} dot={renderPdfDotWithValue('#94a3b8', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
+              <Line type="monotone" dataKey="low" stroke="#cbd5e1" strokeWidth={2.2} dot={renderPdfDotWithValue('#cbd5e1', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
+            </LineChart>
+          </div>
+        </div>
+
+        <div className="student-pdf-page">
+          <div className="student-pdf-header">Progress Charts - {displayData.name} | Graavitons</div>
+          {reportSubjectKeys.map((subjectKey) => {
+            const subjectLabel = reportSubjectMeta[subjectKey]?.label || subjectKey;
+            const color = reportSubjectMeta[subjectKey]?.color || '#64748b';
+            const chartData = mockSubjectVsClassReportData[subjectKey] || [];
+
+            return (
+              <div className="student-pdf-chart-block student-pdf-chart-panel" key={`mock-subject-${subjectKey}`}>
+                <h3>{subjectLabel} - Mock Test: Student vs Class</h3>
+                <p>{subjectLabel} performance vs class High, Average, Low ({reportTests.length} tests)</p>
+                <LineChart width={720} height={250} data={chartData} margin={pdfChartMargin}>
+                  <CartesianGrid strokeDasharray="0" stroke="#d1d5db" />
+                  <XAxis dataKey="label" {...pdfXAxisProps} />
+                  <YAxis {...pdfYAxisProps} />
+                  <Tooltip />
+                  <Legend {...pdfLegendProps} />
+                  <Line type="monotone" dataKey="student" stroke={color} strokeWidth={2.6} dot={renderPdfDotWithValue(color, 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
+                  <Line type="monotone" dataKey="high" stroke="#64748b" strokeWidth={2} dot={renderPdfDotWithValue('#64748b', 0, ['high', 'student', 'average', 'low'])} name="High" connectNulls />
+                  <Line type="monotone" dataKey="average" stroke="#94a3b8" strokeWidth={2} dot={renderPdfDotWithValue('#94a3b8', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
+                  <Line type="monotone" dataKey="low" stroke="#cbd5e1" strokeWidth={2} dot={renderPdfDotWithValue('#cbd5e1', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
+                </LineChart>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="student-pdf-page">
+          <div className="student-pdf-header">Progress Charts - {displayData.name} | Graavitons</div>
+
+          <div className="student-pdf-chart-block">
+            <h3>🧩 Per-Test Remediation (Latest 6)</h3>
+            <p>Detailed Achievements and Red Flags from latest test events</p>
+            <div className="pdf-insight-grid">
+              {pdfInsightRows.length > 0 ? pdfInsightRows.map((testInsight, idx) => (
+                <div className="pdf-insight-card" key={`pdf-insight-${idx}`}>
+                  <div className="pdf-insight-head">
+                    <strong>{testInsight.test_label} ({String(testInsight.test_type || '').toUpperCase() || 'TEST'})</strong>
+                    <span>{testInsight.test_date ? new Date(testInsight.test_date).toLocaleDateString('en-IN') : 'N/A'}</span>
+                  </div>
+                  <div className="pdf-insight-subhead">
+                    {testInsight.subject ? `${testInsight.subject}` : 'General'}
+                    {testInsight.unit_name ? ` • ${testInsight.unit_name}` : ''}
+                  </div>
+                  <div className="pdf-insight-meta">{renderPdfScoreSummary(testInsight)}</div>
+                  <div className="pdf-insight-body">
+                    <p className="pdf-insight-section"><strong>Achievement</strong> ({testInsight.achievements?.length || 0})</p>
+                    {testInsight.achievements?.[0] ? (
+                      <>
+                        <p><strong>• {testInsight.achievements[0].title}</strong></p>
+                        <p>{testInsight.achievements[0].detail}</p>
+                        {renderInsightMetric(testInsight.achievements[0].metric) && (
+                          <p><strong>Metric:</strong> {renderInsightMetric(testInsight.achievements[0].metric)}</p>
+                        )}
+                      </>
+                    ) : (
+                      <p>No achievement noted for this test.</p>
+                    )}
+
+                    <p className="pdf-insight-section"><strong>Red Flag</strong> ({testInsight.red_flags?.length || 0})</p>
+                    {testInsight.red_flags?.[0] ? (
+                      <>
+                        <p><strong>• {testInsight.red_flags[0].title}</strong></p>
+                        <p>{testInsight.red_flags[0].detail}</p>
+                        {renderInsightMetric(testInsight.red_flags[0].metric) && (
+                          <p><strong>Metric:</strong> {renderInsightMetric(testInsight.red_flags[0].metric)}</p>
+                        )}
+                        {testInsight.red_flags[0].remediation_action && (
+                          <p><strong>Plan:</strong> {testInsight.red_flags[0].remediation_action}</p>
+                        )}
+                      </>
+                    ) : (
+                      <p>No red flag noted for this test.</p>
+                    )}
+                  </div>
+                </div>
+              )) : (
+                <div className="pdf-insight-card">No remediation insights available.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="student-pdf-chart-block">
+            <h3>Attendance Summary</h3>
+            <p>Weekly and mock test attendance (Attended/Conducted)</p>
+            <div className="student-pdf-table-wrap">
+              <table className="student-pdf-table attendance-table">
+                <thead>
+                  <tr>
+                    <th>Test Type</th>
+                    <th>Conducted</th>
+                    <th>Attended</th>
+                    <th>Summary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {attendanceSummaryRows.map((row) => (
+                    <tr key={row.testType}>
+                      <td>{row.testType}</td>
+                      <td>{row.conducted}</td>
+                      <td>{row.attended}</td>
+                      <td><strong>{row.summary}</strong></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
