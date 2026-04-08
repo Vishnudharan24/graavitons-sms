@@ -1211,7 +1211,7 @@ async def get_daily_test_template(batch_id: int, total_marks: int = 100, current
             SELECT student_id, student_name 
             FROM student 
             WHERE batch_id = %s 
-            ORDER BY student_id
+            ORDER BY student_name
         """, (batch_id,))
         
         students = cursor.fetchall()
@@ -1323,7 +1323,7 @@ async def get_mock_test_template(batch_id: int, current_user: dict = Depends(get
             SELECT student_id, student_name 
             FROM student 
             WHERE batch_id = %s 
-            ORDER BY student_id
+            ORDER BY student_name
         """, (batch_id,))
         
         students = cursor.fetchall()
