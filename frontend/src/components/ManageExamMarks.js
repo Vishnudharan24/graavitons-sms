@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
 
@@ -30,6 +31,18 @@ const ManageExamMarks = ({ batchId }) => {
     if (value === '' || value === null || value === undefined) return null;
     const parsed = parseInt(value, 10);
     return Number.isNaN(parsed) ? null : parsed;
+  };
+
+  const sanitizeCell = (value) => {
+    if (value === null || value === undefined) return '';
+    return String(value).trim();
+  };
+
+  const getUploadRows = (sheetRows) => {
+    if (!Array.isArray(sheetRows)) return [];
+    return sheetRows
+      .slice(1)
+      .filter((row) => sanitizeCell(row?.[0]));
   };
 
   const fetchGroups = async () => {
@@ -213,6 +226,98 @@ const ManageExamMarks = ({ batchId }) => {
     }
   };
 
+  const handleDownloadCurrentExcel = () => {
+    if (!selectedGroup || records.length === 0) {
+      alert('Please select an exam with marks before downloading.');
+      return;
+    }
+
+    const headers = examType === 'daily test'
+      ? ['Admission Number', 'Student Name', 'Marks']
+      : ['Admission Number', 'Student Name', ...mockColumns.map((col) => `${col.label} Marks`)];
+
+    const rows = records.map((row) => {
+      if (examType === 'daily test') {
+        return [row.student_id, row.student_name, row.marks || ''];
+      }
+      return [
+        row.student_id,
+        row.student_name,
+        ...mockColumns.map((col) => row[col.field] || '')
+      ];
+    });
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Marks');
+
+    const safeDate = String(selectedGroup.test_date || 'exam').replace(/[^a-zA-Z0-9-_]/g, '-');
+    const typePrefix = examType === 'daily test' ? 'daily_test' : 'mock_test';
+    XLSX.writeFile(workbook, `${typePrefix}_marks_modify_${safeDate}.xlsx`);
+  };
+
+  const handleExcelModifyUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const workbook = XLSX.read(e.target.result, { type: 'array' });
+        const preferredSheet = workbook.SheetNames.find((name) => !/instruction/i.test(name)) || workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[preferredSheet];
+        const sheetRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+        const rows = getUploadRows(sheetRows);
+
+        if (rows.length === 0) {
+          alert('No data rows found in the uploaded file.');
+          return;
+        }
+
+        const rowByStudentId = new Map(
+          rows.map((row) => [sanitizeCell(row[0]), row])
+        );
+
+        let matchedCount = 0;
+        let changedCount = 0;
+
+        setRecords((prev) => prev.map((record) => {
+          const fileRow = rowByStudentId.get(sanitizeCell(record.student_id));
+          if (!fileRow) return record;
+
+          matchedCount += 1;
+
+          if (examType === 'daily test') {
+            const nextMarks = sanitizeCell(fileRow[2]);
+            if ((record.marks || '') !== nextMarks) {
+              changedCount += 1;
+            }
+            return { ...record, marks: nextMarks };
+          }
+
+          const updatedRecord = { ...record };
+          mockColumns.forEach((col, index) => {
+            const nextValue = sanitizeCell(fileRow[2 + index]);
+            if ((record[col.field] || '') !== nextValue) {
+              changedCount += 1;
+            }
+            updatedRecord[col.field] = nextValue;
+          });
+          return updatedRecord;
+        }));
+
+        alert(`Excel uploaded successfully. Matched students: ${matchedCount}, Updated fields: ${changedCount}. Click Save Changes to persist.`);
+      } catch (error) {
+        console.error('Excel upload for modify failed:', error);
+        alert('Error reading uploaded file. Please use the downloaded format and try again.');
+      } finally {
+        event.target.value = '';
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
   return (
     <div className="manage-exam-marks">
       <div className="manage-exam-toolbar">
@@ -366,6 +471,32 @@ const ManageExamMarks = ({ batchId }) => {
               </div>
 
               <div className="marks-entry-table">
+                <div className="manage-exam-excel-tools">
+                  <button
+                    type="button"
+                    className="btn-download"
+                    onClick={handleDownloadCurrentExcel}
+                    disabled={saving || loadingRecords || records.length === 0}
+                  >
+                    📥 Download Current Excel
+                  </button>
+                  <div className="file-upload">
+                    <label htmlFor="manage-exam-upload" className="upload-label manage-upload-label">
+                      📤 Upload Modified Excel
+                    </label>
+                    <input
+                      id="manage-exam-upload"
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      onChange={handleExcelModifyUpload}
+                      disabled={saving || loadingRecords || records.length === 0}
+                    />
+                  </div>
+                </div>
+                <p className="manage-exam-upload-note">
+                  Use the downloaded file format. Upload updates the table only; click Save Changes to apply to database.
+                </p>
+
                 {examType === 'daily test' ? (
                   <table>
                     <thead>

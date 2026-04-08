@@ -589,7 +589,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
 
     return [
       {
-        testType: 'Weekly (Daily Test)',
+        testType: 'Daily Test',
         conducted: weeklyConducted,
         attended: weeklyAttended,
         summary: `${weeklyAttended}/${weeklyConducted || 0}`
