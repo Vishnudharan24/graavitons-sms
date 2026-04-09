@@ -443,20 +443,21 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
   }), []);
 
   const reportSubjectKeys = useMemo(() => {
+    const subjectDisplayPriority = ['physics', 'chemistry', 'maths', 'biology'];
     const normalizedFromBatch = (analysisData?.student?.batch_subjects || [])
       .map((raw) => String(raw || '').trim().toLowerCase())
       .map((raw) => (raw === 'mathematics' ? 'maths' : raw))
       .filter((key) => ['maths', 'physics', 'chemistry', 'biology'].includes(key));
 
-    const uniqueFromBatch = [...new Set(normalizedFromBatch)];
+    const uniqueFromBatch = [...new Set(normalizedFromBatch)]
+      .sort((a, b) => subjectDisplayPriority.indexOf(a) - subjectDisplayPriority.indexOf(b));
     if (uniqueFromBatch.length >= 3) return uniqueFromBatch.slice(0, 3);
 
-    const fallbackPriority = ['maths', 'physics', 'chemistry', 'biology'];
-    const presentInMock = fallbackPriority.filter((key) =>
+    const presentInMock = subjectDisplayPriority.filter((key) =>
       reportTests.some((test) => parseNumericMark(test[`${key}_marks`]) !== null)
     );
 
-    const merged = [...new Set([...uniqueFromBatch, ...presentInMock, ...fallbackPriority])];
+    const merged = [...new Set([...uniqueFromBatch, ...presentInMock, ...subjectDisplayPriority])];
     return merged.slice(0, 3);
   }, [analysisData, reportTests]);
 
@@ -2020,10 +2021,10 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
               <YAxis {...pdfYAxisProps} />
               <Tooltip />
               <Legend {...pdfLegendProps} />
-              <Line type="monotone" dataKey="student" stroke="#111827" strokeWidth={2.8} dot={renderPdfDotWithValue('#111827', 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
+              <Line type="monotone" dataKey="student" stroke="#2563eb" strokeWidth={2.8} dot={renderPdfDotWithValue('#2563eb', 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
               <Line type="monotone" dataKey="high" stroke="#64748b" strokeWidth={2.2} dot={renderPdfDotWithValue('#64748b', 0, ['high', 'student', 'average', 'low'])} name="High" connectNulls />
-              <Line type="monotone" dataKey="average" stroke="#94a3b8" strokeWidth={2.2} dot={renderPdfDotWithValue('#94a3b8', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
-              <Line type="monotone" dataKey="low" stroke="#cbd5e1" strokeWidth={2.2} dot={renderPdfDotWithValue('#cbd5e1', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
+              <Line type="monotone" dataKey="average" stroke="#eab308" strokeWidth={2.2} dot={renderPdfDotWithValue('#eab308', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
+              <Line type="monotone" dataKey="low" stroke="#ef4444" strokeWidth={2.2} dot={renderPdfDotWithValue('#ef4444', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
             </LineChart>
           </div>
         </div>
@@ -2032,7 +2033,6 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
           <div className="student-pdf-header">Progress Charts - {displayData.name} | Graavitons</div>
           {reportSubjectKeys.map((subjectKey) => {
             const subjectLabel = reportSubjectMeta[subjectKey]?.label || subjectKey;
-            const color = reportSubjectMeta[subjectKey]?.color || '#64748b';
             const chartData = mockSubjectVsClassReportData[subjectKey] || [];
 
             return (
@@ -2045,10 +2045,10 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                   <YAxis {...pdfYAxisProps} />
                   <Tooltip />
                   <Legend {...pdfLegendProps} />
-                  <Line type="monotone" dataKey="student" stroke={color} strokeWidth={2.6} dot={renderPdfDotWithValue(color, 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
+                  <Line type="monotone" dataKey="student" stroke="#2563eb" strokeWidth={2.6} dot={renderPdfDotWithValue('#2563eb', 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
                   <Line type="monotone" dataKey="high" stroke="#64748b" strokeWidth={2} dot={renderPdfDotWithValue('#64748b', 0, ['high', 'student', 'average', 'low'])} name="High" connectNulls />
-                  <Line type="monotone" dataKey="average" stroke="#94a3b8" strokeWidth={2} dot={renderPdfDotWithValue('#94a3b8', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
-                  <Line type="monotone" dataKey="low" stroke="#cbd5e1" strokeWidth={2} dot={renderPdfDotWithValue('#cbd5e1', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
+                  <Line type="monotone" dataKey="average" stroke="#eab308" strokeWidth={2} dot={renderPdfDotWithValue('#eab308', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
+                  <Line type="monotone" dataKey="low" stroke="#ef4444" strokeWidth={2} dot={renderPdfDotWithValue('#ef4444', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
                 </LineChart>
               </div>
             );
