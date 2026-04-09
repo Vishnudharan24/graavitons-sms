@@ -1959,6 +1959,33 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
             </div>
           </div>
 
+          <div className="student-pdf-chart-block">
+            <h3>Attendance Summary</h3>
+            <p>Weekly and mock test attendance (Attended/Conducted)</p>
+            <div className="student-pdf-table-wrap">
+              <table className="student-pdf-table attendance-table">
+                <thead>
+                  <tr>
+                    <th>Test Type</th>
+                    <th>Conducted</th>
+                    <th>Attended</th>
+                    <th>Summary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {attendanceSummaryRows.map((row) => (
+                    <tr key={row.testType}>
+                      <td>{row.testType}</td>
+                      <td>{row.conducted}</td>
+                      <td>{row.attended}</td>
+                      <td><strong>{row.summary}</strong></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div className="student-pdf-chart-block student-pdf-chart-panel">
             <h3>Subject Comparison - Daily Test</h3>
             <p>Student subject-wise trend across daily tests ({dailySubjectComparisonReportData.length} points)</p>
@@ -2083,32 +2110,6 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
             </div>
           </div>
 
-          <div className="student-pdf-chart-block">
-            <h3>Attendance Summary</h3>
-            <p>Weekly and mock test attendance (Attended/Conducted)</p>
-            <div className="student-pdf-table-wrap">
-              <table className="student-pdf-table attendance-table">
-                <thead>
-                  <tr>
-                    <th>Test Type</th>
-                    <th>Conducted</th>
-                    <th>Attended</th>
-                    <th>Summary</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {attendanceSummaryRows.map((row) => (
-                    <tr key={row.testType}>
-                      <td>{row.testType}</td>
-                      <td>{row.conducted}</td>
-                      <td>{row.attended}</td>
-                      <td><strong>{row.summary}</strong></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       </div>
     </div>
