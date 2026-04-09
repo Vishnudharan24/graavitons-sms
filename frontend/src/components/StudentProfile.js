@@ -394,7 +394,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     };
 
     const rows = [
-      { name: 'Maths', value: getLatestValue(lastMock.maths_marks, lastMock.maths_total_marks), fill: '#FFA500' },
+      { name: 'Maths', value: getLatestValue(lastMock.maths_marks, lastMock.maths_total_marks), fill: '#f1ed08' },
       { name: 'Physics', value: getLatestValue(lastMock.physics_marks, lastMock.physics_total_marks), fill: '#FF6B9D' },
       { name: 'Chemistry', value: getLatestValue(lastMock.chemistry_marks, lastMock.chemistry_total_marks), fill: '#4A90E2' },
       { name: 'Biology', value: getLatestValue(lastMock.biology_marks, lastMock.biology_total_marks), fill: '#00D9C0' }
@@ -436,7 +436,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
   }, [mockTests]);
 
   const reportSubjectMeta = useMemo(() => ({
-    maths: { label: 'Maths', color: '#f59e0b' },
+    maths: { label: 'Maths', color: '#f1ed08' },
     physics: { label: 'Physics', color: '#3366ff' },
     chemistry: { label: 'Chemistry', color: '#00b894' },
     biology: { label: 'Biology', color: '#ff1744' }
@@ -1687,7 +1687,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                       <Bar dataKey="physics" fill="#FF6B9D" name="Physics" />
                       <Bar dataKey="chemistry" fill="#4A90E2" name="Chemistry" />
                       <Bar dataKey="biology" fill="#00D9C0" name="Biology" />
-                      <Bar dataKey="maths" fill="#FFA500" name="Maths" />
+                      <Bar dataKey="maths" fill="#f1ed08" name="Maths" />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -2023,7 +2023,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
               <Legend {...pdfLegendProps} />
               <Line type="monotone" dataKey="student" stroke="#2563eb" strokeWidth={2.8} dot={renderPdfDotWithValue('#2563eb', 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
               <Line type="monotone" dataKey="high" stroke="#64748b" strokeWidth={2.2} dot={renderPdfDotWithValue('#64748b', 0, ['high', 'student', 'average', 'low'])} name="High" connectNulls />
-              <Line type="monotone" dataKey="average" stroke="#f1ed08" strokeWidth={2.2} dot={renderPdfDotWithValue('#eab308', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
+              <Line type="monotone" dataKey="average" stroke="#f1ed08" strokeWidth={2.2} dot={renderPdfDotWithValue('#f1ed08', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
               <Line type="monotone" dataKey="low" stroke="#ef4444" strokeWidth={2.2} dot={renderPdfDotWithValue('#ef4444', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
             </LineChart>
           </div>
@@ -2047,7 +2047,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
                   <Legend {...pdfLegendProps} />
                   <Line type="monotone" dataKey="student" stroke="#2563eb" strokeWidth={2.6} dot={renderPdfDotWithValue('#2563eb', 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
                   <Line type="monotone" dataKey="high" stroke="#64748b" strokeWidth={2} dot={renderPdfDotWithValue('#64748b', 0, ['high', 'student', 'average', 'low'])} name="High" connectNulls />
-                  <Line type="monotone" dataKey="average" stroke="#eab308" strokeWidth={2} dot={renderPdfDotWithValue('#eab308', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
+                  <Line type="monotone" dataKey="average" stroke="#f1ed08" strokeWidth={2} dot={renderPdfDotWithValue('#f1ed08', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
                   <Line type="monotone" dataKey="low" stroke="#ef4444" strokeWidth={2} dot={renderPdfDotWithValue('#ef4444', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
                 </LineChart>
               </div>
