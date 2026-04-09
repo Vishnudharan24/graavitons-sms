@@ -159,7 +159,9 @@ If frontend cannot call backend, confirm `CORS_ORIGINS` and redeploy backend.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/exam/daily-test` | Create daily test records |
+| POST | `/api/exam/daily-test/bulk` | Create multiple daily tests in one request |
 | POST | `/api/exam/mock-test` | Create mock test records |
+| POST | `/api/exam/mock-test/bulk` | Create multiple mock tests in one request |
 | GET | `/api/exam/template/daily-test/{batch_id}` | Download daily test template |
 | GET | `/api/exam/template/mock-test/{batch_id}` | Download mock test template |
 | GET | `/api/exam/daily-test/student/{student_id}` | Get student's daily tests |

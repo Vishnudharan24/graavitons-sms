@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 import StudentProfile from './StudentProfile';
 import AddStudent from './AddStudent';
 import AddExam from './AddExam';
@@ -55,6 +56,7 @@ const BatchDetail = ({ batch, onBack }) => {
       // Transform API data to match component's expected format
       const transformedStudents = data.students.map((student, index) => ({
         id: index + 1,
+        studentNo: student.student_no,
         rollNo: student.student_id,
         name: student.student_name,
         gender: student.gender || 'N/A',
@@ -203,6 +205,14 @@ const BatchDetail = ({ batch, onBack }) => {
   };
 
   const [reportLoading, setReportLoading] = useState(false);
+  const [bulkPdfLoading, setBulkPdfLoading] = useState(false);
+  const [bulkPdfCurrent, setBulkPdfCurrent] = useState(null);
+  const [bulkPdfProgress, setBulkPdfProgress] = useState({ current: 0, total: 0 });
+
+  const bulkZipRef = useRef(null);
+  const bulkStudentsRef = useRef([]);
+  const bulkIndexRef = useRef(0);
+  const bulkErrorsRef = useRef([]);
 
   const handleGenerateReport = async () => {
     setReportLoading(true);
@@ -313,6 +323,101 @@ const BatchDetail = ({ batch, onBack }) => {
     }
   };
 
+  const downloadBlobFile = (blob, fileName) => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const finalizeBulkProgressZip = async () => {
+    try {
+      if (!bulkZipRef.current) throw new Error('ZIP archive not initialized');
+
+      if (bulkErrorsRef.current.length > 0) {
+        bulkZipRef.current.file('bulk_export_errors.txt', bulkErrorsRef.current.join('\n'));
+      }
+
+      const zipBlob = await bulkZipRef.current.generateAsync({ type: 'blob' });
+      const batchName = (batch.batch_name || batch.name || 'Batch').replace(/\s+/g, '_');
+      const datePart = new Date().toISOString().slice(0, 10);
+      downloadBlobFile(zipBlob, `${batchName}_Progress_Reports_${datePart}.zip`);
+
+      const failed = bulkErrorsRef.current.length;
+      if (failed > 0) {
+        alert(`ZIP generated with ${failed} issue(s). Check bulk_export_errors.txt inside ZIP.`);
+      } else {
+        alert('All student progress reports were downloaded as ZIP successfully.');
+      }
+    } catch (err) {
+      console.error('Failed to generate progress report ZIP:', err);
+      alert('Failed to generate progress report ZIP. Please try again.');
+    } finally {
+      setBulkPdfLoading(false);
+      setBulkPdfCurrent(null);
+      setBulkPdfProgress({ current: 0, total: 0 });
+      bulkZipRef.current = null;
+      bulkStudentsRef.current = [];
+      bulkIndexRef.current = 0;
+      bulkErrorsRef.current = [];
+    }
+  };
+
+  const moveToNextBulkStudent = async () => {
+    const nextIndex = bulkIndexRef.current + 1;
+    if (nextIndex >= bulkStudentsRef.current.length) {
+      await finalizeBulkProgressZip();
+      return;
+    }
+
+    bulkIndexRef.current = nextIndex;
+    setBulkPdfProgress({ current: nextIndex + 1, total: bulkStudentsRef.current.length });
+    setBulkPdfCurrent(bulkStudentsRef.current[nextIndex]);
+  };
+
+  const handleBulkPdfReady = async ({ blob, fileName }) => {
+    try {
+      const currentStudent = bulkStudentsRef.current[bulkIndexRef.current];
+      if (!blob) {
+        bulkErrorsRef.current.push(`${currentStudent?.rollNo || 'Unknown'} - PDF blob not generated`);
+      } else {
+        bulkZipRef.current.file(fileName || `${currentStudent?.name || 'Student'}_Progress_Report.pdf`, blob);
+      }
+    } catch (err) {
+      const currentStudent = bulkStudentsRef.current[bulkIndexRef.current];
+      bulkErrorsRef.current.push(`${currentStudent?.rollNo || 'Unknown'} - ${err.message}`);
+    }
+
+    await moveToNextBulkStudent();
+  };
+
+  const handleBulkPdfError = async (message) => {
+    const currentStudent = bulkStudentsRef.current[bulkIndexRef.current];
+    bulkErrorsRef.current.push(`${currentStudent?.rollNo || 'Unknown'} - ${message || 'PDF generation failed'}`);
+    await moveToNextBulkStudent();
+  };
+
+  const handleDownloadAllProgressReports = async () => {
+    if (!students || students.length === 0) {
+      alert('No students available in this batch to generate reports.');
+      return;
+    }
+    if (bulkPdfLoading) return;
+
+    setBulkPdfLoading(true);
+    bulkZipRef.current = new JSZip();
+    bulkStudentsRef.current = [...students];
+    bulkIndexRef.current = 0;
+    bulkErrorsRef.current = [];
+
+    setBulkPdfProgress({ current: 1, total: students.length });
+    setBulkPdfCurrent(students[0]);
+  };
+
   if (showAddExam) {
     return <AddExam batch={batch} students={students} onBack={handleBackFromAddExam} onSave={handleSaveExam} />;
   }
@@ -324,7 +429,7 @@ const BatchDetail = ({ batch, onBack }) => {
         onBack={() => setShowEditStudent(false)} 
         onSave={handleSaveStudent}
         editMode={true}
-        studentId={showEditStudent.rollNo}
+        studentNo={showEditStudent.studentNo}
       />
     );
   }
@@ -518,7 +623,18 @@ const BatchDetail = ({ batch, onBack }) => {
             <button className="btn btn-report" onClick={handleGenerateReport} disabled={reportLoading}>
               {reportLoading ? '⏳ Generating...' : '📊 Generate Batch Report'}
             </button>
+            <button className="btn btn-report" onClick={handleDownloadAllProgressReports} disabled={bulkPdfLoading}>
+              {bulkPdfLoading
+                ? `⏳ Progress PDFs ${bulkPdfProgress.current}/${bulkPdfProgress.total}`
+                : '📦 Download All Progress Reports (ZIP)'}
+            </button>
           </div>
+
+          {bulkPdfLoading && bulkPdfCurrent && (
+            <div style={{ margin: '10px 0 14px', color: '#334155', fontWeight: 600 }}>
+              Generating: {bulkPdfCurrent.name} ({bulkPdfCurrent.rollNo})
+            </div>
+          )}
 
           {/* Student List */}
           <div className="student-list-section">
@@ -600,6 +716,18 @@ const BatchDetail = ({ batch, onBack }) => {
       {/* Performance Tab */}
       {activeTab === 'performance' && (
         <BatchPerformance batch={batch} />
+      )}
+
+      {bulkPdfLoading && bulkPdfCurrent && (
+        <div style={{ position: 'fixed', left: '-20000px', top: 0, width: '1200px', opacity: 0, pointerEvents: 'none' }}>
+          <StudentProfile
+            student={bulkPdfCurrent}
+            onBack={() => {}}
+            autoGeneratePdf={true}
+            onBulkPdfReady={handleBulkPdfReady}
+            onBulkPdfError={handleBulkPdfError}
+          />
+        </div>
       )}
     </div>
   );

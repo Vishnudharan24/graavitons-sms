@@ -56,7 +56,7 @@ async def get_all_achievers(current_user: dict = Depends(get_current_user)):
         cursor.execute("""
             SELECT
                 a.achievement_id,
-                a.student_id,
+                s.student_id,
                 s.student_name,
                 s.gender,
                 s.dob,
@@ -81,7 +81,7 @@ async def get_all_achievers(current_user: dict = Depends(get_current_user)):
                 a.achieved_date,
                 a.created_at
             FROM achievers a
-            JOIN student s ON a.student_id = s.student_id
+            JOIN student s ON a.student_no = s.student_no
             LEFT JOIN batch b ON a.batch_id = b.batch_id
             ORDER BY a.created_at DESC;
         """)
@@ -141,14 +141,14 @@ async def get_achiever(achievement_id: int, current_user: dict = Depends(get_cur
 
         cursor.execute("""
             SELECT
-                a.achievement_id, a.student_id, a.batch_id,
+                a.achievement_id, s.student_id, a.batch_id,
                 a.achievement, a.achievement_details, a.rank,
                 a.score, a.photo_url, a.achieved_date, a.created_at,
                 s.student_name, s.gender, s.dob, s.community, s.enrollment_year,
                 s.course, s.branch, s.student_mobile, s.aadhar_no, s.email, s.grade,
                 b.batch_name, b.start_year, b.end_year
             FROM achievers a
-            JOIN student s ON a.student_id = s.student_id
+            JOIN student s ON a.student_no = s.student_no
             LEFT JOIN batch b ON a.batch_id = b.batch_id
             WHERE a.achievement_id = %s;
         """, (achievement_id,))
@@ -260,7 +260,13 @@ async def create_achiever(achiever: AchieverCreate, current_user: dict = Depends
 
         # Verify that the student exists and resolve batch from student if omitted
         cursor.execute(
-            "SELECT student_id, batch_id, photo_url FROM student WHERE student_id = %s;",
+            """
+            SELECT student_no, student_id, batch_id, photo_url
+            FROM student
+            WHERE student_id = %s
+            ORDER BY created_at DESC, student_no DESC
+            LIMIT 1;
+            """,
             (achiever.student_id,)
         )
         student_row = cursor.fetchone()
@@ -271,16 +277,16 @@ async def create_achiever(achiever: AchieverCreate, current_user: dict = Depends
                        "The student must be registered before adding as an achiever."
             )
 
-        resolved_batch_id = achiever.batch_id if achiever.batch_id is not None else student_row[1]
-        resolved_photo_url = achiever.photo_url if achiever.photo_url else student_row[2]
+        resolved_batch_id = achiever.batch_id if achiever.batch_id is not None else student_row[2]
+        resolved_photo_url = achiever.photo_url if achiever.photo_url else student_row[3]
 
         cursor.execute("""
-            INSERT INTO achievers (student_id, batch_id, achievement, achievement_details,
+            INSERT INTO achievers (student_no, batch_id, achievement, achievement_details,
                                    rank, score, photo_url, achieved_date)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING achievement_id, created_at;
         """, (
-            achiever.student_id,
+            student_row[0],
             resolved_batch_id,
             achiever.achievement,
             achiever.achievement_details,

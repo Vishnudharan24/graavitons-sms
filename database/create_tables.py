@@ -70,7 +70,8 @@ def create_tables():
         print("\nCreating users table...")
         cursor.execute("""
             CREATE TABLE users (
-                id VARCHAR(50) PRIMARY KEY,
+                user_no BIGSERIAL PRIMARY KEY,
+                id VARCHAR(50) UNIQUE NOT NULL,
                 username VARCHAR(255) UNIQUE NOT NULL,
                 password VARCHAR(255) NOT NULL,
                 role VARCHAR(50),
@@ -82,7 +83,7 @@ def create_tables():
         print("Creating batch table...")
         cursor.execute("""
             CREATE TABLE batch (
-                batch_id SERIAL PRIMARY KEY,
+                batch_id BIGSERIAL PRIMARY KEY,
                 batch_name VARCHAR(50) NOT NULL,
                 start_year SMALLINT NOT NULL,
                 end_year SMALLINT NOT NULL,
@@ -96,8 +97,9 @@ def create_tables():
         print("Creating student table...")
         cursor.execute("""
             CREATE TABLE student (
-                student_id VARCHAR(50) PRIMARY KEY,
-                batch_id INT REFERENCES batch(batch_id),
+                student_no BIGSERIAL PRIMARY KEY,
+                student_id VARCHAR(50) NOT NULL,
+                batch_id BIGINT REFERENCES batch(batch_id),
                 student_name VARCHAR(100) NOT NULL,
                 dob DATE,
                 grade VARCHAR(20),
@@ -120,7 +122,8 @@ def create_tables():
         print("Creating parent_info table...")
         cursor.execute("""
             CREATE TABLE parent_info (
-                student_id VARCHAR(50) PRIMARY KEY REFERENCES student(student_id) ON DELETE CASCADE,
+                parent_info_no BIGSERIAL PRIMARY KEY,
+                student_no BIGINT UNIQUE REFERENCES student(student_no) ON DELETE CASCADE,
                 guardian_name VARCHAR(100),
                 father_name VARCHAR(100),
                 mother_name VARCHAR(100),
@@ -145,7 +148,8 @@ def create_tables():
         print("Creating tenth_mark table...")
         cursor.execute("""
             CREATE TABLE tenth_mark (
-                student_id VARCHAR(50) PRIMARY KEY REFERENCES student(student_id) ON DELETE CASCADE,
+                tenth_mark_no BIGSERIAL PRIMARY KEY,
+                student_no BIGINT UNIQUE REFERENCES student(student_no) ON DELETE CASCADE,
                 school_name VARCHAR(255),
                 year_of_passing SMALLINT,
                 board_of_study VARCHAR(50),
@@ -164,7 +168,8 @@ def create_tables():
         print("Creating twelfth_mark table...")
         cursor.execute("""
             CREATE TABLE twelfth_mark (
-                student_id VARCHAR(50) PRIMARY KEY REFERENCES student(student_id) ON DELETE CASCADE,
+                twelfth_mark_no BIGSERIAL PRIMARY KEY,
+                student_no BIGINT UNIQUE REFERENCES student(student_no) ON DELETE CASCADE,
                 school_name VARCHAR(255),
                 year_of_passing SMALLINT,
                 board_of_study VARCHAR(50),
@@ -184,8 +189,8 @@ def create_tables():
         print("Creating entrance_exams table...")
         cursor.execute("""
             CREATE TABLE entrance_exams (
-                exam_id SERIAL PRIMARY KEY,
-                student_id VARCHAR(50) REFERENCES student(student_id) ON DELETE CASCADE,
+                exam_id BIGSERIAL PRIMARY KEY,
+                student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
                 exam_name VARCHAR(100),
                 physics_marks INT,
                 chemistry_marks INT,
@@ -195,7 +200,7 @@ def create_tables():
                 community_rank INT,
                 overall_rank INT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE (student_id, exam_name)
+                UNIQUE (student_no, exam_name)
             );
         """)
         
@@ -203,8 +208,8 @@ def create_tables():
         print("Creating counselling_detail table...")
         cursor.execute("""
             CREATE TABLE counselling_detail (
-                counselling_id SERIAL PRIMARY KEY,
-                student_id VARCHAR(50) REFERENCES student(student_id) ON DELETE CASCADE,
+                counselling_id BIGSERIAL PRIMARY KEY,
+                student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
                 forum VARCHAR(100),
                 round INT,
                 college_alloted VARCHAR(255),
@@ -217,8 +222,8 @@ def create_tables():
         print("Creating daily_test table...")
         cursor.execute("""
             CREATE TABLE daily_test (
-                test_id SERIAL PRIMARY KEY,
-                student_id VARCHAR(50) REFERENCES student(student_id) ON DELETE CASCADE,
+                test_id BIGSERIAL PRIMARY KEY,
+                student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
                 grade INT,
                 branch VARCHAR(100),
                 test_date DATE,
@@ -235,8 +240,8 @@ def create_tables():
         print("Creating mock_test table...")
         cursor.execute("""
             CREATE TABLE mock_test (
-                test_id SERIAL PRIMARY KEY,
-                student_id VARCHAR(50) REFERENCES student(student_id) ON DELETE CASCADE,
+                test_id BIGSERIAL PRIMARY KEY,
+                student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
                 grade INT,
                 branch VARCHAR(100),
                 test_date DATE,
@@ -262,8 +267,8 @@ def create_tables():
         print("Creating feedback table...")
         cursor.execute("""
             CREATE TABLE feedback (
-                feedback_id SERIAL PRIMARY KEY,
-                student_id VARCHAR(50) REFERENCES student(student_id) ON DELETE CASCADE,
+                feedback_id BIGSERIAL PRIMARY KEY,
+                student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
                 feedback_date DATE NOT NULL DEFAULT CURRENT_DATE,
                 teacher_feedback TEXT,
                 suggestions TEXT,
@@ -278,8 +283,8 @@ def create_tables():
         print("Creating achievers table...")
         cursor.execute("""
             CREATE TABLE achievers (
-                achievement_id SERIAL PRIMARY KEY,
-                student_id VARCHAR(50) REFERENCES student(student_id) ON DELETE CASCADE,
+                achievement_id BIGSERIAL PRIMARY KEY,
+                student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
                 description TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -289,11 +294,12 @@ def create_tables():
         print("Creating performance indexes...")
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_student_batch_id ON student(batch_id);
-            CREATE INDEX IF NOT EXISTS idx_daily_test_student_date ON daily_test(student_id, test_date);
+            CREATE INDEX IF NOT EXISTS idx_student_admission_no ON student(student_id);
+            CREATE INDEX IF NOT EXISTS idx_daily_test_student_date ON daily_test(student_no, test_date);
             CREATE INDEX IF NOT EXISTS idx_daily_test_batch_key ON daily_test(test_date, subject, unit_name);
-            CREATE INDEX IF NOT EXISTS idx_mock_test_student_date ON mock_test(student_id, test_date);
+            CREATE INDEX IF NOT EXISTS idx_mock_test_student_date ON mock_test(student_no, test_date);
             CREATE INDEX IF NOT EXISTS idx_mock_test_date ON mock_test(test_date);
-            CREATE INDEX IF NOT EXISTS idx_feedback_student_date ON feedback(student_id, feedback_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_feedback_student_date ON feedback(student_no, feedback_date DESC);
         """)
         
         # Commit all changes

@@ -322,7 +322,7 @@ async def get_subjectwise_analysis(
                 dt.total_marks,
                 dt.test_date
             FROM daily_test dt
-            JOIN student s ON dt.student_id = s.student_id
+            JOIN student s ON dt.student_no = s.student_no
             JOIN batch b ON s.batch_id = b.batch_id
             WHERE 1=1
         """
@@ -376,7 +376,7 @@ async def get_subjectwise_analysis(
                 mt.test_total_marks,
                 mt.test_date
             FROM mock_test mt
-            JOIN student s ON mt.student_id = s.student_id
+            JOIN student s ON mt.student_no = s.student_no
             JOIN batch b ON s.batch_id = b.batch_id
             WHERE 1=1
         """
@@ -584,9 +584,9 @@ async def get_branchwise_analysis(
                 MAX(safe_numeric(dt.total_marks)) as max_marks,
                 MIN(safe_numeric(dt.total_marks)) as min_marks,
                 COUNT(*) as test_count,
-                COUNT(DISTINCT s.student_id) as student_count
+                COUNT(DISTINCT s.student_no) as student_count
             FROM daily_test dt
-            JOIN student s ON dt.student_id = s.student_id
+            JOIN student s ON dt.student_no = s.student_no
             JOIN batch b ON s.batch_id = b.batch_id
             WHERE s.branch IS NOT NULL
         """
@@ -669,9 +669,9 @@ async def get_branchwise_analysis(
                 MAX({mock_total_expr}) as max_total,
                 MIN({mock_total_expr}) as min_total,
                 COUNT(*) as test_count,
-                COUNT(DISTINCT s.student_id) as student_count
+                COUNT(DISTINCT s.student_no) as student_count
             FROM mock_test mt
-            JOIN student s ON mt.student_id = s.student_id
+            JOIN student s ON mt.student_no = s.student_no
             JOIN batch b ON s.batch_id = b.batch_id
             WHERE s.branch IS NOT NULL
         """.format(
@@ -771,7 +771,7 @@ async def get_branchwise_analysis(
                 dt.subject,
                 AVG(safe_numeric(dt.total_marks)) as avg_marks
             FROM daily_test dt
-            JOIN student s ON dt.student_id = s.student_id
+            JOIN student s ON dt.student_no = s.student_no
             JOIN batch b ON s.batch_id = b.batch_id
             WHERE s.branch IS NOT NULL
         """
@@ -928,8 +928,8 @@ async def get_students_for_analysis(
             conn.close()
 
 
-@app.get("/api/analysis/individual/{student_id}")
-async def get_individual_analysis(student_id: str, current_user: dict = Depends(get_current_user)):
+@app.get("/api/analysis/individual/{student_no}")
+async def get_individual_analysis(student_no: int, current_user: dict = Depends(get_current_user)):
     """
     Get complete individual analysis for a student:
     - Student info (name, photo, course, branch, batch)
@@ -947,37 +947,38 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
         # 1. Get student info
         cursor.execute("""
             SELECT
-                s.student_id, s.student_name, s.course, s.branch, s.grade,
+                s.student_no, s.student_id, s.student_name, s.course, s.branch, s.grade,
                 s.photo_url, s.gender, s.email, s.student_mobile,
                 b.batch_name, b.batch_id, b.subjects
             FROM student s
             JOIN batch b ON s.batch_id = b.batch_id
-            WHERE s.student_id = %s
-        """, (student_id,))
+            WHERE s.student_no = %s
+        """, (student_no,))
 
         student_row = cursor.fetchone()
         if not student_row:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Student {student_id} not found"
+                detail=f"Student {student_no} not found"
             )
 
         student_info = {
-            "student_id": student_row[0],
-            "student_name": student_row[1],
-            "course": student_row[2],
-            "branch": student_row[3],
-            "grade": student_row[4],
-            "photo_url": student_row[5],
-            "gender": student_row[6],
-            "email": student_row[7],
-            "student_mobile": student_row[8],
-            "batch_name": student_row[9],
-            "batch_id": student_row[10],
-            "batch_subjects": student_row[11] if student_row[11] else []
+            "student_no": student_row[0],
+            "student_id": student_row[1],
+            "student_name": student_row[2],
+            "course": student_row[3],
+            "branch": student_row[4],
+            "grade": student_row[5],
+            "photo_url": student_row[6],
+            "gender": student_row[7],
+            "email": student_row[8],
+            "student_mobile": student_row[9],
+            "batch_name": student_row[10],
+            "batch_id": student_row[11],
+            "batch_subjects": student_row[12] if student_row[12] else []
         }
 
-        batch_id = student_row[10]
+        batch_id = student_row[11]
         report_subject_keys = get_batch_mock_subjects(student_info["batch_subjects"])
         if len(report_subject_keys) < 3:
             for key in ["maths", "physics", "chemistry", "biology"]:
@@ -993,9 +994,9 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
                 dt.test_id, dt.subject, dt.unit_name, dt.total_marks, dt.test_date,
                 dt.grade, dt.branch, dt.subject_total_marks, dt.test_total_marks
             FROM daily_test dt
-            WHERE dt.student_id = %s
+            WHERE dt.student_no = %s
             ORDER BY dt.test_date DESC, dt.subject
-        """, (student_id,))
+        """, (student_no,))
 
         daily_tests_raw = cursor.fetchall()
         daily_tests = []
@@ -1008,7 +1009,7 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
                     COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown') AS unit_name,
                     {normalized_subject_sql('dt.subject')} AS normalized_subject
                 FROM daily_test dt
-                WHERE dt.student_id = %s
+                WHERE dt.student_no = %s
             )
             SELECT
                 st.test_date,
@@ -1022,10 +1023,10 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
                 ON dt2.test_date = st.test_date
                 AND COALESCE(NULLIF(TRIM(dt2.unit_name), ''), 'Unknown') = st.unit_name
                 AND {normalized_subject_sql('dt2.subject')} = st.normalized_subject
-            JOIN student s2 ON s2.student_id = dt2.student_id
+            JOIN student s2 ON s2.student_no = dt2.student_no
             WHERE s2.batch_id = %s
             GROUP BY st.test_date, st.normalized_subject, st.unit_name
-        """, (student_id, batch_id))
+        """, (student_no, batch_id))
 
         daily_stats_map = {}
         for row in cursor.fetchall():
@@ -1077,9 +1078,9 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
                 mt.chemistry_total_marks, mt.biology_total_marks,
                 mt.test_total_marks
             FROM mock_test mt
-            WHERE mt.student_id = %s
+            WHERE mt.student_no = %s
             ORDER BY mt.test_date DESC
-        """, (student_id,))
+        """, (student_no,))
 
         mock_tests_raw = cursor.fetchall()
         mock_tests = []
@@ -1110,7 +1111,7 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
             WITH student_mock_dates AS (
                 SELECT DISTINCT mt.test_date
                 FROM mock_test mt
-                WHERE mt.student_id = %s
+                WHERE mt.student_no = %s
             )
             SELECT
                 d.test_date,
@@ -1131,10 +1132,10 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
                 MIN(safe_numeric(mt2.biology_marks)) AS class_low_biology
             FROM student_mock_dates d
             JOIN mock_test mt2 ON mt2.test_date = d.test_date
-            JOIN student s2 ON s2.student_id = mt2.student_id
+            JOIN student s2 ON s2.student_no = mt2.student_no
             WHERE s2.batch_id = %s
             GROUP BY d.test_date
-        """, (student_id, batch_id))
+        """, (student_no, batch_id))
 
         mock_stats_map = {}
         for row in cursor.fetchall():
@@ -1161,20 +1162,20 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
             WITH student_mock_dates AS (
                 SELECT DISTINCT mt.test_date
                 FROM mock_test mt
-                WHERE mt.student_id = %s
+                WHERE mt.student_no = %s
             )
             SELECT
                 d.test_date,
-                mt2.student_id,
+                mt2.student_no,
                 safe_numeric(mt2.maths_marks) AS maths_marks,
                 safe_numeric(mt2.physics_marks) AS physics_marks,
                 safe_numeric(mt2.chemistry_marks) AS chemistry_marks,
                 safe_numeric(mt2.biology_marks) AS biology_marks
             FROM student_mock_dates d
             JOIN mock_test mt2 ON mt2.test_date = d.test_date
-            JOIN student s2 ON s2.student_id = mt2.student_id
+            JOIN student s2 ON s2.student_no = mt2.student_no
             WHERE s2.batch_id = %s
-        """, (student_id, batch_id))
+        """, (student_no, batch_id))
 
         report_total_class_stats_map = {}
         for row in cursor.fetchall():
@@ -1269,9 +1270,9 @@ async def get_individual_analysis(student_id: str, current_user: dict = Depends(
                 academic_director_signature, student_signature, parent_signature,
                 created_at
             FROM feedback
-            WHERE student_id = %s
+            WHERE student_no = %s
             ORDER BY feedback_date DESC
-        """, (student_id,))
+        """, (student_no,))
 
         feedback_rows = cursor.fetchall()
         feedback_list = []
@@ -1331,22 +1332,33 @@ async def create_feedback(feedback: FeedbackCreate, current_user: dict = Depends
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Verify student exists
-        cursor.execute("SELECT student_id FROM student WHERE student_id = %s", (feedback.student_id,))
-        if not cursor.fetchone():
+        # Verify student exists and resolve student_no from admission number
+        cursor.execute(
+            """
+            SELECT student_no
+            FROM student
+            WHERE student_id = %s
+            ORDER BY created_at DESC, student_no DESC
+            LIMIT 1
+            """,
+            (feedback.student_id,)
+        )
+        student_row = cursor.fetchone()
+        if not student_row:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Student {feedback.student_id} not found"
             )
+        resolved_student_no = student_row[0]
 
         cursor.execute("""
             INSERT INTO feedback (
-                student_id, feedback_date, teacher_feedback, suggestions,
+                student_no, feedback_date, teacher_feedback, suggestions,
                 academic_director_signature, student_signature, parent_signature
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING feedback_id, feedback_date, created_at
         """, (
-            feedback.student_id,
+            resolved_student_no,
             feedback.feedback_date or date.today().isoformat(),
             feedback.teacher_feedback,
             feedback.suggestions,
@@ -1381,8 +1393,8 @@ async def create_feedback(feedback: FeedbackCreate, current_user: dict = Depends
             conn.close()
 
 
-@app.get("/api/analysis/feedback/{student_id}")
-async def get_student_feedback(student_id: str, current_user: dict = Depends(get_current_user)):
+@app.get("/api/analysis/feedback/{student_no}")
+async def get_student_feedback(student_no: int, current_user: dict = Depends(get_current_user)):
     """
     Get all feedback entries for a student
     """
@@ -1398,9 +1410,9 @@ async def get_student_feedback(student_id: str, current_user: dict = Depends(get
                 academic_director_signature, student_signature, parent_signature,
                 created_at
             FROM feedback
-            WHERE student_id = %s
+            WHERE student_no = %s
             ORDER BY feedback_date DESC
-        """, (student_id,))
+        """, (student_no,))
 
         rows = cursor.fetchall()
         feedback_list = []
@@ -1417,7 +1429,7 @@ async def get_student_feedback(student_id: str, current_user: dict = Depends(get
             })
 
         return {
-            "student_id": student_id,
+            "student_no": student_no,
             "feedback": feedback_list,
             "count": len(feedback_list)
         }
@@ -1574,9 +1586,9 @@ async def get_batch_performance(
                     MAX({daily_score_expr}),
                     MIN({daily_score_expr}),
                     COUNT(DISTINCT (dt.test_date, dt.subject, dt.unit_name)),
-                    COUNT(DISTINCT dt.student_id)
+                    COUNT(DISTINCT dt.student_no)
                 FROM daily_test dt
-                JOIN student s ON dt.student_id = s.student_id
+                JOIN student s ON dt.student_no = s.student_no
                 WHERE s.batch_id = %s {daily_date_filter} {daily_subject_filter}
             """, [batch_id] + daily_date_params + daily_subject_params)
             row = cursor.fetchone()
@@ -1595,9 +1607,9 @@ async def get_batch_performance(
                     ROUND(AVG({daily_score_expr})::numeric, 1) as avg_marks,
                     MAX({daily_score_expr}) as top_marks,
                     MIN({daily_score_expr}) as low_marks,
-                    COUNT(DISTINCT dt.student_id) as students
+                    COUNT(DISTINCT dt.student_no) as students
                 FROM daily_test dt
-                JOIN student s ON dt.student_id = s.student_id
+                JOIN student s ON dt.student_no = s.student_no
                 WHERE s.batch_id = %s {daily_date_filter} {daily_subject_filter}
                 GROUP BY dt.test_date
                 ORDER BY dt.test_date
@@ -1619,9 +1631,9 @@ async def get_batch_performance(
                     MAX({daily_score_expr}),
                     MIN({daily_score_expr}),
                     COUNT(*),
-                    COUNT(DISTINCT dt.student_id)
+                    COUNT(DISTINCT dt.student_no)
                 FROM daily_test dt
-                JOIN student s ON dt.student_id = s.student_id
+                JOIN student s ON dt.student_no = s.student_no
                 WHERE s.batch_id = %s {daily_date_filter} {daily_subject_filter}
                 GROUP BY dt.subject
                 ORDER BY dt.subject
@@ -1644,7 +1656,7 @@ async def get_batch_performance(
                     ROUND(AVG({daily_score_expr})::numeric, 1) as avg_marks,
                     COUNT(*) as test_count
                 FROM daily_test dt
-                JOIN student s ON dt.student_id = s.student_id
+                JOIN student s ON dt.student_no = s.student_no
                 WHERE s.batch_id = %s {daily_date_filter} {daily_subject_filter}
                 GROUP BY s.student_id, s.student_name
                 ORDER BY avg_marks DESC NULLS LAST
@@ -1672,9 +1684,9 @@ async def get_batch_performance(
                     MAX({mock_total_score_expr}),
                     MIN({mock_total_score_expr}),
                     COUNT(DISTINCT mt.test_date),
-                    COUNT(DISTINCT mt.student_id)
+                    COUNT(DISTINCT mt.student_no)
                 FROM mock_test mt
-                JOIN student s ON mt.student_id = s.student_id
+                JOIN student s ON mt.student_no = s.student_no
                 WHERE s.batch_id = %s {mock_date_filter}
             """, [batch_id] + mock_date_params)
             row = cursor.fetchone()
@@ -1693,9 +1705,9 @@ async def get_batch_performance(
                     ROUND(AVG({mock_total_score_expr})::numeric, 1),
                     MAX({mock_total_score_expr}),
                     MIN({mock_total_score_expr}),
-                    COUNT(DISTINCT mt.student_id)
+                    COUNT(DISTINCT mt.student_no)
                 FROM mock_test mt
-                JOIN student s ON mt.student_id = s.student_id
+                JOIN student s ON mt.student_no = s.student_no
                 WHERE s.batch_id = %s {mock_date_filter}
                 GROUP BY mt.test_date
                 ORDER BY mt.test_date
@@ -1719,7 +1731,7 @@ async def get_batch_performance(
                     MAX({mock_maths_score_expr}), MAX({mock_physics_score_expr}),
                     MAX({mock_chemistry_score_expr}), MAX({mock_biology_score_expr})
                 FROM mock_test mt
-                JOIN student s ON mt.student_id = s.student_id
+                JOIN student s ON mt.student_no = s.student_no
                 WHERE s.batch_id = %s {mock_date_filter}
             """, [batch_id] + mock_date_params)
             r = cursor.fetchone()
@@ -1743,7 +1755,7 @@ async def get_batch_performance(
                     ROUND(AVG({mock_total_score_expr})::numeric, 1) as avg_marks,
                     COUNT(*) as test_count
                 FROM mock_test mt
-                JOIN student s ON mt.student_id = s.student_id
+                JOIN student s ON mt.student_no = s.student_no
                 WHERE s.batch_id = %s {mock_date_filter}
                 GROUP BY s.student_id, s.student_name
                 ORDER BY avg_marks DESC NULLS LAST
@@ -1909,9 +1921,9 @@ async def get_batch_performance(
             conn.close()
 
 
-@app.get("/api/analysis/student-metrics/{student_id}")
+@app.get("/api/analysis/student-metrics/{student_no}")
 async def get_student_metrics(
-    student_id: str,
+    student_no: int,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
@@ -1923,12 +1935,13 @@ async def get_student_metrics(
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT student_id, student_name, batch_id FROM student WHERE student_id = %s", (student_id,))
+        cursor.execute("SELECT student_no, student_id, student_name, batch_id FROM student WHERE student_no = %s", (student_no,))
         student_row = cursor.fetchone()
         if not student_row:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Student {student_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Student {student_no} not found")
 
-        batch_id = student_row[2]
+        batch_id = student_row[3]
+        student_id = student_row[1]
 
         daily_date_filter = ""
         mock_date_filter = ""
@@ -1966,17 +1979,17 @@ async def get_student_metrics(
         cursor.execute(f"""
             SELECT dt.test_date, {daily_score_expr} AS score, dt.subject
             FROM daily_test dt
-            WHERE dt.student_id = %s {daily_date_filter}
+            WHERE dt.student_no = %s {daily_date_filter}
             ORDER BY dt.test_date
-        """, [student_id] + daily_params)
+        """, [student_no] + daily_params)
         daily_rows = cursor.fetchall()
 
         cursor.execute(f"""
             SELECT mt.test_date, {mock_total_score_expr} AS score
             FROM mock_test mt
-            WHERE mt.student_id = %s {mock_date_filter}
+            WHERE mt.student_no = %s {mock_date_filter}
             ORDER BY mt.test_date
-        """, [student_id] + mock_params)
+        """, [student_no] + mock_params)
         mock_rows = cursor.fetchall()
 
         score_points = []
@@ -2008,7 +2021,7 @@ async def get_student_metrics(
         cursor.execute(f"""
             SELECT COUNT(DISTINCT (dt.test_date, dt.subject, dt.unit_name))
             FROM daily_test dt
-            JOIN student s ON s.student_id = dt.student_id
+            JOIN student s ON s.student_no = dt.student_no
             WHERE s.batch_id = %s {daily_date_filter}
         """, [batch_id] + daily_params)
         total_daily_conducted = cursor.fetchone()[0] or 0
@@ -2016,17 +2029,17 @@ async def get_student_metrics(
         cursor.execute(f"""
             SELECT COUNT(DISTINCT (dt.test_date, dt.subject, dt.unit_name))
             FROM daily_test dt
-            WHERE dt.student_id = %s {daily_date_filter}
+                        WHERE dt.student_no = %s {daily_date_filter}
               AND dt.total_marks IS NOT NULL
               AND trim(dt.total_marks) <> ''
               AND LOWER(TRIM(dt.total_marks)) NOT IN ('a', 'ab')
-        """, [student_id] + daily_params)
+                """, [student_no] + daily_params)
         student_daily_attempted = cursor.fetchone()[0] or 0
 
         cursor.execute(f"""
             SELECT COUNT(DISTINCT mt.test_date)
             FROM mock_test mt
-            JOIN student s ON s.student_id = mt.student_id
+            JOIN student s ON s.student_no = mt.student_no
             WHERE s.batch_id = %s {mock_date_filter}
         """, [batch_id] + mock_params)
         total_mock_conducted = cursor.fetchone()[0] or 0
@@ -2034,7 +2047,7 @@ async def get_student_metrics(
         cursor.execute(f"""
             SELECT COUNT(DISTINCT mt.test_date)
             FROM mock_test mt
-            WHERE mt.student_id = %s {mock_date_filter}
+            WHERE mt.student_no = %s {mock_date_filter}
                   AND NOT (
                           LOWER(TRIM(COALESCE(mt.total_marks, ''))) IN ('a', 'ab')
                       OR LOWER(TRIM(COALESCE(mt.maths_marks, ''))) IN ('a', 'ab')
@@ -2049,7 +2062,7 @@ async def get_student_metrics(
                       OR trim(COALESCE(mt.chemistry_marks, '')) <> ''
                       OR trim(COALESCE(mt.biology_marks, '')) <> ''
                   )
-        """, [student_id] + mock_params)
+        """, [student_no] + mock_params)
         student_mock_attempted = cursor.fetchone()[0] or 0
 
         total_conducted = total_daily_conducted + total_mock_conducted
@@ -2062,8 +2075,8 @@ async def get_student_metrics(
                 COUNT(*) FILTER (WHERE dt.total_marks IS NOT NULL AND trim(dt.total_marks) <> ''),
                 COUNT(*) FILTER (WHERE dt.total_marks IS NOT NULL AND trim(dt.total_marks) <> '' AND safe_numeric(dt.total_marks) IS NULL)
             FROM daily_test dt
-            WHERE dt.student_id = %s {daily_date_filter}
-        """, [student_id] + daily_params)
+            WHERE dt.student_no = %s {daily_date_filter}
+        """, [student_no] + daily_params)
         d_total, d_non_numeric = cursor.fetchone()
         d_total = d_total or 0
         d_non_numeric = d_non_numeric or 0
@@ -2073,8 +2086,8 @@ async def get_student_metrics(
                 COUNT(*) FILTER (WHERE mt.total_marks IS NOT NULL AND trim(mt.total_marks) <> ''),
                 COUNT(*) FILTER (WHERE mt.total_marks IS NOT NULL AND trim(mt.total_marks) <> '' AND safe_numeric(mt.total_marks) IS NULL)
             FROM mock_test mt
-            WHERE mt.student_id = %s {mock_date_filter}
-        """, [student_id] + mock_params)
+            WHERE mt.student_no = %s {mock_date_filter}
+        """, [student_no] + mock_params)
         m_total, m_non_numeric = cursor.fetchone()
         m_total = m_total or 0
         m_non_numeric = m_non_numeric or 0
@@ -2091,7 +2104,7 @@ async def get_student_metrics(
             cursor.execute(f"""
                 SELECT ROUND(AVG({daily_score_expr})::numeric, 1)
                 FROM daily_test dt
-                JOIN student s ON s.student_id = dt.student_id
+                JOIN student s ON s.student_no = dt.student_no
                 WHERE s.batch_id = %s AND {normalized_subject_sql('dt.subject')} = %s {daily_date_filter}
             """, [batch_id, normalize_subject_key(subj)] + daily_params)
             batch_subj_avg_row = cursor.fetchone()
@@ -2106,7 +2119,7 @@ async def get_student_metrics(
         # Percentile among batch students
         cursor.execute(f"""
             WITH all_scores AS (
-                SELECT s.student_id,
+                SELECT s.student_no,
                     CASE
                         WHEN dt.subject_total_marks IS NOT NULL AND dt.subject_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
                             THEN (safe_numeric(dt.total_marks) * 100.0 / dt.subject_total_marks)
@@ -2115,31 +2128,31 @@ async def get_student_metrics(
                         ELSE safe_numeric(dt.total_marks)
                     END AS score
                 FROM daily_test dt
-                JOIN student s ON s.student_id = dt.student_id
+                JOIN student s ON s.student_no = dt.student_no
                 WHERE s.batch_id = %s {daily_date_filter}
                 UNION ALL
-                SELECT s.student_id,
+                SELECT s.student_no,
                     CASE
                         WHEN mt.test_total_marks IS NOT NULL AND mt.test_total_marks > 0 AND safe_numeric(mt.total_marks) IS NOT NULL
                             THEN (safe_numeric(mt.total_marks) * 100.0 / mt.test_total_marks)
                         ELSE safe_numeric(mt.total_marks)
                     END AS score
                 FROM mock_test mt
-                JOIN student s ON s.student_id = mt.student_id
+                JOIN student s ON s.student_no = mt.student_no
                 WHERE s.batch_id = %s {mock_date_filter}
             ),
             student_avg AS (
-                SELECT student_id, AVG(score) AS avg_score
+                SELECT student_no, AVG(score) AS avg_score
                 FROM all_scores
                 WHERE score IS NOT NULL
-                GROUP BY student_id
+                GROUP BY student_no
             ),
             ranked AS (
-                SELECT student_id, avg_score, PERCENT_RANK() OVER (ORDER BY avg_score) AS pr
+                SELECT student_no, avg_score, PERCENT_RANK() OVER (ORDER BY avg_score) AS pr
                 FROM student_avg
             )
-            SELECT pr FROM ranked WHERE student_id = %s
-        """, [batch_id] + daily_params + [batch_id] + mock_params + [student_id])
+            SELECT pr FROM ranked WHERE student_no = %s
+        """, [batch_id] + daily_params + [batch_id] + mock_params + [student_no])
         pr_row = cursor.fetchone()
         percentile_overall = round(float(pr_row[0]) * 100, 1) if pr_row and pr_row[0] is not None else 0
 
@@ -2151,8 +2164,9 @@ async def get_student_metrics(
         )
 
         return {
+            "student_no": student_no,
             "student_id": student_id,
-            "student_name": student_row[1],
+            "student_name": student_row[2],
             "overall_avg_pct": overall_avg,
             "trend_slope": trend_slope,
             "consistency_stddev": consistency_stddev,
@@ -2183,9 +2197,9 @@ async def get_student_metrics(
             conn.close()
 
 
-@app.get("/api/analysis/student-weak-topics/{student_id}")
+@app.get("/api/analysis/student-weak-topics/{student_no}")
 async def get_student_weak_topics(
-    student_id: str,
+    student_no: int,
     limit: int = 5,
     test_type: str = Query("daily", description="daily or mock"),
     subject: Optional[str] = None,
@@ -2200,12 +2214,13 @@ async def get_student_weak_topics(
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT student_id, student_name, batch_id FROM student WHERE student_id = %s", (student_id,))
+        cursor.execute("SELECT student_no, student_id, student_name, batch_id FROM student WHERE student_no = %s", (student_no,))
         student_row = cursor.fetchone()
         if not student_row:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Student {student_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Student {student_no} not found")
 
-        batch_id = student_row[2]
+        batch_id = student_row[3]
+        student_id = student_row[1]
 
         cursor.execute("SELECT subjects FROM batch WHERE batch_id = %s", (batch_id,))
         batch_row = cursor.fetchone()
@@ -2234,7 +2249,7 @@ async def get_student_weak_topics(
             """
 
             filters = ""
-            params = [student_id]
+            params = [student_no]
             if subject:
                 filters += f" AND {normalized_subject_sql('dt.subject')} = %s"
                 params.append(normalize_subject_key(subject))
@@ -2258,7 +2273,7 @@ async def get_student_weak_topics(
                           AND safe_numeric(dt.total_marks) IS NULL
                     ) AS non_numeric_attempts
                 FROM daily_test dt
-                WHERE dt.student_id = %s {filters}
+                WHERE dt.student_no = %s {filters}
                 GROUP BY dt.subject, COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown')
                 HAVING COUNT(*) > 0
                 ORDER BY avg_pct ASC NULLS LAST, attempts DESC
@@ -2289,7 +2304,7 @@ async def get_student_weak_topics(
                 })
         else:
             filters = ""
-            params = [student_id]
+            params = [student_no]
             if date_from:
                 filters += " AND mt.test_date >= %s"
                 params.append(date_from)
@@ -2313,7 +2328,7 @@ async def get_student_weak_topics(
                     mt.chemistry_total_marks,
                     mt.biology_total_marks
                 FROM mock_test mt
-                WHERE mt.student_id = %s {filters}
+                WHERE mt.student_no = %s {filters}
                 ORDER BY mt.test_date DESC
             """, params)
 
@@ -2418,8 +2433,9 @@ async def get_student_weak_topics(
                 })
 
         return {
+            "student_no": student_no,
             "student_id": student_id,
-            "student_name": student_row[1],
+            "student_name": student_row[2],
             "test_type": selected_type,
             "weak_units": weak_units,
             "total_weak_units": len(weak_units)
@@ -2438,9 +2454,9 @@ async def get_student_weak_topics(
             conn.close()
 
 
-@app.get("/api/analysis/student-test-insights/{student_id}")
+@app.get("/api/analysis/student-test-insights/{student_no}")
 async def get_student_test_insights(
-    student_id: str,
+    student_no: int,
     test_type: str = Query("both", description="daily, mock, or both"),
     limit: int = Query(12, ge=1, le=100),
     current_user: dict = Depends(get_current_user)
@@ -2453,17 +2469,18 @@ async def get_student_test_insights(
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT s.student_id, s.student_name, s.batch_id, b.subjects
+            SELECT s.student_no, s.student_id, s.student_name, s.batch_id, b.subjects
             FROM student s
             JOIN batch b ON b.batch_id = s.batch_id
-            WHERE s.student_id = %s
-        """, (student_id,))
+            WHERE s.student_no = %s
+        """, (student_no,))
         student_row = cursor.fetchone()
         if not student_row:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Student {student_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Student {student_no} not found")
 
-        student_name = student_row[1]
-        batch_id = student_row[2]
+        student_id = student_row[1]
+        student_name = student_row[2]
+        batch_id = student_row[3]
 
         selected_type = str(test_type or "both").strip().lower()
         if selected_type not in ("daily", "mock", "both"):
@@ -2483,9 +2500,9 @@ async def get_student_test_insights(
                     dt.subject_total_marks,
                     dt.test_total_marks
                 FROM daily_test dt
-                WHERE dt.student_id = %s
+                WHERE dt.student_no = %s
                 ORDER BY dt.test_date ASC, dt.test_id ASC
-            """, (student_id,))
+            """, (student_no,))
             student_daily_rows = cursor.fetchall()
 
             cursor.execute(f"""
@@ -2493,12 +2510,12 @@ async def get_student_test_insights(
                     dt.test_date,
                     {normalized_subject_sql('dt.subject')} AS subject_key,
                     COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown') AS unit_name,
-                    dt.student_id,
+                    dt.student_no,
                     dt.total_marks,
                     dt.subject_total_marks,
                     dt.test_total_marks
                 FROM daily_test dt
-                JOIN student s ON s.student_id = dt.student_id
+                JOIN student s ON s.student_no = dt.student_no
                 WHERE s.batch_id = %s
                 ORDER BY dt.test_date ASC
             """, (batch_id,))
@@ -2632,15 +2649,15 @@ async def get_student_test_insights(
                     mt.chemistry_total_marks,
                     mt.biology_total_marks
                 FROM mock_test mt
-                WHERE mt.student_id = %s
+                WHERE mt.student_no = %s
                 ORDER BY mt.test_date ASC, mt.test_id ASC
-            """, (student_id,))
+            """, (student_no,))
             student_mock_rows = cursor.fetchall()
 
             cursor.execute("""
                 SELECT
                     mt.test_date,
-                    mt.student_id,
+                    mt.student_no,
                     mt.total_marks,
                     mt.test_total_marks,
                     mt.maths_marks,
@@ -2652,7 +2669,7 @@ async def get_student_test_insights(
                     mt.chemistry_total_marks,
                     mt.biology_total_marks
                 FROM mock_test mt
-                JOIN student s ON s.student_id = mt.student_id
+                JOIN student s ON s.student_no = mt.student_no
                 WHERE s.batch_id = %s
                 ORDER BY mt.test_date ASC
             """, (batch_id,))
@@ -2699,7 +2716,7 @@ async def get_student_test_insights(
                 rank_map = {}
                 for pos, item in enumerate(overall_rows, start=1):
                     rank_map.setdefault(item["sid"], pos)
-                rank = rank_map.get(student_id)
+                rank = rank_map.get(student_no)
 
                 class_avg = round(sum(r["overall"] for r in overall_rows) / rank_total, 2) if rank_total > 0 else None
                 class_high = overall_rows[0]["overall"] if rank_total > 0 else None
@@ -2713,7 +2730,7 @@ async def get_student_test_insights(
                     for pos, item in enumerate(rows, start=1):
                         rank_map_sub.setdefault(item["sid"], pos)
                     subject_ranks[subject_key] = {
-                        "rank": rank_map_sub.get(student_id),
+                        "rank": rank_map_sub.get(student_no),
                         "total": len(rows),
                         "class_avg": round(sum(r[subject_key] for r in rows) / len(rows), 2) if rows else None
                     }
@@ -2839,6 +2856,7 @@ async def get_student_test_insights(
         combined = sorted(daily_payload + mock_payload, key=lambda x: x.get("test_date") or "", reverse=True)
 
         return {
+            "student_no": student_no,
             "student_id": student_id,
             "student_name": student_name,
             "insights": {
@@ -2931,7 +2949,7 @@ async def get_batch_advanced_stats(
             cursor.execute(f"""
                 SELECT s.student_id, s.student_name, ROUND(AVG({daily_score_expr})::numeric, 2)
                 FROM daily_test dt
-                JOIN student s ON s.student_id = dt.student_id
+                JOIN student s ON s.student_no = dt.student_no
                 WHERE s.batch_id = %s {daily_date_filter} {daily_subject_filter}
                 GROUP BY s.student_id, s.student_name
             """, [batch_id] + daily_params + daily_subject_params)
@@ -2942,7 +2960,7 @@ async def get_batch_advanced_stats(
             cursor.execute(f"""
                 SELECT s.student_id, s.student_name, ROUND(AVG({mock_total_score_expr})::numeric, 2)
                 FROM mock_test mt
-                JOIN student s ON s.student_id = mt.student_id
+                JOIN student s ON s.student_no = mt.student_no
                 WHERE s.batch_id = %s {mock_date_filter}
                 GROUP BY s.student_id, s.student_name
             """, [batch_id] + mock_params)
@@ -3001,9 +3019,9 @@ async def get_batch_advanced_stats(
                     dt.subject,
                     dt.unit_name,
                     ROUND(AVG({daily_score_expr})::numeric, 2) AS avg_score,
-                    COUNT(DISTINCT dt.student_id)
+                    COUNT(DISTINCT dt.student_no)
                 FROM daily_test dt
-                JOIN student s ON s.student_id = dt.student_id
+                JOIN student s ON s.student_no = dt.student_no
                 WHERE s.batch_id = %s {daily_date_filter} {daily_subject_filter}
                 GROUP BY dt.test_date, dt.subject, dt.unit_name
             """, [batch_id] + daily_params + daily_subject_params)
@@ -3022,9 +3040,9 @@ async def get_batch_advanced_stats(
                 SELECT
                     mt.test_date,
                     ROUND(AVG({mock_total_score_expr})::numeric, 2) AS avg_score,
-                    COUNT(DISTINCT mt.student_id)
+                    COUNT(DISTINCT mt.student_no)
                 FROM mock_test mt
-                JOIN student s ON s.student_id = mt.student_id
+                JOIN student s ON s.student_no = mt.student_no
                 WHERE s.batch_id = %s {mock_date_filter}
                 GROUP BY mt.test_date
             """, [batch_id] + mock_params)
@@ -3110,15 +3128,15 @@ async def get_risk_dashboard(
             mock_params.append(date_to)
 
         # students in batch
-        cursor.execute("SELECT student_id, student_name FROM student WHERE batch_id = %s", (batch_id,))
+        cursor.execute("SELECT student_no, student_id, student_name FROM student WHERE batch_id = %s", (batch_id,))
         student_rows = cursor.fetchall()
-        students = {r[0]: r[1] for r in student_rows}
+        students = {r[0]: {"student_id": r[1], "student_name": r[2]} for r in student_rows}
 
         # tests conducted in batch
         cursor.execute(f"""
             SELECT COUNT(DISTINCT (dt.test_date, dt.subject, dt.unit_name))
             FROM daily_test dt
-            JOIN student s ON s.student_id = dt.student_id
+            JOIN student s ON s.student_no = dt.student_no
             WHERE s.batch_id = %s {daily_date_filter}
         """, [batch_id] + daily_params)
         total_daily_conducted = cursor.fetchone()[0] or 0
@@ -3126,7 +3144,7 @@ async def get_risk_dashboard(
         cursor.execute(f"""
             SELECT COUNT(DISTINCT mt.test_date)
             FROM mock_test mt
-            JOIN student s ON s.student_id = mt.student_id
+            JOIN student s ON s.student_no = mt.student_no
             WHERE s.batch_id = %s {mock_date_filter}
         """, [batch_id] + mock_params)
         total_mock_conducted = cursor.fetchone()[0] or 0
@@ -3134,7 +3152,7 @@ async def get_risk_dashboard(
         # fetch all scored rows for batch in one pass
         cursor.execute(f"""
             SELECT
-                dt.student_id,
+                dt.student_no,
                 dt.test_date,
                 CASE
                     WHEN dt.subject_total_marks IS NOT NULL AND dt.subject_total_marks > 0 AND safe_numeric(dt.total_marks) IS NOT NULL
@@ -3147,14 +3165,14 @@ async def get_risk_dashboard(
                 dt.subject,
                 dt.unit_name
             FROM daily_test dt
-            JOIN student s ON s.student_id = dt.student_id
+            JOIN student s ON s.student_no = dt.student_no
             WHERE s.batch_id = %s {daily_date_filter}
         """, [batch_id] + daily_params)
         daily_scores_rows = cursor.fetchall()
 
         cursor.execute(f"""
             SELECT
-                mt.student_id,
+                mt.student_no,
                 mt.test_date,
                 CASE
                     WHEN mt.test_total_marks IS NOT NULL AND mt.test_total_marks > 0 AND safe_numeric(mt.total_marks) IS NOT NULL
@@ -3163,7 +3181,7 @@ async def get_risk_dashboard(
                 END AS score,
                 mt.total_marks
             FROM mock_test mt
-            JOIN student s ON s.student_id = mt.student_id
+            JOIN student s ON s.student_no = mt.student_no
             WHERE s.batch_id = %s {mock_date_filter}
         """, [batch_id] + mock_params)
         mock_scores_rows = cursor.fetchall()
@@ -3203,7 +3221,7 @@ async def get_risk_dashboard(
         medium_count = 0
 
         total_conducted = total_daily_conducted + total_mock_conducted
-        for sid, sname in students.items():
+        for sid, sdata in students.items():
             vals = by_student_values[sid]
             avg_score = round(sum(vals) / len(vals), 1) if vals else 0
             slope = compute_slope(by_student_points[sid])
@@ -3224,8 +3242,9 @@ async def get_risk_dashboard(
                 medium_count += 1
 
             rows.append({
-                "student_id": sid,
-                "student_name": sname,
+                "student_no": sid,
+                "student_id": sdata["student_id"],
+                "student_name": sdata["student_name"],
                 "avg_score": avg_score,
                 "trend_slope": slope,
                 "participation_rate": participation,
@@ -3302,7 +3321,7 @@ async def get_subject_diagnostics(
         cursor.execute(f"""
             SELECT ROUND(AVG({daily_score_expr})::numeric, 2)
             FROM daily_test dt
-            JOIN student s ON s.student_id = dt.student_id
+            JOIN student s ON s.student_no = dt.student_no
             WHERE s.batch_id = %s {date_filter}
         """, params)
         batch_avg_row = cursor.fetchone()
@@ -3314,9 +3333,9 @@ async def get_subject_diagnostics(
                 COALESCE(dt.unit_name, 'Unknown') AS unit_name,
                 ROUND(AVG({daily_score_expr})::numeric, 2) AS avg_score,
                 COUNT(*) AS attempts,
-                COUNT(DISTINCT dt.student_id) AS students
+                COUNT(DISTINCT dt.student_no) AS students
             FROM daily_test dt
-            JOIN student s ON s.student_id = dt.student_id
+            JOIN student s ON s.student_no = dt.student_no
             WHERE s.batch_id = %s {date_filter}
             GROUP BY COALESCE(dt.unit_name, 'Unknown')
             ORDER BY avg_score ASC NULLS LAST
@@ -3339,7 +3358,7 @@ async def get_subject_diagnostics(
                 s.student_name,
                 ROUND(AVG({daily_score_expr})::numeric, 2) AS avg_score
             FROM daily_test dt
-            JOIN student s ON s.student_id = dt.student_id
+            JOIN student s ON s.student_no = dt.student_no
             WHERE s.batch_id = %s {date_filter}
             GROUP BY s.student_id, s.student_name
             ORDER BY avg_score ASC NULLS LAST
@@ -3364,7 +3383,7 @@ async def get_subject_diagnostics(
         cursor.execute(f"""
             SELECT s.student_id, s.student_name, dt.test_date, {daily_score_expr} AS score
             FROM daily_test dt
-            JOIN student s ON s.student_id = dt.student_id
+            JOIN student s ON s.student_no = dt.student_no
             WHERE s.batch_id = %s {date_filter}
             ORDER BY s.student_id, dt.test_date
         """, params)

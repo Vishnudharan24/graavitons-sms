@@ -1,5 +1,6 @@
 CREATE TABLE users (
-    id VARCHAR(50) PRIMARY KEY,
+    user_no BIGSERIAL PRIMARY KEY,
+    id VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
     role VARCHAR(50), -- e.g., 'Admin', 'Teacher'
@@ -8,7 +9,7 @@ CREATE TABLE users (
 
 
 CREATE TABLE batch (
-    batch_id SERIAL PRIMARY KEY, -- Auto-incrementing integer
+    batch_id BIGSERIAL PRIMARY KEY, -- Auto-incrementing bigint
     batch_name VARCHAR(50) NOT NULL,
     start_year SMALLINT NOT NULL,
     end_year SMALLINT NOT NULL,
@@ -18,8 +19,9 @@ CREATE TABLE batch (
 
 
 CREATE TABLE student (
-    student_id VARCHAR(50) PRIMARY KEY,
-    batch_id INT REFERENCES batch(batch_id), -- Foreign Key to Batch
+    student_no BIGSERIAL PRIMARY KEY,
+    student_id VARCHAR(50) NOT NULL,
+    batch_id BIGINT REFERENCES batch(batch_id), -- Foreign Key to Batch
     student_name VARCHAR(100) NOT NULL,
     dob DATE,
     grade VARCHAR(20),
@@ -38,7 +40,8 @@ CREATE TABLE student (
 
 
 CREATE TABLE parent_info (
-    student_id VARCHAR(50) PRIMARY KEY REFERENCES student(student_id) ON DELETE CASCADE,
+    parent_info_no BIGSERIAL PRIMARY KEY,
+    student_no BIGINT UNIQUE REFERENCES student(student_no) ON DELETE CASCADE,
     guardian_name VARCHAR(100),
     father_name VARCHAR(100),
     mother_name VARCHAR(100),
@@ -61,7 +64,8 @@ CREATE TABLE parent_info (
 
 
 CREATE TABLE tenth_mark (
-    student_id VARCHAR(50) PRIMARY KEY REFERENCES student(student_id) ON DELETE CASCADE,
+    tenth_mark_no BIGSERIAL PRIMARY KEY,
+    student_no BIGINT UNIQUE REFERENCES student(student_no) ON DELETE CASCADE,
     school_name VARCHAR(255),
     year_of_passing SMALLINT,
     board_of_study VARCHAR(50),
@@ -77,7 +81,8 @@ CREATE TABLE tenth_mark (
 
 
 CREATE TABLE twelfth_mark (
-    student_id VARCHAR(50) PRIMARY KEY REFERENCES student(student_id) ON DELETE CASCADE,
+    twelfth_mark_no BIGSERIAL PRIMARY KEY,
+    student_no BIGINT UNIQUE REFERENCES student(student_no) ON DELETE CASCADE,
     school_name VARCHAR(255),
     year_of_passing SMALLINT,
     board_of_study VARCHAR(50),
@@ -94,8 +99,8 @@ CREATE TABLE twelfth_mark (
 
 
 CREATE TABLE entrance_exams (
-    exam_id SERIAL PRIMARY KEY, -- Surrogate key needed
-    student_id VARCHAR(50) REFERENCES student(student_id) ON DELETE CASCADE,
+    exam_id BIGSERIAL PRIMARY KEY, -- Surrogate key needed
+    student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
     exam_name VARCHAR(100),
     physics_marks INT,
     chemistry_marks INT,
@@ -106,13 +111,13 @@ CREATE TABLE entrance_exams (
     overall_rank INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     -- Ensure one student doesn't have duplicate entries for the same exam name
-    UNIQUE (student_id, exam_name) 
+    UNIQUE (student_no, exam_name) 
 );
 
 
 CREATE TABLE counselling_detail (
-    counselling_id SERIAL PRIMARY KEY,
-    student_id VARCHAR(50) REFERENCES student(student_id) ON DELETE CASCADE,
+    counselling_id BIGSERIAL PRIMARY KEY,
+    student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
     counseling_forum VARCHAR(100),
     round_number INT,
     college_allotted VARCHAR(255),
@@ -122,8 +127,8 @@ CREATE TABLE counselling_detail (
 
 
 CREATE TABLE daily_test (
-    test_id SERIAL PRIMARY KEY, -- Changed from simple INT to Serial PK
-    student_id VARCHAR(50) REFERENCES student(student_id) ON DELETE CASCADE,
+    test_id BIGSERIAL PRIMARY KEY, -- Changed from simple INT to Bigserial PK
+    student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
     grade INT,
     branch VARCHAR(100),
     test_date DATE,
@@ -137,8 +142,8 @@ CREATE TABLE daily_test (
 
 
 CREATE TABLE mock_test (
-    test_id SERIAL PRIMARY KEY,
-    student_id VARCHAR(50) REFERENCES student(student_id) ON DELETE CASCADE,
+    test_id BIGSERIAL PRIMARY KEY,
+    student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
     grade INT,
     branch VARCHAR(100),
     test_date DATE,
@@ -162,8 +167,8 @@ CREATE TABLE mock_test (
 
 
 CREATE TABLE achievers (
-    achievement_id SERIAL PRIMARY KEY,
-    student_id VARCHAR(50) REFERENCES student(student_id) ON DELETE CASCADE,
+    achievement_id BIGSERIAL PRIMARY KEY,
+    student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
     description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

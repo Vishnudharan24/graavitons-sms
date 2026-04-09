@@ -259,18 +259,19 @@ async def delete_batch(batch_id: int, current_user: dict = Depends(get_current_u
 
         batch_name = batch_row[1]
 
-        # 2. Get all student_ids in this batch
-        cursor.execute("SELECT student_id FROM student WHERE batch_id = %s", (batch_id,))
-        student_ids = [row[0] for row in cursor.fetchall()]
+        # 2. Get all student_nos in this batch
+        cursor.execute("SELECT student_no FROM student WHERE batch_id = %s", (batch_id,))
+        student_nos = [row[0] for row in cursor.fetchall()]
 
         # 3. Delete all student-related records if students exist
-        if student_ids:
+        if student_nos:
             # Use ANY() with a postgres array for efficient bulk delete
-            student_id_tuple = tuple(student_ids)
+            student_no_tuple = tuple(student_nos)
 
-            # Child tables that reference student_id
+            # Child tables that reference student_no
             student_child_tables = [
                 "feedback",
+                "student_feedback",
                 "entrance_exams",
                 "counselling_detail",
                 "twelfth_mark",
@@ -281,11 +282,14 @@ async def delete_batch(batch_id: int, current_user: dict = Depends(get_current_u
             ]
 
             for table in student_child_tables:
+                cursor.execute("SELECT to_regclass(%s)", (f"public.{table}",))
+                if not cursor.fetchone()[0]:
+                    continue
                 cursor.execute(
-                    sql.SQL("DELETE FROM {} WHERE student_id IN %s").format(
+                    sql.SQL("DELETE FROM {} WHERE student_no IN %s").format(
                         sql.Identifier(table)
                     ),
-                    (student_id_tuple,)
+                    (student_no_tuple,)
                 )
 
         # 4. Delete achievers linked to this batch

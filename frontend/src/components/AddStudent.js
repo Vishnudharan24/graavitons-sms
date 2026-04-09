@@ -4,7 +4,7 @@ import './AddStudent.css';
 import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
 
-const AddStudent = ({ batch, onBack, onSave, editMode = false, studentId = null }) => {
+const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [mode, setMode] = useState('manual'); // 'manual' or 'upload'
@@ -88,17 +88,17 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentId = null 
 
   // Fetch student data if in edit mode
   useEffect(() => {
-    if (editMode && studentId) {
+    if (editMode && studentNo) {
       fetchStudentData();
     }
-  }, [editMode, studentId]);
+  }, [editMode, studentNo]);
 
   const fetchStudentData = async () => {
     setLoading(true);
     setError('');
     
     try {
-      const response = await authFetch(`${API_BASE}/api/student/${studentId}`);
+      const response = await authFetch(`${API_BASE}/api/student/${studentNo}`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch student data: ${response.statusText}`);
@@ -388,7 +388,7 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentId = null 
 
       // Determine URL and method based on mode
       const url = editMode 
-        ? `${API_BASE}/api/student/${studentId}`
+        ? `${API_BASE}/api/student/${studentNo}`
         : `${API_BASE}/api/student`;
       
       const method = editMode ? 'PUT' : 'POST';
@@ -435,7 +435,7 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentId = null 
     <div className="add-student">
       <div className="add-student-header">
         <button className="back-button" onClick={onBack}>← Back</button>
-        <h2>{editMode ? `Edit Student: ${formData.student_name || studentId}` : `Add New Student to ${batch?.batch_name}`}</h2>
+        <h2>{editMode ? `Edit Student: ${formData.student_name || studentNo}` : `Add New Student to ${batch?.batch_name}`}</h2>
       </div>
 
       {/* Mode Toggle - Only show in add mode, not edit mode */}

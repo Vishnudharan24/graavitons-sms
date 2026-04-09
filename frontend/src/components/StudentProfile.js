@@ -62,7 +62,14 @@ const chartTooltipStyle = {
   labelStyle: { color: '#334155', fontWeight: 600 }
 };
 
-const StudentProfile = ({ student, batchStats, onBack }) => {
+const StudentProfile = ({
+  student,
+  batchStats,
+  onBack,
+  autoGeneratePdf = false,
+  onBulkPdfReady = null,
+  onBulkPdfError = null,
+}) => {
   const [activeTab, setActiveTab] = useState('personal');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -93,23 +100,25 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     parentSignature: ''
   });
   const reportExportRef = useRef(null);
+  const autoPdfTriggeredRef = useRef(false);
 
-  // Resolve student ID from various possible props (BatchDetail uses rollNo, AchieversSection uses admissionNo)
+  // Resolve identifiers from various possible props
+  const studentNo = student?.studentNo || student?.student_no || null;
   const studentId = student?.rollNo || student?.admissionNo || student?.student_id || null;
 
   // Fetch complete student data from API
   useEffect(() => {
-    if (studentId) {
+    if (studentNo) {
       fetchStudentData();
     }
-  }, [studentId]);
+  }, [studentNo]);
 
   const fetchStudentData = async () => {
     setLoading(true);
     setError('');
     
     try {
-      const response = await authFetch(`${API_BASE}/api/student/${studentId}`);
+      const response = await authFetch(`${API_BASE}/api/student/${studentNo}`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch student data: ${response.statusText}`);
@@ -122,9 +131,9 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       setMetricsLoading(true);
       setInsightsLoading(true);
       const [analysisReq, metricsReq, insightsReq] = await Promise.allSettled([
-        authFetch(`${API_BASE}/api/analysis/individual/${studentId}`),
-        authFetch(`${API_BASE}/api/analysis/student-metrics/${studentId}`),
-        authFetch(`${API_BASE}/api/analysis/student-test-insights/${studentId}?test_type=both&limit=6`)
+        authFetch(`${API_BASE}/api/analysis/individual/${studentNo}`),
+        authFetch(`${API_BASE}/api/analysis/student-metrics/${studentNo}`),
+        authFetch(`${API_BASE}/api/analysis/student-test-insights/${studentNo}?test_type=both&limit=6`)
       ]);
 
       // Analysis bundle
@@ -191,7 +200,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
 
   const fetchFeedback = async () => {
     try {
-      const response = await authFetch(`${API_BASE}/api/analysis/feedback/${studentId}`);
+      const response = await authFetch(`${API_BASE}/api/analysis/feedback/${studentNo}`);
       if (response.ok) {
         const data = await response.json();
         setFeedbackList(data.feedback || []);
@@ -717,19 +726,20 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
     );
   };
 
-  const exportStudentPdfReport = async () => {
+  const exportStudentPdfReport = async (options = {}) => {
+    const { download = true, silent = false, returnBlob = false } = options;
     const hasMockData = reportTests.length > 0;
     const hasDailyData = dailySubjectComparisonReportData.length > 0;
 
     if (exportingPdf || (!hasMockData && !hasDailyData)) {
-      if (!hasMockData && !hasDailyData) {
+      if (!silent && !hasMockData && !hasDailyData) {
         alert('No mock/daily test data available to generate PDF report.');
       }
-      return;
+      return null;
     }
 
     const root = reportExportRef.current;
-    if (!root) return;
+    if (!root) return null;
 
     try {
       setExportingPdf(true);
@@ -760,14 +770,45 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
       }
 
       const fileName = `${displayData.name.replace(/\s+/g, '_')}_${displayData.rollNo}_Progress_Report.pdf`;
-      pdf.save(fileName);
+      const blob = (returnBlob || !download) ? pdf.output('blob') : null;
+
+      if (download) {
+        pdf.save(fileName);
+      }
+
+      return { blob, fileName };
     } catch (err) {
       console.error('Failed to generate PDF report:', err);
-      alert('Failed to generate PDF report. Please try again.');
+      if (!silent) {
+        alert('Failed to generate PDF report. Please try again.');
+      }
+      return null;
     } finally {
       setExportingPdf(false);
     }
   };
+
+  useEffect(() => {
+    autoPdfTriggeredRef.current = false;
+  }, [studentNo]);
+
+  useEffect(() => {
+    if (!autoGeneratePdf || autoPdfTriggeredRef.current || loading || exportingPdf) return;
+
+    autoPdfTriggeredRef.current = true;
+
+    const runAutoExport = async () => {
+      const result = await exportStudentPdfReport({ download: false, silent: true, returnBlob: true });
+      if (result && result.blob) {
+        if (onBulkPdfReady) onBulkPdfReady(result);
+      } else if (onBulkPdfError) {
+        onBulkPdfError('No PDF generated for this student');
+      }
+    };
+
+    runAutoExport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoGeneratePdf, loading, exportingPdf, studentNo]);
 
   const metricInfo = {
     overallAverage: 'This is your average performance across all available tests. Higher is better.',

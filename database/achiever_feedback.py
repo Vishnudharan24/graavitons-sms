@@ -40,9 +40,9 @@ def create_achiever_feedback_tables():
         print("\nCreating achievers table...")
         cursor.execute("""
             CREATE TABLE achievers (
-                achievement_id  SERIAL PRIMARY KEY,
-                student_id      VARCHAR(50) REFERENCES student(student_id) ON DELETE CASCADE,
-                batch_id        INT REFERENCES batch(batch_id) ON DELETE SET NULL,
+                achievement_id  BIGSERIAL PRIMARY KEY,
+                student_no      BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
+                batch_id        BIGINT REFERENCES batch(batch_id) ON DELETE SET NULL,
                 achievement     VARCHAR(255) NOT NULL,
                 achievement_details TEXT,
                 rank            VARCHAR(50),
@@ -58,9 +58,9 @@ def create_achiever_feedback_tables():
         print("\nCreating student_feedback table...")
         cursor.execute("""
             CREATE TABLE student_feedback (
-                feedback_id                  SERIAL PRIMARY KEY,
-                student_id                   VARCHAR(50) REFERENCES student(student_id) ON DELETE CASCADE,
-                batch_id                     INT REFERENCES batch(batch_id) ON DELETE SET NULL,
+                feedback_id                  BIGSERIAL PRIMARY KEY,
+                student_no                   BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
+                batch_id                     BIGINT REFERENCES batch(batch_id) ON DELETE SET NULL,
                 feedback_date                DATE NOT NULL DEFAULT CURRENT_DATE,
                 feedback_type                VARCHAR(50) DEFAULT 'general',
                 teacher_name                 VARCHAR(100),

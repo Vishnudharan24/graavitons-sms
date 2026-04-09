@@ -228,7 +228,7 @@ def insert_student_data(student_data: StudentCreate, conn):
                 enrollment_year, course, branch, gender, student_mobile,
                 aadhar_no, apaar_id, email, photo_url, school_name
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING student_id, student_name, batch_id, grade, gender, email, created_at;
+            RETURNING student_no, student_id, student_name, batch_id, grade, gender, email, created_at;
         """, (
             student_data.student_id, student_data.batch_id, student_data.student_name,
             student_data.dob, student_data.grade, student_data.community,
@@ -239,18 +239,19 @@ def insert_student_data(student_data: StudentCreate, conn):
         ))
         
         student_result = cursor.fetchone()
+        student_no = student_result[0]
         
         # 2. Insert into parent_info table
         cursor.execute("""
             INSERT INTO parent_info (
-                student_id, guardian_name, father_name, mother_name, sibling_name,
+                student_no, guardian_name, father_name, mother_name, sibling_name,
                 guardian_occupation, father_occupation, mother_occupation, sibling_grade,
                 guardian_mobile, mother_mobile, father_mobile,
                 sibling_school, sibling_college,
                 guardian_email, mother_email, father_email
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
         """, (
-            student_data.student_id, student_data.guardian_name, student_data.father_name,
+            student_no, student_data.guardian_name, student_data.father_name,
             student_data.mother_name, student_data.sibling_name,
             student_data.guardian_occupation, student_data.father_occupation,
             student_data.mother_occupation, student_data.sibling_grade,
@@ -264,11 +265,11 @@ def insert_student_data(student_data: StudentCreate, conn):
         if student_data.tenth_school_name or student_data.tenth_year_of_passing:
             cursor.execute("""
                 INSERT INTO tenth_mark (
-                    student_id, school_name, year_of_passing, board_of_study,
+                    student_no, school_name, year_of_passing, board_of_study,
                     english, tamil, hindi, maths, science, social_science, total_marks
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
             """, (
-                student_data.student_id, student_data.tenth_school_name,
+                student_no, student_data.tenth_school_name,
                 student_data.tenth_year_of_passing, student_data.tenth_board_of_study,
                 student_data.tenth_english, student_data.tenth_tamil,
                 student_data.tenth_hindi, student_data.tenth_maths,
@@ -280,11 +281,11 @@ def insert_student_data(student_data: StudentCreate, conn):
         if student_data.twelfth_school_name or student_data.twelfth_year_of_passing:
             cursor.execute("""
                 INSERT INTO twelfth_mark (
-                    student_id, school_name, year_of_passing, board_of_study,
+                    student_no, school_name, year_of_passing, board_of_study,
                     english, physics, maths, chemistry, biology, computer_science, tamil, total_marks
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
             """, (
-                student_data.student_id, student_data.twelfth_school_name,
+                student_no, student_data.twelfth_school_name,
                 student_data.twelfth_year_of_passing, student_data.twelfth_board_of_study,
                 student_data.twelfth_english, student_data.twelfth_physics,
                 student_data.twelfth_maths, student_data.twelfth_chemistry,
@@ -297,11 +298,11 @@ def insert_student_data(student_data: StudentCreate, conn):
             for exam in student_data.entrance_exams:
                 cursor.execute("""
                     INSERT INTO entrance_exams (
-                        student_id, exam_name, physics_marks, chemistry_marks,
+                        student_no, exam_name, physics_marks, chemistry_marks,
                         maths_marks, biology_marks, total_marks, community_rank, overall_rank
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
                 """, (
-                    student_data.student_id, exam.exam_name, exam.physics_marks,
+                    student_no, exam.exam_name, exam.physics_marks,
                     exam.chemistry_marks, exam.maths_marks, exam.biology_marks,
                     exam.total_marks, exam.community_rank, exam.overall_rank
                 ))
@@ -310,10 +311,10 @@ def insert_student_data(student_data: StudentCreate, conn):
         if student_data.counselling_forum or student_data.counselling_college_alloted:
             cursor.execute("""
                 INSERT INTO counselling_detail (
-                    student_id, forum, round, college_alloted, year_of_completion
+                    student_no, forum, round, college_alloted, year_of_completion
                 ) VALUES (%s, %s, %s, %s, %s);
             """, (
-                student_data.student_id, student_data.counselling_forum,
+                student_no, student_data.counselling_forum,
                 student_data.counselling_round, student_data.counselling_college_alloted,
                 student_data.counselling_year_of_completion
             ))
@@ -356,13 +357,13 @@ async def create_student(student: StudentCreate, current_user: dict = Depends(ge
         
         # Prepare response
         student_response = StudentResponse(
-            student_id=result[0],
-            student_name=result[1],
-            batch_id=result[2],
-            grade=result[3],
-            gender=result[4],
-            email=result[5],
-            created_at=result[6]
+            student_id=result[1],
+            student_name=result[2],
+            batch_id=result[3],
+            grade=result[4],
+            gender=result[5],
+            email=result[6],
+            created_at=result[7]
         )
         
         cursor.close()
@@ -377,7 +378,12 @@ async def create_student(student: StudentCreate, current_user: dict = Depends(ge
         if conn:
             conn.rollback()
             conn.close()
-        if "student_pkey" in str(e):
+        error_msg = str(e)
+        if (
+            "student_pkey" in error_msg
+            or "student_student_id_key" in error_msg
+            or "unique constraint" in error_msg.lower()
+        ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Student with ID {student.student_id} already exists"
@@ -581,7 +587,12 @@ async def upload_students_excel(
                 cursor.execute("ROLLBACK TO SAVEPOINT student_row")
                 error_count += 1
                 error_msg = str(e)
-                if "student_pkey" in error_msg or "unique constraint" in error_msg.lower() or "already exists" in error_msg.lower():
+                if (
+                    "student_pkey" in error_msg
+                    or "student_student_id_key" in error_msg
+                    or "unique constraint" in error_msg.lower()
+                    or "already exists" in error_msg.lower()
+                ):
                     error_msg = f"Student {row.get('student_id', 'N/A')} already exists in the database"
                 errors.append({
                     'row': int(index) + 2,  # +2 because Excel is 1-indexed and has header
@@ -632,6 +643,7 @@ async def get_students_by_batch(batch_id: int, current_user: dict = Depends(get_
         # Fetch students with basic info
         query = """
             SELECT 
+                s.student_no,
                 s.student_id,
                 s.student_name,
                 s.gender,
@@ -655,18 +667,19 @@ async def get_students_by_batch(batch_id: int, current_user: dict = Depends(get_
         students = []
         for row in rows:
             student = {
-                "student_id": row[0],
-                "student_name": row[1],
-                "gender": row[2],
-                "dob": row[3].isoformat() if row[3] else None,
-                "community": row[4],
-                "grade": row[5],
-                "enrollment_year": row[6],
-                "course": row[7],
-                "branch": row[8],
-                "student_mobile": row[9],
-                "email": row[10],
-                "created_at": row[11].isoformat() if row[11] else None
+                "student_no": row[0],
+                "student_id": row[1],
+                "student_name": row[2],
+                "gender": row[3],
+                "dob": row[4].isoformat() if row[4] else None,
+                "community": row[5],
+                "grade": row[6],
+                "enrollment_year": row[7],
+                "course": row[8],
+                "branch": row[9],
+                "student_mobile": row[10],
+                "email": row[11],
+                "created_at": row[12].isoformat() if row[12] else None
             }
             students.append(student)
         
@@ -690,8 +703,8 @@ async def get_students_by_batch(batch_id: int, current_user: dict = Depends(get_
         )
 
 
-@app.get("/api/student/{student_id}")
-async def get_student_details(student_id: str, current_user: dict = Depends(get_current_user)):
+@app.get("/api/student/{student_no}")
+async def get_student_details(student_no: int, current_user: dict = Depends(get_current_user)):
     """
     Get complete student details from all related tables
     """
@@ -708,11 +721,11 @@ async def get_student_details(student_id: str, current_user: dict = Depends(get_
         
         # Fetch student basic info
         cursor.execute("""
-            SELECT student_id, batch_id, student_name, dob, grade, community, 
+            SELECT student_no, student_id, batch_id, student_name, dob, grade, community, 
                    enrollment_year, course, branch, gender, student_mobile, 
                    aadhar_no, apaar_id, email, school_name, created_at
-            FROM student WHERE student_id = %s
-        """, (student_id,))
+            FROM student WHERE student_no = %s
+        """, (student_no,))
         
         student_row = cursor.fetchone()
         if not student_row:
@@ -720,26 +733,27 @@ async def get_student_details(student_id: str, current_user: dict = Depends(get_
             conn.close()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Student {student_id} not found"
+                detail=f"Student {student_no} not found"
             )
         
         student_data = {
-            "student_id": student_row[0],
-            "batch_id": student_row[1],
-            "student_name": student_row[2],
-            "dob": student_row[3].isoformat() if student_row[3] else None,
-            "grade": student_row[4],
-            "community": student_row[5],
-            "enrollment_year": student_row[6],
-            "course": student_row[7],
-            "branch": student_row[8],
-            "gender": student_row[9],
-            "student_mobile": student_row[10],
-            "aadhar_no": student_row[11],
-            "apaar_id": student_row[12],
-            "email": student_row[13],
-            "school_name": student_row[14],
-            "created_at": student_row[15].isoformat() if student_row[15] else None
+            "student_no": student_row[0],
+            "student_id": student_row[1],
+            "batch_id": student_row[2],
+            "student_name": student_row[3],
+            "dob": student_row[4].isoformat() if student_row[4] else None,
+            "grade": student_row[5],
+            "community": student_row[6],
+            "enrollment_year": student_row[7],
+            "course": student_row[8],
+            "branch": student_row[9],
+            "gender": student_row[10],
+            "student_mobile": student_row[11],
+            "aadhar_no": student_row[12],
+            "apaar_id": student_row[13],
+            "email": student_row[14],
+            "school_name": student_row[15],
+            "created_at": student_row[16].isoformat() if student_row[16] else None
         }
         
         # Fetch parent info
@@ -748,8 +762,8 @@ async def get_student_details(student_id: str, current_user: dict = Depends(get_
                    father_name, father_occupation, father_mobile, father_email,
                    mother_name, mother_occupation, mother_mobile, mother_email,
                    sibling_name, sibling_grade, sibling_school, sibling_college
-            FROM parent_info WHERE student_id = %s
-        """, (student_id,))
+            FROM parent_info WHERE student_no = %s
+        """, (student_no,))
         
         parent_row = cursor.fetchone()
         if parent_row:
@@ -776,8 +790,8 @@ async def get_student_details(student_id: str, current_user: dict = Depends(get_
         cursor.execute("""
             SELECT school_name, year_of_passing, board_of_study, english, tamil, hindi,
                    maths, science, social_science, total_marks
-            FROM tenth_mark WHERE student_id = %s
-        """, (student_id,))
+            FROM tenth_mark WHERE student_no = %s
+        """, (student_no,))
         
         tenth_row = cursor.fetchone()
         if tenth_row:
@@ -798,8 +812,8 @@ async def get_student_details(student_id: str, current_user: dict = Depends(get_
         cursor.execute("""
             SELECT school_name, year_of_passing, board_of_study, english, physics,
                    maths, chemistry, biology, computer_science, tamil, total_marks
-            FROM twelfth_mark WHERE student_id = %s
-        """, (student_id,))
+            FROM twelfth_mark WHERE student_no = %s
+        """, (student_no,))
         
         twelfth_row = cursor.fetchone()
         if twelfth_row:
@@ -821,8 +835,8 @@ async def get_student_details(student_id: str, current_user: dict = Depends(get_
         cursor.execute("""
             SELECT exam_name, physics_marks, chemistry_marks, maths_marks,
                    biology_marks, total_marks, community_rank, overall_rank
-            FROM entrance_exams WHERE student_id = %s
-        """, (student_id,))
+            FROM entrance_exams WHERE student_no = %s
+        """, (student_no,))
         
         entrance_rows = cursor.fetchall()
         if entrance_rows:
@@ -843,8 +857,8 @@ async def get_student_details(student_id: str, current_user: dict = Depends(get_
         # Fetch counselling details
         cursor.execute("""
             SELECT forum, round, college_alloted, year_of_completion
-            FROM counselling_detail WHERE student_id = %s
-        """, (student_id,))
+            FROM counselling_detail WHERE student_no = %s
+        """, (student_no,))
         
         counselling_row = cursor.fetchone()
         if counselling_row:
@@ -871,8 +885,8 @@ async def get_student_details(student_id: str, current_user: dict = Depends(get_
         )
 
 
-@app.put("/api/student/{student_id}")
-async def update_student(student_id: str, updates: StudentUpdate, current_user: dict = Depends(get_current_user)):
+@app.put("/api/student/{student_no}")
+async def update_student(student_no: int, updates: StudentUpdate, current_user: dict = Depends(get_current_user)):
     """
     Update student details - only updates fields that are provided (partial update)
     """
@@ -888,14 +902,16 @@ async def update_student(student_id: str, updates: StudentUpdate, current_user: 
         cursor = conn.cursor()
         
         # Check if student exists
-        cursor.execute("SELECT student_id FROM student WHERE student_id = %s", (student_id,))
-        if not cursor.fetchone():
+        cursor.execute("SELECT student_id FROM student WHERE student_no = %s", (student_no,))
+        existing_student = cursor.fetchone()
+        if not existing_student:
             cursor.close()
             conn.close()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Student {student_id} not found"
+                detail=f"Student {student_no} not found"
             )
+        student_id = existing_student[0]
         
         # Build dynamic UPDATE query for student table - only update provided fields
         student_fields = {
@@ -919,8 +935,8 @@ async def update_student(student_id: str, updates: StudentUpdate, current_user: 
         
         if student_updates:
             set_clause = ", ".join([f"{k} = %s" for k in student_updates.keys()])
-            query = f"UPDATE student SET {set_clause} WHERE student_id = %s"
-            cursor.execute(query, list(student_updates.values()) + [student_id])
+            query = f"UPDATE student SET {set_clause} WHERE student_no = %s"
+            cursor.execute(query, list(student_updates.values()) + [student_no])
         
         # Update parent_info table (UPSERT logic)
         parent_fields = {
@@ -946,18 +962,18 @@ async def update_student(student_id: str, updates: StudentUpdate, current_user: 
         
         if parent_updates:
             # Check if parent_info exists
-            cursor.execute("SELECT student_id FROM parent_info WHERE student_id = %s", (student_id,))
+            cursor.execute("SELECT student_no FROM parent_info WHERE student_no = %s", (student_no,))
             parent_exists = cursor.fetchone()
             
             if parent_exists:
                 set_clause = ", ".join([f"{k} = %s" for k in parent_updates.keys()])
-                query = f"UPDATE parent_info SET {set_clause} WHERE student_id = %s"
-                cursor.execute(query, list(parent_updates.values()) + [student_id])
+                query = f"UPDATE parent_info SET {set_clause} WHERE student_no = %s"
+                cursor.execute(query, list(parent_updates.values()) + [student_no])
             else:
-                columns = ['student_id'] + list(parent_updates.keys())
+                columns = ['student_no'] + list(parent_updates.keys())
                 placeholders = ', '.join(['%s'] * len(columns))
                 query = f"INSERT INTO parent_info ({', '.join(columns)}) VALUES ({placeholders})"
-                cursor.execute(query, [student_id] + list(parent_updates.values()))
+                cursor.execute(query, [student_no] + list(parent_updates.values()))
         
         # Update tenth_mark table (UPSERT logic)
         tenth_fields = {
@@ -976,18 +992,18 @@ async def update_student(student_id: str, updates: StudentUpdate, current_user: 
         tenth_updates = {k: v for k, v in tenth_fields.items() if v is not None}
         
         if tenth_updates:
-            cursor.execute("SELECT student_id FROM tenth_mark WHERE student_id = %s", (student_id,))
+            cursor.execute("SELECT student_no FROM tenth_mark WHERE student_no = %s", (student_no,))
             tenth_exists = cursor.fetchone()
             
             if tenth_exists:
                 set_clause = ", ".join([f"{k} = %s" for k in tenth_updates.keys()])
-                query = f"UPDATE tenth_mark SET {set_clause} WHERE student_id = %s"
-                cursor.execute(query, list(tenth_updates.values()) + [student_id])
+                query = f"UPDATE tenth_mark SET {set_clause} WHERE student_no = %s"
+                cursor.execute(query, list(tenth_updates.values()) + [student_no])
             else:
-                columns = ['student_id'] + list(tenth_updates.keys())
+                columns = ['student_no'] + list(tenth_updates.keys())
                 placeholders = ', '.join(['%s'] * len(columns))
                 query = f"INSERT INTO tenth_mark ({', '.join(columns)}) VALUES ({placeholders})"
-                cursor.execute(query, [student_id] + list(tenth_updates.values()))
+                cursor.execute(query, [student_no] + list(tenth_updates.values()))
         
         # Update twelfth_mark table (UPSERT logic)
         twelfth_fields = {
@@ -1007,18 +1023,18 @@ async def update_student(student_id: str, updates: StudentUpdate, current_user: 
         twelfth_updates = {k: v for k, v in twelfth_fields.items() if v is not None}
         
         if twelfth_updates:
-            cursor.execute("SELECT student_id FROM twelfth_mark WHERE student_id = %s", (student_id,))
+            cursor.execute("SELECT student_no FROM twelfth_mark WHERE student_no = %s", (student_no,))
             twelfth_exists = cursor.fetchone()
             
             if twelfth_exists:
                 set_clause = ", ".join([f"{k} = %s" for k in twelfth_updates.keys()])
-                query = f"UPDATE twelfth_mark SET {set_clause} WHERE student_id = %s"
-                cursor.execute(query, list(twelfth_updates.values()) + [student_id])
+                query = f"UPDATE twelfth_mark SET {set_clause} WHERE student_no = %s"
+                cursor.execute(query, list(twelfth_updates.values()) + [student_no])
             else:
-                columns = ['student_id'] + list(twelfth_updates.keys())
+                columns = ['student_no'] + list(twelfth_updates.keys())
                 placeholders = ', '.join(['%s'] * len(columns))
                 query = f"INSERT INTO twelfth_mark ({', '.join(columns)}) VALUES ({placeholders})"
-                cursor.execute(query, [student_id] + list(twelfth_updates.values()))
+                cursor.execute(query, [student_no] + list(twelfth_updates.values()))
         
         # Update counselling_detail table (UPSERT logic)
         counselling_fields = {
@@ -1031,18 +1047,18 @@ async def update_student(student_id: str, updates: StudentUpdate, current_user: 
         counselling_updates = {k: v for k, v in counselling_fields.items() if v is not None}
         
         if counselling_updates:
-            cursor.execute("SELECT student_id FROM counselling_detail WHERE student_id = %s", (student_id,))
+            cursor.execute("SELECT student_no FROM counselling_detail WHERE student_no = %s", (student_no,))
             counselling_exists = cursor.fetchone()
             
             if counselling_exists:
                 set_clause = ", ".join([f"{k} = %s" for k in counselling_updates.keys()])
-                query = f"UPDATE counselling_detail SET {set_clause} WHERE student_id = %s"
-                cursor.execute(query, list(counselling_updates.values()) + [student_id])
+                query = f"UPDATE counselling_detail SET {set_clause} WHERE student_no = %s"
+                cursor.execute(query, list(counselling_updates.values()) + [student_no])
             else:
-                columns = ['student_id'] + list(counselling_updates.keys())
+                columns = ['student_no'] + list(counselling_updates.keys())
                 placeholders = ', '.join(['%s'] * len(columns))
                 query = f"INSERT INTO counselling_detail ({', '.join(columns)}) VALUES ({placeholders})"
-                cursor.execute(query, [student_id] + list(counselling_updates.values()))
+                cursor.execute(query, [student_no] + list(counselling_updates.values()))
         
         # Commit all changes
         conn.commit()
@@ -1050,7 +1066,8 @@ async def update_student(student_id: str, updates: StudentUpdate, current_user: 
         conn.close()
         
         return {
-            "message": f"Student {student_id} updated successfully",
+            "message": f"Student {student_no} updated successfully",
+            "student_no": student_no,
             "student_id": student_id,
             "updated_fields": len(student_updates) + len(parent_updates) + len(tenth_updates) + len(twelfth_updates) + len(counselling_updates)
         }
@@ -1180,25 +1197,26 @@ async def download_edit_template(batch_id: int, current_user: dict = Depends(get
 
         # Fetch every student in the batch with ALL related data
         cursor.execute("""
-            SELECT s.student_id FROM student s
+            SELECT s.student_no, s.student_id
+            FROM student s
             WHERE s.batch_id = %s ORDER BY s.student_name
         """, (batch_id,))
-        student_ids = [r[0] for r in cursor.fetchall()]
+        student_rows = cursor.fetchall()
 
-        if not student_ids:
+        if not student_rows:
             raise HTTPException(status_code=404, detail="No students found in this batch")
 
         # For each student, pull complete data (reuse the single-student query pattern)
         rows_data = []
-        for sid in student_ids:
+        for student_no, sid in student_rows:
             row = {}
             # student table
             cursor.execute("""
                 SELECT student_id, student_name, dob, grade, community,
                        enrollment_year, course, branch, gender, student_mobile,
                        aadhar_no, apaar_id, email, school_name
-                FROM student WHERE student_id = %s
-            """, (sid,))
+                FROM student WHERE student_no = %s
+            """, (student_no,))
             s = cursor.fetchone()
             if s:
                 row["student_id"] = s[0]
@@ -1222,8 +1240,8 @@ async def download_edit_template(batch_id: int, current_user: dict = Depends(get
                        father_name, father_occupation, father_mobile, father_email,
                        mother_name, mother_occupation, mother_mobile, mother_email,
                        sibling_name, sibling_grade, sibling_school, sibling_college
-                FROM parent_info WHERE student_id = %s
-            """, (sid,))
+                FROM parent_info WHERE student_no = %s
+            """, (student_no,))
             p = cursor.fetchone()
             if p:
                 for i, key in enumerate([
@@ -1238,8 +1256,8 @@ async def download_edit_template(batch_id: int, current_user: dict = Depends(get
             cursor.execute("""
                 SELECT school_name, year_of_passing, board_of_study,
                        english, tamil, hindi, maths, science, social_science, total_marks
-                FROM tenth_mark WHERE student_id = %s
-            """, (sid,))
+                FROM tenth_mark WHERE student_no = %s
+            """, (student_no,))
             t10 = cursor.fetchone()
             if t10:
                 for i, key in enumerate([
@@ -1254,8 +1272,8 @@ async def download_edit_template(batch_id: int, current_user: dict = Depends(get
                 SELECT school_name, year_of_passing, board_of_study,
                        english, tamil, physics, chemistry, maths, biology,
                        computer_science, total_marks
-                FROM twelfth_mark WHERE student_id = %s
-            """, (sid,))
+                FROM twelfth_mark WHERE student_no = %s
+            """, (student_no,))
             t12 = cursor.fetchone()
             if t12:
                 for i, key in enumerate([
@@ -1268,8 +1286,8 @@ async def download_edit_template(batch_id: int, current_user: dict = Depends(get
             # counselling_detail
             cursor.execute("""
                 SELECT forum, round, college_alloted, year_of_completion
-                FROM counselling_detail WHERE student_id = %s
-            """, (sid,))
+                FROM counselling_detail WHERE student_no = %s
+            """, (student_no,))
             co = cursor.fetchone()
             if co:
                 for i, key in enumerate([
@@ -1447,13 +1465,21 @@ async def bulk_update_students(
 
             # Check student exists and belongs to this batch
             cursor.execute(
-                "SELECT student_id FROM student WHERE student_id = %s AND batch_id = %s",
+                """
+                SELECT student_no
+                FROM student
+                WHERE student_id = %s AND batch_id = %s
+                ORDER BY created_at DESC, student_no DESC
+                LIMIT 1
+                """,
                 (sid, batch_id)
             )
-            if not cursor.fetchone():
+            student_row = cursor.fetchone()
+            if not student_row:
                 errors.append({"row": row_num, "student_id": sid, "error": "Student not found in this batch"})
                 error_count += 1
                 continue
+            student_no = student_row[0]
 
             try:
                 # Group updates by table
@@ -1507,24 +1533,24 @@ async def bulk_update_students(
 
                     if table == "student":
                         set_clause = ", ".join([f"{k} = %s" for k in fields.keys()])
-                        query = f"UPDATE student SET {set_clause} WHERE student_id = %s"
-                        cursor.execute(query, list(fields.values()) + [sid])
+                        query = f"UPDATE student SET {set_clause} WHERE student_no = %s"
+                        cursor.execute(query, list(fields.values()) + [student_no])
                     else:
                         # For related tables use UPSERT: update if exists, insert if not
                         cursor.execute(
-                            f"SELECT student_id FROM {table} WHERE student_id = %s", (sid,)
+                            f"SELECT student_no FROM {table} WHERE student_no = %s", (student_no,)
                         )
                         exists = cursor.fetchone()
 
                         if exists:
                             set_clause = ", ".join([f"{k} = %s" for k in fields.keys()])
-                            query = f"UPDATE {table} SET {set_clause} WHERE student_id = %s"
-                            cursor.execute(query, list(fields.values()) + [sid])
+                            query = f"UPDATE {table} SET {set_clause} WHERE student_no = %s"
+                            cursor.execute(query, list(fields.values()) + [student_no])
                         else:
-                            columns = ["student_id"] + list(fields.keys())
+                            columns = ["student_no"] + list(fields.keys())
                             placeholders = ", ".join(["%s"] * len(columns))
                             query = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders})"
-                            cursor.execute(query, [sid] + list(fields.values()))
+                            cursor.execute(query, [student_no] + list(fields.values()))
 
                 success_count += 1
 

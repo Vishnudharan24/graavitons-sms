@@ -265,6 +265,36 @@
   font-weight: 600;
 }
 
+.upload-error-logs {
+  margin-top: 12px;
+  background: #fff5f5;
+  border: 1px solid #feb2b2;
+  border-left: 4px solid #e53e3e;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.upload-error-logs h5 {
+  margin: 0 0 8px;
+  color: #9b2c2c;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.upload-error-logs ul {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.upload-error-logs li {
+  color: #742a2a;
+  font-size: 13px;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
 /* Form Actions */
 .form-actions {
   display: flex;

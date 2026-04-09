@@ -6,7 +6,7 @@ import { authFetch } from '../utils/api';
 import ManageExamMarks from './ManageExamMarks';
 
 const MOCK_SUBJECTS = [
-  { key: 'maths', label: 'Maths', aliases: ['maths', 'mathematics'], marksField: 'mathsMarks', unitField: 'mathsUnitNames', totalField: 'mathsTotalMarks' },
+  { key: 'maths', label: 'Maths', aliases: ['maths', 'mathematics', 'math'], marksField: 'mathsMarks', unitField: 'mathsUnitNames', totalField: 'mathsTotalMarks' },
   { key: 'physics', label: 'Physics', aliases: ['physics'], marksField: 'physicsMarks', unitField: 'physicsUnitNames', totalField: 'physicsTotalMarks' },
   { key: 'chemistry', label: 'Chemistry', aliases: ['chemistry'], marksField: 'chemistryMarks', unitField: 'chemistryUnitNames', totalField: 'chemistryTotalMarks' },
   { key: 'biology', label: 'Biology', aliases: ['biology'], marksField: 'biologyMarks', unitField: 'biologyUnitNames', totalField: 'biologyTotalMarks' }
@@ -14,6 +14,7 @@ const MOCK_SUBJECTS = [
 
 const SUBJECT_LABEL_MAP = {
   maths: 'Mathematics',
+  math: 'Mathematics',
   mathematics: 'Mathematics',
   physics: 'Physics',
   chemistry: 'Chemistry',
@@ -63,12 +64,121 @@ const getActiveMockSubjects = (batchSubjects) => {
   return selected.length > 0 ? selected : MOCK_SUBJECTS;
 };
 
+const normalizeHeaderKey = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/\s+/g, ' ');
+
+const parseExcelDateToIso = (value) => {
+  if (value === null || value === undefined || String(value).trim() === '') return '';
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  if (typeof value === 'number') {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed && parsed.y && parsed.m && parsed.d) {
+      const y = String(parsed.y).padStart(4, '0');
+      const m = String(parsed.m).padStart(2, '0');
+      const d = String(parsed.d).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+  }
+
+  const raw = String(value).trim();
+
+  // DD.MM.YYYY or DD.MM.YY
+  const dotParts = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
+  if (dotParts) {
+    const day = parseInt(dotParts[1], 10);
+    const month = parseInt(dotParts[2], 10);
+    let year = parseInt(dotParts[3], 10);
+    if (year < 100) year += 2000;
+    const y = String(year).padStart(4, '0');
+    const m = String(month).padStart(2, '0');
+    const d = String(day).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  const direct = new Date(raw);
+  if (!Number.isNaN(direct.getTime())) {
+    return direct.toISOString().slice(0, 10);
+  }
+
+  const parts = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+  if (parts) {
+    const day = parseInt(parts[1], 10);
+    const month = parseInt(parts[2], 10);
+    let year = parseInt(parts[3], 10);
+    if (year < 100) year += 2000;
+    const y = String(year).padStart(4, '0');
+    const m = String(month).padStart(2, '0');
+    const d = String(day).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  return '';
+};
+
+const toIntOrNull = (value) => {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const parsed = parseInt(String(value).trim(), 10);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const normalizeAdmissionValue = (value) => {
+  if (value === null || value === undefined) return '';
+
+  if (typeof value === 'number') {
+    if (Number.isInteger(value)) return String(value);
+    const asString = String(value);
+    return asString.endsWith('.0') ? asString.slice(0, -2) : asString;
+  }
+
+  let raw = String(value).trim();
+  if (!raw) return '';
+
+  if (raw.startsWith("'")) {
+    raw = raw.slice(1).trim();
+  }
+
+  if (/^\d+\.0$/.test(raw)) {
+    raw = raw.replace(/\.0$/, '');
+  }
+
+  return raw;
+};
+
+const getAllSheetRows = (worksheet) => {
+  const ref = worksheet?.['!ref'];
+  if (!ref) return [];
+
+  const range = XLSX.utils.decode_range(ref);
+  const rows = [];
+
+  for (let r = range.s.r; r <= range.e.r; r += 1) {
+    const row = [];
+    for (let c = range.s.c; c <= range.e.c; c += 1) {
+      const cellAddress = XLSX.utils.encode_cell({ r, c });
+      const cell = worksheet[cellAddress];
+      row.push(cell ? cell.v : '');
+    }
+    rows.push(row);
+  }
+
+  return rows;
+};
+
 const AddExam = ({ batch, students, onBack, onSave }) => {
   const activeMockSubjects = getActiveMockSubjects(batch?.subjects);
   const dailySubjectOptions = getDailySubjectOptions(batch?.subjects);
   const [isSaving, setIsSaving] = useState(false);
 
-  const [examMode, setExamMode] = useState('manual'); // 'manual' or 'excel'
+  const [examMode, setExamMode] = useState('manual'); // 'manual' | 'excel' | 'multi-excel' | 'manage'
+  const [excelBulkUpload, setExcelBulkUpload] = useState(null);
+  const [multiUploadCount, setMultiUploadCount] = useState('1');
+  const [uploadLogs, setUploadLogs] = useState([]);
   const [examData, setExamData] = useState({
     examName: '',
     examDate: '',
@@ -114,6 +224,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
     
     // Reset fields when exam type changes
     if (name === 'examType') {
+      setExcelBulkUpload(null);
       if (value === 'daily test') {
         setExamData(prev => ({
           ...prev,
@@ -167,9 +278,19 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
       
       if (examData.examType === 'daily test') {
         const totalMarks = examData.dailySubjectTotalMarks || 100;
-        apiUrl = `${API_BASE}/api/exam/template/daily-test/${batch.batch_id}?total_marks=${totalMarks}`;
+        if (examMode === 'multi-excel') {
+          const count = Math.max(1, parseInt(multiUploadCount, 10) || 1);
+          apiUrl = `${API_BASE}/api/exam/template/daily-test/${batch.batch_id}?total_marks=${totalMarks}&multi_template=true&test_count=${count}`;
+        } else {
+          apiUrl = `${API_BASE}/api/exam/template/daily-test/${batch.batch_id}?total_marks=${totalMarks}`;
+        }
       } else if (examData.examType === 'mock test') {
-        apiUrl = `${API_BASE}/api/exam/template/mock-test/${batch.batch_id}`;
+        if (examMode === 'multi-excel') {
+          const count = Math.max(1, parseInt(multiUploadCount, 10) || 1);
+          apiUrl = `${API_BASE}/api/exam/template/mock-test/${batch.batch_id}?multi_template=true&test_count=${count}`;
+        } else {
+          apiUrl = `${API_BASE}/api/exam/template/mock-test/${batch.batch_id}`;
+        }
       } else {
         alert('Please select exam type first');
         return;
@@ -209,6 +330,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
+      setUploadLogs([]);
       const reader = new FileReader();
 
       reader.onload = (event) => {
@@ -237,6 +359,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                 return student;
               });
               setStudentMarks(updatedMarks);
+              setExcelBulkUpload(null);
             } else if (examData.examType === 'mock test') {
               const updatedMarks = studentMarks.map(student => {
                 const row = rows.find(r => r[0] === student.rollNo);
@@ -252,44 +375,289 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                 return student;
               });
               setStudentMarks(updatedMarks);
+              setExcelBulkUpload(null);
             }
           } else {
             // Handle Excel files (.xlsx, .xls)
             const workbook = XLSX.read(event.target.result, { type: 'binary' });
             const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-            const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+            const sheetRows = getAllSheetRows(firstSheet);
 
-            // Skip header row
-            const rows = jsonData.slice(1);
+              const nonEmptyRows = sheetRows.filter(row => Array.isArray(row) && row.some(cell => String(cell ?? '').trim() !== ''));
+              if (nonEmptyRows.length < 2) {
+                throw new Error('No data rows found in file');
+              }
+
+              const header = (sheetRows[0] || []).map(normalizeHeaderKey);
+              const rows = sheetRows.slice(1);
+
+              const findIndex = (...aliases) => header.findIndex(h => aliases.includes(h));
+
+              const admissionIndex = findIndex('admission number', 'admission no', 'student id', 'student_id', 'roll no', 'roll number');
+              const testNoIndex = findIndex('test no', 'test number', 'test_no');
+              const studentIdLookup = new Map();
+              students.forEach((s) => {
+                const normalized = normalizeAdmissionValue(s.rollNo);
+                if (normalized) studentIdLookup.set(normalized, String(s.rollNo || '').trim());
+              });
+
+              if (admissionIndex < 0) {
+                throw new Error('Admission Number column is missing in uploaded file');
+              }
 
             if (examData.examType === 'daily test') {
-              const updatedMarks = studentMarks.map(student => {
-                const row = rows.find(r => r[0] === student.rollNo);
-                if (row) {
-                  const marks = row[2]?.toString().trim();
-                  return { ...student, marks: marks || '' };
-                }
-                return student;
-              });
-              setStudentMarks(updatedMarks);
-            } else if (examData.examType === 'mock test') {
-              const updatedMarks = studentMarks.map(student => {
-                const row = rows.find(r => r[0] === student.rollNo);
-                if (row) {
-                  const updatedStudent = { ...student };
-                  activeMockSubjects.forEach((subject, index) => {
-                    updatedStudent[subject.marksField] = row[2 + index]?.toString().trim() || '';
+                const dateIndex = findIndex('exam date (yyyy-mm-dd)', 'exam date', 'date');
+                const subjectIndex = findIndex('subject');
+                const topicIndex = findIndex('topic / unit name', 'topic/unit', 'topic', 'unit name', 'unit');
+                const marksIndex = findIndex('marks', 'marks (out of 100)', 'score');
+                const subjectTotalIndex = findIndex('subject total marks', 'subject total');
+                const testTotalIndex = findIndex('test total marks', 'test total');
+
+                const hasBulkColumns = dateIndex >= 0 && subjectIndex >= 0 && topicIndex >= 0;
+
+                if (hasBulkColumns) {
+                  const groupMap = new Map();
+                  let skippedRows = 0;
+                  const rowErrors = [];
+
+                  rows.forEach((row, rowIndex) => {
+                    const excelRowNo = rowIndex + 2;
+                    if (!Array.isArray(row) || row.every(cell => String(cell ?? '').trim() === '')) {
+                      return;
+                    }
+                    const parsedAdmission = normalizeAdmissionValue(row?.[admissionIndex]);
+                    const studentId = studentIdLookup.get(parsedAdmission);
+                    if (!studentId) {
+                      skippedRows += 1;
+                      rowErrors.push(`Row ${excelRowNo}: Admission Number not found in selected batch (${parsedAdmission || 'empty'})`);
+                      return;
+                    }
+
+                    const marks = String(row?.[marksIndex] ?? '').trim();
+
+                    const examDate = parseExcelDateToIso(row?.[dateIndex]);
+                    const subject = normalizeSubjectLabel(row?.[subjectIndex]);
+                    const unitName = String(row?.[topicIndex] ?? '').trim();
+                    const testNo = String(row?.[testNoIndex] ?? '').trim();
+
+                    if (!examDate || !subject || !unitName) {
+                      skippedRows += 1;
+                      rowErrors.push(`Row ${excelRowNo}: Missing/invalid Exam Date, Subject, or Topic / Unit Name`);
+                      return;
+                    }
+
+                    const fallbackSubjectTotal = toIntOrNull(examData.dailySubjectTotalMarks);
+                    const fallbackTestTotal = toIntOrNull(examData.dailyTestTotalMarks);
+                    const subjectTotal = toIntOrNull(row?.[subjectTotalIndex]) ?? fallbackSubjectTotal;
+                    const testTotal = toIntOrNull(row?.[testTotalIndex]) ?? fallbackTestTotal ?? subjectTotal;
+
+                    const key = `${testNo || 'NA'}||${examDate}||${subject}||${unitName}||${subjectTotal ?? ''}||${testTotal ?? ''}`;
+                    if (!groupMap.has(key)) {
+                      groupMap.set(key, {
+                        examName: `${examData.examName || 'Daily Test'} - ${examDate} - ${subject}`,
+                        examDate,
+                        subject,
+                        unitName,
+                        totalMarks: subjectTotal ?? 100,
+                        subjectTotalMarks: subjectTotal,
+                        testTotalMarks: testTotal,
+                        examType: 'daily test',
+                        studentMarkMap: new Map()
+                      });
+                    }
+
+                    groupMap.get(key).studentMarkMap.set(studentId, marks || null);
                   });
-                  return updatedStudent;
+
+                  const exams = Array.from(groupMap.values()).map(group => ({
+                    examName: group.examName,
+                    examDate: group.examDate,
+                    subject: group.subject,
+                    unitName: group.unitName,
+                    totalMarks: group.totalMarks,
+                    subjectTotalMarks: group.subjectTotalMarks,
+                    testTotalMarks: group.testTotalMarks,
+                    examType: group.examType,
+                    studentMarks: Array.from(group.studentMarkMap.entries()).map(([id, markValue]) => ({
+                      id,
+                      marks: markValue
+                    }))
+                  })).filter(group => group.studentMarks.length > 0);
+
+                  if (exams.length > 0) {
+                    setExcelBulkUpload({ examType: 'daily test', exams });
+                    setUploadLogs(rowErrors.slice(0, 200));
+                    alert(`Loaded ${exams.length} daily tests from Excel. Skipped rows: ${skippedRows}. Click Save Exam Marks to upload all.`);
+                  } else {
+                    setExcelBulkUpload(null);
+                    setUploadLogs(rowErrors.slice(0, 200));
+                    alert('No valid daily test rows found. Please ensure Exam Date, Subject, Topic, and Marks are filled.');
+                  }
+                } else {
+                  const updatedMarks = studentMarks.map(student => {
+                    const row = rows.find(r => String(r?.[admissionIndex] ?? '').trim() === student.rollNo);
+                    if (row) {
+                      const marks = row?.[2]?.toString().trim();
+                      return { ...student, marks: marks || '' };
+                    }
+                    return student;
+                  });
+                  setStudentMarks(updatedMarks);
+                  setExcelBulkUpload(null);
+                  setUploadLogs([]);
                 }
-                return student;
-              });
-              setStudentMarks(updatedMarks);
+            } else if (examData.examType === 'mock test') {
+                const dateIndex = findIndex('exam date (yyyy-mm-dd)', 'exam date', 'date');
+                const testTotalIndex = findIndex('test total marks', 'test total');
+                const subjectIndexes = activeMockSubjects.reduce((acc, subject) => {
+                  const headerAliasesBySubject = {
+                    maths: ['maths', 'mathematics', 'math'],
+                    physics: ['physics'],
+                    chemistry: ['chemistry'],
+                    biology: ['biology']
+                  };
+
+                  const aliases = headerAliasesBySubject[subject.key] || [normalizeHeaderKey(subject.label)];
+                  const idx = header.findIndex((h) =>
+                    aliases.some(alias => h === normalizeHeaderKey(`${alias} marks`) || h === alias)
+                  );
+                  acc[subject.key] = idx;
+                  acc[`${subject.key}_unit`] = header.findIndex((h) =>
+                    aliases.some(alias => h === normalizeHeaderKey(`${alias} unit names`))
+                  );
+                  acc[`${subject.key}_total`] = header.findIndex((h) =>
+                    aliases.some(alias => h === normalizeHeaderKey(`${alias} total marks`))
+                  );
+                  return acc;
+                }, {});
+
+                const hasDateColumn = dateIndex >= 0;
+
+                if (hasDateColumn) {
+                  const groupMap = new Map();
+                  let skippedRows = 0;
+                  const rowErrors = [];
+
+                  rows.forEach((row, rowIndex) => {
+                    const excelRowNo = rowIndex + 2;
+                    if (!Array.isArray(row) || row.every(cell => String(cell ?? '').trim() === '')) {
+                      return;
+                    }
+                    const parsedAdmission = normalizeAdmissionValue(row?.[admissionIndex]);
+                    const studentId = studentIdLookup.get(parsedAdmission);
+                    if (!studentId) {
+                      skippedRows += 1;
+                      rowErrors.push(`Row ${excelRowNo}: Admission Number not found in selected batch (${parsedAdmission || 'empty'})`);
+                      return;
+                    }
+
+                    const examDate = parseExcelDateToIso(row?.[dateIndex]);
+                    if (!examDate) {
+                      skippedRows += 1;
+                      rowErrors.push(`Row ${excelRowNo}: Invalid Exam Date`);
+                      return;
+                    }
+                    const testNo = String(row?.[testNoIndex] ?? '').trim();
+
+                    const marksPayload = {};
+                    activeMockSubjects.forEach((subject) => {
+                      const idx = subjectIndexes[subject.key];
+                      const markValue = idx >= 0 ? String(row?.[idx] ?? '').trim() : '';
+                      marksPayload[subject.marksField] = markValue;
+                    });
+
+                    const unitPayload = {};
+                    const totalPayload = {};
+                    activeMockSubjects.forEach((subject) => {
+                      const unitIdx = subjectIndexes[`${subject.key}_unit`];
+                      const totalIdx = subjectIndexes[`${subject.key}_total`];
+                      unitPayload[subject.unitField] = unitIdx >= 0 ? String(row?.[unitIdx] ?? '').trim() : '';
+                      totalPayload[subject.totalField] = totalIdx >= 0 ? toIntOrNull(row?.[totalIdx]) : null;
+                    });
+
+                    const testTotal = toIntOrNull(row?.[testTotalIndex]);
+                    const groupKeyParts = [testNo || 'NA', examDate];
+                    activeMockSubjects.forEach((subject) => {
+                      groupKeyParts.push(unitPayload[subject.unitField] || '');
+                      groupKeyParts.push(String(totalPayload[subject.totalField] ?? ''));
+                    });
+                    groupKeyParts.push(String(testTotal ?? ''));
+                    const groupKey = groupKeyParts.join('||');
+
+                    if (!groupMap.has(groupKey)) {
+                      groupMap.set(groupKey, {
+                        examName: `${examData.examName || 'Mock Test'} - ${examDate}`,
+                        examDate,
+                        examType: 'mock test',
+                        mathsUnitNames: unitPayload.mathsUnitNames ?? examData.mathsUnitNames,
+                        physicsUnitNames: unitPayload.physicsUnitNames ?? examData.physicsUnitNames,
+                        chemistryUnitNames: unitPayload.chemistryUnitNames ?? examData.chemistryUnitNames,
+                        biologyUnitNames: unitPayload.biologyUnitNames ?? examData.biologyUnitNames,
+                        mathsTotalMarks: totalPayload.mathsTotalMarks ?? toIntOrNull(examData.mathsTotalMarks),
+                        physicsTotalMarks: totalPayload.physicsTotalMarks ?? toIntOrNull(examData.physicsTotalMarks),
+                        chemistryTotalMarks: totalPayload.chemistryTotalMarks ?? toIntOrNull(examData.chemistryTotalMarks),
+                        biologyTotalMarks: totalPayload.biologyTotalMarks ?? toIntOrNull(examData.biologyTotalMarks),
+                        testTotalMarks: testTotal ?? toIntOrNull(examData.mockTestTotalMarks),
+                        studentMarkMap: new Map()
+                      });
+                    }
+
+                    groupMap.get(groupKey).studentMarkMap.set(studentId, {
+                      id: studentId,
+                      mathsMarks: marksPayload.mathsMarks || null,
+                      physicsMarks: marksPayload.physicsMarks || null,
+                      chemistryMarks: marksPayload.chemistryMarks || null,
+                      biologyMarks: marksPayload.biologyMarks || null
+                    });
+                  });
+
+                  const exams = Array.from(groupMap.values()).map(group => ({
+                    examName: group.examName,
+                    examDate: group.examDate,
+                    examType: group.examType,
+                    mathsUnitNames: group.mathsUnitNames,
+                    physicsUnitNames: group.physicsUnitNames,
+                    chemistryUnitNames: group.chemistryUnitNames,
+                    biologyUnitNames: group.biologyUnitNames,
+                    mathsTotalMarks: group.mathsTotalMarks,
+                    physicsTotalMarks: group.physicsTotalMarks,
+                    chemistryTotalMarks: group.chemistryTotalMarks,
+                    biologyTotalMarks: group.biologyTotalMarks,
+                    testTotalMarks: group.testTotalMarks,
+                    studentMarks: Array.from(group.studentMarkMap.values())
+                  })).filter(group => group.studentMarks.length > 0);
+
+                  if (exams.length > 0) {
+                    setExcelBulkUpload({ examType: 'mock test', exams });
+                    setUploadLogs(rowErrors.slice(0, 200));
+                    alert(`Loaded ${exams.length} mock tests from Excel by date. Skipped rows: ${skippedRows}. Click Save Exam Marks to upload all.`);
+                  } else {
+                    setExcelBulkUpload(null);
+                    setUploadLogs(rowErrors.slice(0, 200));
+                    alert('No valid mock test rows found. Please ensure Exam Date and marks are filled.');
+                  }
+                } else {
+                  const updatedMarks = studentMarks.map(student => {
+                    const row = rows.find(r => String(r?.[admissionIndex] ?? '').trim() === student.rollNo);
+                    if (row) {
+                      const updatedStudent = { ...student };
+                      activeMockSubjects.forEach((subject, index) => {
+                        updatedStudent[subject.marksField] = row[2 + index]?.toString().trim() || '';
+                      });
+                      return updatedStudent;
+                    }
+                    return student;
+                  });
+                  setStudentMarks(updatedMarks);
+                  setExcelBulkUpload(null);
+                  setUploadLogs([]);
+                }
             }
           }
 
           alert('Marks uploaded successfully!');
         } catch (error) {
+          setUploadLogs([error.message || 'Error reading file. Please check the format and try again.']);
           alert('Error reading file. Please check the format and try again.');
           console.error('File upload error:', error);
         }
@@ -309,14 +677,31 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
 
     if (isSaving) return;
 
-    // Validate
-    if (!examData.examName || !examData.examDate || !examData.examType) {
-      alert('Please fill all required exam details');
-      return;
+    const hasBulkExcelData = (examMode === 'excel' || examMode === 'multi-excel')
+      && excelBulkUpload
+      && excelBulkUpload.examType === examData.examType
+      && Array.isArray(excelBulkUpload.exams)
+      && excelBulkUpload.exams.length > 0;
+
+    if (examMode === 'multi-excel') {
+      if (!examData.examType) {
+        alert('Please select exam type for multiple upload');
+        return;
+      }
+      if (!hasBulkExcelData) {
+        alert('Please upload the multiple-upload Excel file before submitting');
+        return;
+      }
+    } else {
+      // Validate
+      if (!examData.examName || !examData.examType || (!hasBulkExcelData && !examData.examDate)) {
+        alert('Please fill all required exam details');
+        return;
+      }
     }
 
     // Validate based on exam type
-    if (examData.examType === 'daily test') {
+    if (examData.examType === 'daily test' && !hasBulkExcelData && examMode !== 'multi-excel') {
       if (!examData.subject || !examData.unitName || !examData.dailySubjectTotalMarks || !examData.dailyTestTotalMarks) {
         alert('Please fill subject, unit name, and total marks for daily test');
         return;
@@ -333,7 +718,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
           return;
         }
       }
-    } else if (examData.examType === 'mock test') {
+    } else if (examData.examType === 'mock test' && !hasBulkExcelData && examMode !== 'multi-excel') {
       const hasMissingUnitNames = activeMockSubjects.some(subject => !examData[subject.unitField]);
       if (hasMissingUnitNames) {
         alert('Please fill unit names for all subjects in this batch');
@@ -368,6 +753,55 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
       setIsSaving(true);
       let apiUrl = '';
       let requestData = {};
+
+      if (hasBulkExcelData) {
+        apiUrl = examData.examType === 'daily test'
+          ? `${API_BASE}/api/exam/daily-test/bulk`
+          : `${API_BASE}/api/exam/mock-test/bulk`;
+
+        requestData = {
+          batch_id: batch.batch_id,
+          exams: excelBulkUpload.exams
+        };
+
+        const response = await authFetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestData)
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          setUploadLogs([errorData.detail || 'Failed to upload multiple exams']);
+          throw new Error(errorData.detail || 'Failed to upload multiple exams');
+        }
+
+        const result = await response.json();
+        const serverLogs = [];
+        (result.failed_exams || []).forEach((entry) => {
+          serverLogs.push(`Exam ${entry.index || '-'} (${entry.exam_date || '-'}) failed: ${entry.reason || 'Unknown reason'}`);
+        });
+        (result.results || []).forEach((entry) => {
+          (entry.failed_students || []).forEach((s) => {
+            serverLogs.push(`Exam ${entry.index || '-'} student ${s.student_id || '-'}: ${s.reason || 'Unknown reason'}`);
+          });
+        });
+        setUploadLogs(serverLogs.slice(0, 300));
+
+        alert(
+          `${result.message}\n\n` +
+          `Total Exams: ${result.total_exams}\n` +
+          `Successful: ${result.successful_exams}\n` +
+          `Failed: ${result.failed_exams_count}\n` +
+          `Inserted Records: ${result.total_inserted_records}`
+        );
+
+        onSave({ ...examData, bulk: true, bulk_count: excelBulkUpload.exams.length });
+        onBack();
+        return;
+      }
 
       if (examData.examType === 'daily test') {
         apiUrl = `${API_BASE}/api/exam/daily-test`;
@@ -459,6 +893,14 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
     }
   };
 
+  const isMultiExcelMode = examMode === 'multi-excel';
+
+  const hasBulkExcelData = (examMode === 'excel' || examMode === 'multi-excel')
+    && excelBulkUpload
+    && excelBulkUpload.examType === examData.examType
+    && Array.isArray(excelBulkUpload.exams)
+    && excelBulkUpload.exams.length > 0;
+
   return (
     <div className="add-exam">
       {isSaving && (
@@ -477,6 +919,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
 
       <form onSubmit={handleSubmit}>
         {/* Exam Details Section */}
+        {examMode !== 'multi-excel' && (
         <div className="form-section">
           <h3>Exam Details</h3>
           <div className="form-grid">
@@ -499,8 +942,9 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                 name="examDate"
                 value={examData.examDate}
                 onChange={handleExamDataChange}
-                required
+                required={!hasBulkExcelData}
               />
+              {hasBulkExcelData && <small className="note">Using dates from uploaded Excel rows.</small>}
             </div>
 
             <div className="form-group">
@@ -526,7 +970,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     name="subject"
                     value={examData.subject}
                     onChange={handleExamDataChange}
-                    required
+                    required={!hasBulkExcelData && !isMultiExcelMode}
                   >
                     <option value="">Select Subject</option>
                     {dailySubjectOptions.map((subjectOption) => (
@@ -543,7 +987,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     value={examData.unitName}
                     onChange={handleExamDataChange}
                     placeholder="e.g., Unit 1 - Mechanics"
-                    required
+                    required={!hasBulkExcelData && !isMultiExcelMode}
                   />
                 </div>
 
@@ -556,7 +1000,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     onChange={handleExamDataChange}
                     placeholder="e.g., 100"
                     min="1"
-                    required
+                    required={!hasBulkExcelData && !isMultiExcelMode}
                   />
                 </div>
 
@@ -569,7 +1013,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     onChange={handleExamDataChange}
                     placeholder="e.g., 100"
                     min="1"
-                    required
+                    required={!hasBulkExcelData && !isMultiExcelMode}
                   />
                 </div>
               </>
@@ -587,7 +1031,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                       value={examData[subject.unitField]}
                       onChange={handleExamDataChange}
                       placeholder="e.g., Unit 1, Unit 2"
-                      required
+                      required={!hasBulkExcelData && !isMultiExcelMode}
                     />
                   </div>
                 ))}
@@ -601,7 +1045,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                       onChange={handleExamDataChange}
                       placeholder={`e.g., ${subject.key === 'maths' ? '100' : '75'}`}
                       min="1"
-                      required
+                      required={!hasBulkExcelData && !isMultiExcelMode}
                     />
                   </div>
                 ))}
@@ -614,13 +1058,14 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     onChange={handleExamDataChange}
                     placeholder="e.g., 400"
                     min="1"
-                    required
+                    required={!hasBulkExcelData && !isMultiExcelMode}
                   />
                 </div>
               </>
             )}
           </div>
         </div>
+        )}
 
         {/* Entry Mode Selection */}
         <div className="form-section">
@@ -639,6 +1084,13 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
               onClick={() => setExamMode('excel')}
             >
               📊 Excel Upload
+            </button>
+            <button
+              type="button"
+              className={`mode-btn ${examMode === 'multi-excel' ? 'active' : ''}`}
+              onClick={() => setExamMode('multi-excel')}
+            >
+              📚 Multiple Upload
             </button>
             <button
               type="button"
@@ -769,8 +1221,14 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
               {/* Preview uploaded data */}
               <div className="preview-section">
                 <h4>Preview Data</h4>
-                <div className="marks-entry-table">
-                  {examData.examType === 'daily test' ? (
+                {hasBulkExcelData ? (
+                  <div className="instruction" style={{ marginBottom: '10px' }}>
+                    Loaded <strong>{excelBulkUpload.exams.length}</strong> {examData.examType} entries from Excel.
+                    Dates{examData.examType === 'daily test' ? ', subjects, and topics' : ''} are taken directly from the sheet.
+                  </div>
+                ) : (
+                  <div className="marks-entry-table">
+                    {examData.examType === 'daily test' ? (
                     <table>
                       <thead>
                         <tr>
@@ -793,7 +1251,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                         ))}
                       </tbody>
                     </table>
-                  ) : (
+                    ) : (
                     <table>
                       <thead>
                         <tr>
@@ -820,8 +1278,105 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                         ))}
                       </tbody>
                     </table>
-                  )}
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Multiple Excel Upload Mode */}
+        {examMode === 'multi-excel' && (
+          <div className="form-section">
+            <h3>Multiple Upload (Excel)</h3>
+            <div className="excel-upload-section">
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Exam Type *</label>
+                  <select
+                    name="examType"
+                    value={examData.examType}
+                    onChange={handleExamDataChange}
+                    required
+                  >
+                    <option value="">Select Type</option>
+                    <option value="daily test">Daily Test</option>
+                    <option value="mock test">Mock Test</option>
+                  </select>
                 </div>
+                <div className="form-group">
+                  <label>How many tests to upload? *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={multiUploadCount}
+                    onChange={(e) => setMultiUploadCount(e.target.value)}
+                    placeholder="e.g., 5"
+                    required
+                  />
+                </div>
+              </div>
+
+              <p className="instruction">
+                Use this section to upload multiple exams in one file.
+                For Daily Test, fill <strong>Exam Date + Subject + Topic / Unit Name</strong> in each row.
+                For Mock Test, fill <strong>Exam Date</strong> in each row.
+              </p>
+
+              <div className="upload-steps">
+                <div className="step">
+                  <span className="step-number">1</span>
+                  <button
+                    type="button"
+                    className="btn-download"
+                    onClick={handleDownloadFormat}
+                    disabled={!examData.examType || !multiUploadCount || Number(multiUploadCount) < 1}
+                  >
+                    📥 Download Multi Upload Template
+                  </button>
+                </div>
+
+                <div className="step">
+                  <span className="step-number">2</span>
+                  <div className="file-upload">
+                    <input
+                      type="file"
+                      id="multiExcelFile"
+                      accept=".xlsx,.xls"
+                      onChange={handleFileUpload}
+                    />
+                    <label htmlFor="multiExcelFile" className="upload-label">
+                      📤 Upload Multiple Exams Excel
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="preview-section">
+                <h4>Multiple Upload Preview</h4>
+                {hasBulkExcelData ? (
+                  <div className="instruction" style={{ marginBottom: '10px' }}>
+                    Loaded <strong>{excelBulkUpload.exams.length}</strong> {examData.examType} entries.
+                    Click <strong>Save Exam Marks</strong> to upload all entries in one request.
+                  </div>
+                ) : (
+                  <div className="instruction" style={{ marginBottom: '10px' }}>
+                    Upload a prepared Excel file to preview grouped exams.
+                  </div>
+                )}
+
+                {uploadLogs.length > 0 && (
+                  <div className="upload-error-logs">
+                    <h5>Upload Error Logs</h5>
+                    <ul>
+                      {uploadLogs.map((log, idx) => (
+                        <li key={`multi-upload-log-${idx}`}>{log}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -835,7 +1390,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                 Cancel
               </button>
               <button type="submit" className="btn-submit" disabled={isSaving}>
-                {isSaving ? 'Saving Marks...' : 'Save Exam Marks'}
+                {isSaving ? 'Saving Marks...' : (examMode === 'multi-excel' ? 'Upload Multiple Exams' : 'Save Exam Marks')}
               </button>
             </div>
  

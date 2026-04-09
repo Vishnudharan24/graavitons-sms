@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status, Depends
+from fastapi import FastAPI, HTTPException, status, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, validator, Field
@@ -16,7 +16,7 @@ from db_pool import get_db_connection
 app = FastAPI(title=APP_TITLE)
 
 MOCK_SUBJECT_CONFIG = {
-    "maths": {"aliases": {"maths", "mathematics"}, "unit_field": "mathsUnitNames"},
+    "maths": {"aliases": {"maths", "mathematics", "math"}, "unit_field": "mathsUnitNames"},
     "physics": {"aliases": {"physics"}, "unit_field": "physicsUnitNames"},
     "chemistry": {"aliases": {"chemistry"}, "unit_field": "chemistryUnitNames"},
     "biology": {"aliases": {"biology"}, "unit_field": "biologyUnitNames"},
@@ -24,6 +24,7 @@ MOCK_SUBJECT_CONFIG = {
 
 SUBJECT_CANONICAL = {
     "maths": "Mathematics",
+    "math": "Mathematics",
     "mathematics": "Mathematics",
     "physics": "Physics",
     "chemistry": "Chemistry",
@@ -91,7 +92,7 @@ app.add_middleware(
 # Pydantic models for Daily Test
 class DailyTestStudentMark(BaseModel):
     id: str  # student_id
-    marks: str
+    marks: Optional[str] = None
 
 
 class DailyTestCreate(BaseModel):
@@ -110,10 +111,10 @@ class DailyTestCreate(BaseModel):
 # Pydantic models for Mock Test
 class MockTestStudentMark(BaseModel):
     id: str  # student_id
-    mathsMarks: str
-    physicsMarks: str
-    chemistryMarks: str
-    biologyMarks: str
+    mathsMarks: Optional[str] = None
+    physicsMarks: Optional[str] = None
+    chemistryMarks: Optional[str] = None
+    biologyMarks: Optional[str] = None
 
 
 class MockTestCreate(BaseModel):
@@ -133,6 +134,56 @@ class MockTestCreate(BaseModel):
     studentMarks: List[MockTestStudentMark]
 
 
+class DailyTestBulkItem(BaseModel):
+    examName: str
+    examDate: date
+    subject: str
+    unitName: str
+    totalMarks: int
+    subjectTotalMarks: Optional[int] = None
+    testTotalMarks: Optional[int] = None
+    examType: Optional[str] = "daily test"
+    studentMarks: List[DailyTestStudentMark]
+
+
+class DailyTestBulkCreate(BaseModel):
+    batch_id: int
+    exams: List[DailyTestBulkItem]
+
+    @validator('exams')
+    def validate_daily_exams_not_empty(cls, value):
+        if not value:
+            raise ValueError("At least one daily test is required")
+        return value
+
+
+class MockTestBulkItem(BaseModel):
+    examName: str
+    examDate: date
+    examType: Optional[str] = "mock test"
+    mathsUnitNames: str = ""
+    physicsUnitNames: str = ""
+    chemistryUnitNames: str = ""
+    biologyUnitNames: str = ""
+    mathsTotalMarks: Optional[int] = None
+    physicsTotalMarks: Optional[int] = None
+    chemistryTotalMarks: Optional[int] = None
+    biologyTotalMarks: Optional[int] = None
+    testTotalMarks: Optional[int] = None
+    studentMarks: List[MockTestStudentMark]
+
+
+class MockTestBulkCreate(BaseModel):
+    batch_id: int
+    exams: List[MockTestBulkItem]
+
+    @validator('exams')
+    def validate_mock_exams_not_empty(cls, value):
+        if not value:
+            raise ValueError("At least one mock test is required")
+        return value
+
+
 class DailyTestGroupRef(BaseModel):
     test_date: date
     subject: str
@@ -143,7 +194,7 @@ class DailyTestGroupRef(BaseModel):
 
 class DailyTestMarkUpdate(BaseModel):
     student_id: str
-    marks: str = ''
+    marks: Optional[str] = None
 
 
 class DailyTestGroupUpdate(BaseModel):
@@ -170,10 +221,10 @@ class MockTestGroupRef(BaseModel):
 
 class MockTestMarkUpdate(BaseModel):
     student_id: str
-    maths_marks: str = ''
-    physics_marks: str = ''
-    chemistry_marks: str = ''
-    biology_marks: str = ''
+    maths_marks: Optional[str] = None
+    physics_marks: Optional[str] = None
+    chemistry_marks: Optional[str] = None
+    biology_marks: Optional[str] = None
 
 
 class MockTestGroupUpdate(BaseModel):
@@ -254,14 +305,14 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
         
         for student_mark in exam_data.studentMarks:
             try:
-                # Skip if marks is empty
-                if not student_mark.marks or student_mark.marks.strip() == '':
-                    continue
-                
                 # Get student's branch
                 cursor.execute("""
-                    SELECT branch FROM student WHERE student_id = %s
-                """, (student_mark.id,))
+                    SELECT student_no, branch
+                    FROM student
+                    WHERE student_id = %s AND batch_id = %s
+                    ORDER BY created_at DESC, student_no DESC
+                    LIMIT 1
+                """, (student_mark.id, exam_data.batch_id))
                 
                 student_result = cursor.fetchone()
                 if not student_result:
@@ -271,20 +322,21 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
                     })
                     continue
                 
-                branch = student_result[0]
+                student_no = student_result[0]
+                branch = student_result[1]
                 
                 # Store marks as-is (supports integers, 'A' for absent, '-' for N/A, negative marks)
-                marks = student_mark.marks.strip()
+                marks = student_mark.marks.strip() if student_mark.marks and student_mark.marks.strip() else None
                 
                 # Insert daily test record
                 cursor.execute("""
                     INSERT INTO daily_test (
-                        student_id, grade, branch, test_date, 
+                        student_no, grade, branch, test_date, 
                         subject, unit_name, total_marks, subject_total_marks, test_total_marks
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
-                    student_mark.id,
+                    student_no,
                     grade,
                     branch,
                     exam_data.examDate,
@@ -394,17 +446,14 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
         
         for student_mark in exam_data.studentMarks:
             try:
-                # Skip if all marks are empty
-                if (not student_mark.mathsMarks or student_mark.mathsMarks.strip() == '') and \
-                   (not student_mark.physicsMarks or student_mark.physicsMarks.strip() == '') and \
-                   (not student_mark.chemistryMarks or student_mark.chemistryMarks.strip() == '') and \
-                   (not student_mark.biologyMarks or student_mark.biologyMarks.strip() == ''):
-                    continue
-                
                 # Get student's branch
                 cursor.execute("""
-                    SELECT branch FROM student WHERE student_id = %s
-                """, (student_mark.id,))
+                    SELECT student_no, branch
+                    FROM student
+                    WHERE student_id = %s AND batch_id = %s
+                    ORDER BY created_at DESC, student_no DESC
+                    LIMIT 1
+                """, (student_mark.id, exam_data.batch_id))
                 
                 student_result = cursor.fetchone()
                 if not student_result:
@@ -414,13 +463,14 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
                     })
                     continue
                 
-                branch = student_result[0]
+                student_no = student_result[0]
+                branch = student_result[1]
                 
                 # Store marks as-is (supports integers, 'A' for absent, '-' for N/A, negative marks)
-                maths_marks = student_mark.mathsMarks.strip() if "maths" in active_subjects and student_mark.mathsMarks and student_mark.mathsMarks.strip() else ''
-                physics_marks = student_mark.physicsMarks.strip() if "physics" in active_subjects and student_mark.physicsMarks and student_mark.physicsMarks.strip() else ''
-                chemistry_marks = student_mark.chemistryMarks.strip() if "chemistry" in active_subjects and student_mark.chemistryMarks and student_mark.chemistryMarks.strip() else ''
-                biology_marks = student_mark.biologyMarks.strip() if "biology" in active_subjects and student_mark.biologyMarks and student_mark.biologyMarks.strip() else ''
+                maths_marks = student_mark.mathsMarks.strip() if "maths" in active_subjects and student_mark.mathsMarks and student_mark.mathsMarks.strip() else None
+                physics_marks = student_mark.physicsMarks.strip() if "physics" in active_subjects and student_mark.physicsMarks and student_mark.physicsMarks.strip() else None
+                chemistry_marks = student_mark.chemistryMarks.strip() if "chemistry" in active_subjects and student_mark.chemistryMarks and student_mark.chemistryMarks.strip() else None
+                biology_marks = student_mark.biologyMarks.strip() if "biology" in active_subjects and student_mark.biologyMarks and student_mark.biologyMarks.strip() else None
                 
                 # Calculate total marks only from numeric values
                 def safe_int(val):
@@ -431,12 +481,12 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
                 
                 numeric_marks = [safe_int(m) for m in [maths_marks, physics_marks, chemistry_marks, biology_marks]]
                 valid_marks = [m for m in numeric_marks if m is not None]
-                total_marks = str(sum(valid_marks)) if valid_marks else ''
+                total_marks = str(sum(valid_marks)) if valid_marks else None
                 
                 # Insert mock test record
                 cursor.execute("""
                     INSERT INTO mock_test (
-                        student_id, grade, branch, test_date,
+                        student_no, grade, branch, test_date,
                         maths_marks, physics_marks, chemistry_marks, biology_marks,
                         maths_unit_names, physics_unit_names, chemistry_unit_names, biology_unit_names,
                         total_marks,
@@ -445,7 +495,7 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
-                    student_mark.id,
+                    student_no,
                     grade,
                     branch,
                     exam_data.examDate,
@@ -523,6 +573,124 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
             conn.close()
 
 
+@app.post("/api/exam/daily-test/bulk", status_code=status.HTTP_201_CREATED)
+async def create_daily_test_bulk(exam_data: DailyTestBulkCreate, current_user: dict = Depends(get_current_user)):
+    """
+    Upload multiple daily tests in a single request for one batch.
+    """
+    results = []
+    failed_exams = []
+    total_inserted = 0
+
+    for index, exam in enumerate(exam_data.exams, start=1):
+        single_payload = DailyTestCreate(
+            batch_id=exam_data.batch_id,
+            examName=exam.examName,
+            examDate=exam.examDate,
+            subject=exam.subject,
+            unitName=exam.unitName,
+            totalMarks=exam.totalMarks,
+            subjectTotalMarks=exam.subjectTotalMarks,
+            testTotalMarks=exam.testTotalMarks,
+            examType=exam.examType or "daily test",
+            studentMarks=exam.studentMarks
+        )
+
+        try:
+            result = await create_daily_test(single_payload, current_user)
+            inserted_count = result.get("inserted_count", 0)
+            total_inserted += inserted_count
+            results.append({
+                "index": index,
+                "exam_name": exam.examName,
+                "exam_date": str(exam.examDate),
+                "status": "success",
+                "inserted_count": inserted_count,
+                "total_students": result.get("total_students", len(exam.studentMarks)),
+                "failed_students": result.get("failed_students", [])
+            })
+        except HTTPException as e:
+            failed_exams.append({
+                "index": index,
+                "exam_name": exam.examName,
+                "exam_date": str(exam.examDate),
+                "status": "failed",
+                "reason": e.detail
+            })
+
+    return {
+        "message": "Bulk daily test upload completed",
+        "batch_id": exam_data.batch_id,
+        "total_exams": len(exam_data.exams),
+        "successful_exams": len(results),
+        "failed_exams_count": len(failed_exams),
+        "total_inserted_records": total_inserted,
+        "results": results,
+        "failed_exams": failed_exams
+    }
+
+
+@app.post("/api/exam/mock-test/bulk", status_code=status.HTTP_201_CREATED)
+async def create_mock_test_bulk(exam_data: MockTestBulkCreate, current_user: dict = Depends(get_current_user)):
+    """
+    Upload multiple mock tests in a single request for one batch.
+    """
+    results = []
+    failed_exams = []
+    total_inserted = 0
+
+    for index, exam in enumerate(exam_data.exams, start=1):
+        single_payload = MockTestCreate(
+            batch_id=exam_data.batch_id,
+            examName=exam.examName,
+            examDate=exam.examDate,
+            examType=exam.examType or "mock test",
+            mathsUnitNames=exam.mathsUnitNames,
+            physicsUnitNames=exam.physicsUnitNames,
+            chemistryUnitNames=exam.chemistryUnitNames,
+            biologyUnitNames=exam.biologyUnitNames,
+            mathsTotalMarks=exam.mathsTotalMarks,
+            physicsTotalMarks=exam.physicsTotalMarks,
+            chemistryTotalMarks=exam.chemistryTotalMarks,
+            biologyTotalMarks=exam.biologyTotalMarks,
+            testTotalMarks=exam.testTotalMarks,
+            studentMarks=exam.studentMarks
+        )
+
+        try:
+            result = await create_mock_test(single_payload, current_user)
+            inserted_count = result.get("inserted_count", 0)
+            total_inserted += inserted_count
+            results.append({
+                "index": index,
+                "exam_name": exam.examName,
+                "exam_date": str(exam.examDate),
+                "status": "success",
+                "inserted_count": inserted_count,
+                "total_students": result.get("total_students", len(exam.studentMarks)),
+                "failed_students": result.get("failed_students", [])
+            })
+        except HTTPException as e:
+            failed_exams.append({
+                "index": index,
+                "exam_name": exam.examName,
+                "exam_date": str(exam.examDate),
+                "status": "failed",
+                "reason": e.detail
+            })
+
+    return {
+        "message": "Bulk mock test upload completed",
+        "batch_id": exam_data.batch_id,
+        "total_exams": len(exam_data.exams),
+        "successful_exams": len(results),
+        "failed_exams_count": len(failed_exams),
+        "total_inserted_records": total_inserted,
+        "results": results,
+        "failed_exams": failed_exams
+    }
+
+
 @app.get("/api/exam/daily-test/batch/{batch_id}/groups")
 async def get_daily_test_groups(batch_id: int, current_user: dict = Depends(get_current_user)):
     conn = None
@@ -543,10 +711,10 @@ async def get_daily_test_groups(batch_id: int, current_user: dict = Depends(get_
                 dt.subject_total_marks,
                 dt.test_total_marks,
                 COUNT(*) AS entries_count,
-                COUNT(DISTINCT dt.student_id) AS student_count,
+                COUNT(DISTINCT dt.student_no) AS student_count,
                 MIN(dt.created_at) AS created_at
             FROM daily_test dt
-            JOIN student s ON s.student_id = dt.student_id
+            JOIN student s ON s.student_no = dt.student_no
             WHERE s.batch_id = %s
             GROUP BY dt.test_date, dt.subject, dt.unit_name, dt.subject_total_marks, dt.test_total_marks
             ORDER BY dt.test_date DESC, dt.subject, dt.unit_name
@@ -600,7 +768,7 @@ async def get_daily_test_group_records(
                 COALESCE(dt.total_marks, '') AS marks
             FROM student s
             LEFT JOIN daily_test dt
-                ON dt.student_id = s.student_id
+                ON dt.student_no = s.student_no
                 AND dt.test_date = %s
                 AND COALESCE(dt.unit_name, '') = COALESCE(%s, '')
                 AND {normalized_subject_sql('dt.subject')} = %s
@@ -654,11 +822,11 @@ async def update_daily_test_group(
         normalized_subject = normalize_subject_key(payload.subject)
 
         cursor.execute("""
-            SELECT student_id, branch, grade
+            SELECT student_id, student_no, branch, grade
             FROM student
             WHERE batch_id = %s
         """, (batch_id,))
-        student_map = {r[0]: {"branch": r[1], "grade": r[2]} for r in cursor.fetchall()}
+        student_map = {r[0]: {"student_no": r[1], "branch": r[2], "grade": r[3]} for r in cursor.fetchall()}
 
         updated_count = 0
         inserted_count = 0
@@ -672,23 +840,18 @@ async def update_daily_test_group(
                 continue
 
             marks = (student_mark.marks or '').strip()
+            marks_value = marks if marks else None
 
             cursor.execute(f"""
                 SELECT test_id
                 FROM daily_test
-                WHERE student_id = %s
+                                WHERE student_no = %s
                   AND test_date = %s
                   AND COALESCE(unit_name, '') = COALESCE(%s, '')
                   AND {normalized_subject_sql('subject')} = %s
                 LIMIT 1
-            """, (sid, payload.test_date, payload.unit_name, normalized_subject))
+                        """, (student_map[sid]["student_no"], payload.test_date, payload.unit_name, normalized_subject))
             existing = cursor.fetchone()
-
-            if not marks:
-                if existing:
-                    cursor.execute("DELETE FROM daily_test WHERE test_id = %s", (existing[0],))
-                    deleted_count += 1
-                continue
 
             if existing:
                 cursor.execute("""
@@ -698,24 +861,24 @@ async def update_daily_test_group(
                         subject_total_marks = %s,
                         test_total_marks = %s
                     WHERE test_id = %s
-                """, (marks, payload.subject_total_marks, payload.test_total_marks, existing[0]))
+                """, (marks_value, payload.subject_total_marks, payload.test_total_marks, existing[0]))
                 updated_count += 1
             else:
                 student_meta = student_map[sid]
                 cursor.execute("""
                     INSERT INTO daily_test (
-                        student_id, grade, branch, test_date,
+                        student_no, grade, branch, test_date,
                         subject, unit_name, total_marks, subject_total_marks, test_total_marks
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
-                    sid,
+                    student_meta["student_no"],
                     student_meta["grade"] if student_meta["grade"] is not None else batch_grade,
                     student_meta["branch"],
                     payload.test_date,
                     normalized_subject_label,
                     payload.unit_name,
-                    marks,
+                    marks_value,
                     payload.subject_total_marks,
                     payload.test_total_marks
                 ))
@@ -762,7 +925,7 @@ async def delete_daily_test_group(
         cursor.execute(f"""
             DELETE FROM daily_test dt
             USING student s
-            WHERE dt.student_id = s.student_id
+                        WHERE dt.student_no = s.student_no
               AND s.batch_id = %s
               AND dt.test_date = %s
               AND COALESCE(dt.unit_name, '') = COALESCE(%s, '')
@@ -817,10 +980,10 @@ async def get_mock_test_groups(batch_id: int, current_user: dict = Depends(get_c
                 mt.biology_total_marks,
                 mt.test_total_marks,
                 COUNT(*) AS entries_count,
-                COUNT(DISTINCT mt.student_id) AS student_count,
+                COUNT(DISTINCT mt.student_no) AS student_count,
                 MIN(mt.created_at) AS created_at
             FROM mock_test mt
-            JOIN student s ON s.student_id = mt.student_id
+            JOIN student s ON s.student_no = mt.student_no
             WHERE s.batch_id = %s
             GROUP BY
                 mt.test_date,
@@ -891,7 +1054,7 @@ async def get_mock_test_group_records(
                 COALESCE(mt.biology_marks, '') AS biology_marks
             FROM student s
             LEFT JOIN mock_test mt
-                ON mt.student_id = s.student_id
+                ON mt.student_no = s.student_no
                 AND mt.test_date = %s
                 AND COALESCE(mt.maths_unit_names, ARRAY[]::text[]) = %s
                 AND COALESCE(mt.physics_unit_names, ARRAY[]::text[]) = %s
@@ -966,11 +1129,11 @@ async def update_mock_test_group(
         active_subjects = set(get_batch_mock_subjects(batch_row[1]))
 
         cursor.execute("""
-            SELECT student_id, branch, grade
+            SELECT student_id, student_no, branch, grade
             FROM student
             WHERE batch_id = %s
         """, (batch_id,))
-        student_map = {r[0]: {"branch": r[1], "grade": r[2]} for r in cursor.fetchall()}
+        student_map = {r[0]: {"student_no": r[1], "branch": r[2], "grade": r[3]} for r in cursor.fetchall()}
 
         def safe_int(val):
             try:
@@ -995,15 +1158,20 @@ async def update_mock_test_group(
                 skipped_count += 1
                 continue
 
-            maths_marks = (student_mark.maths_marks or '').strip() if 'maths' in active_subjects else ''
-            physics_marks = (student_mark.physics_marks or '').strip() if 'physics' in active_subjects else ''
-            chemistry_marks = (student_mark.chemistry_marks or '').strip() if 'chemistry' in active_subjects else ''
-            biology_marks = (student_mark.biology_marks or '').strip() if 'biology' in active_subjects else ''
+            maths_raw = (student_mark.maths_marks or '').strip() if 'maths' in active_subjects else ''
+            physics_raw = (student_mark.physics_marks or '').strip() if 'physics' in active_subjects else ''
+            chemistry_raw = (student_mark.chemistry_marks or '').strip() if 'chemistry' in active_subjects else ''
+            biology_raw = (student_mark.biology_marks or '').strip() if 'biology' in active_subjects else ''
+
+            maths_marks = maths_raw if maths_raw else None
+            physics_marks = physics_raw if physics_raw else None
+            chemistry_marks = chemistry_raw if chemistry_raw else None
+            biology_marks = biology_raw if biology_raw else None
 
             cursor.execute("""
                 SELECT test_id
                 FROM mock_test
-                WHERE student_id = %s
+                                WHERE student_no = %s
                   AND test_date = %s
                   AND COALESCE(maths_unit_names, ARRAY[]::text[]) = %s
                   AND COALESCE(physics_unit_names, ARRAY[]::text[]) = %s
@@ -1016,7 +1184,7 @@ async def update_mock_test_group(
                   AND test_total_marks IS NOT DISTINCT FROM %s
                 LIMIT 1
             """, (
-                sid,
+                student_map[sid]["student_no"],
                 payload.test_date,
                 payload.maths_unit_names,
                 payload.physics_unit_names,
@@ -1030,15 +1198,9 @@ async def update_mock_test_group(
             ))
             existing = cursor.fetchone()
 
-            if not any([maths_marks, physics_marks, chemistry_marks, biology_marks]):
-                if existing:
-                    cursor.execute("DELETE FROM mock_test WHERE test_id = %s", (existing[0],))
-                    deleted_count += 1
-                continue
-
             numeric_marks = [safe_int(v) for v in [maths_marks, physics_marks, chemistry_marks, biology_marks]]
             valid_marks = [m for m in numeric_marks if m is not None]
-            total_marks = str(sum(valid_marks)) if valid_marks else ''
+            total_marks = str(sum(valid_marks)) if valid_marks else None
 
             if existing:
                 cursor.execute("""
@@ -1073,7 +1235,7 @@ async def update_mock_test_group(
                 student_meta = student_map[sid]
                 cursor.execute("""
                     INSERT INTO mock_test (
-                        student_id, grade, branch, test_date,
+                        student_no, grade, branch, test_date,
                         maths_marks, physics_marks, chemistry_marks, biology_marks,
                         maths_unit_names, physics_unit_names, chemistry_unit_names, biology_unit_names,
                         total_marks,
@@ -1082,7 +1244,7 @@ async def update_mock_test_group(
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
-                    sid,
+                    student_meta["student_no"],
                     student_meta["grade"] if student_meta["grade"] is not None else batch_grade,
                     student_meta["branch"],
                     payload.test_date,
@@ -1142,7 +1304,7 @@ async def delete_mock_test_group(
         cursor.execute("""
             DELETE FROM mock_test mt
             USING student s
-            WHERE mt.student_id = s.student_id
+                        WHERE mt.student_no = s.student_no
               AND s.batch_id = %s
               AND mt.test_date = %s
               AND COALESCE(mt.maths_unit_names, ARRAY[]::text[]) = %s
@@ -1195,7 +1357,13 @@ async def health_check(current_user: dict = Depends(get_current_user)):
 
 
 @app.get("/api/exam/template/daily-test/{batch_id}")
-async def get_daily_test_template(batch_id: int, total_marks: int = 100, current_user: dict = Depends(get_current_user)):
+async def get_daily_test_template(
+    batch_id: int,
+    total_marks: int = 100,
+    multi_template: bool = Query(False),
+    test_count: int = Query(1, ge=1, le=100),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Generate and download Excel template for daily test marks entry
     """
@@ -1238,7 +1406,29 @@ async def get_daily_test_template(batch_id: int, total_marks: int = 100, current
         )
         
         # Headers
-        headers = ['Admission Number', 'Student Name', f'Marks (out of {total_marks})']
+        if multi_template:
+            headers = [
+                'Test No',
+                'Admission Number',
+                'Student Name',
+                'Exam Date (YYYY-MM-DD)',
+                'Subject',
+                'Topic / Unit Name',
+                'Marks',
+                'Subject Total Marks',
+                'Test Total Marks'
+            ]
+        else:
+            headers = [
+                'Admission Number',
+                'Student Name',
+                'Exam Date (YYYY-MM-DD)',
+                'Subject',
+                'Topic / Unit Name',
+                'Marks',
+                'Subject Total Marks',
+                'Test Total Marks'
+            ]
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
             cell.fill = header_fill
@@ -1247,26 +1437,65 @@ async def get_daily_test_template(batch_id: int, total_marks: int = 100, current
             cell.border = border
         
         # Add student data
-        for row, (student_id, student_name) in enumerate(students, 2):
-            ws.cell(row=row, column=1, value=student_id).border = border
-            ws.cell(row=row, column=2, value=student_name).border = border
-            ws.cell(row=row, column=3, value="").border = border
+        if multi_template:
+            row = 2
+            for test_no in range(1, test_count + 1):
+                for student_id, student_name in students:
+                    ws.cell(row=row, column=1, value=test_no).border = border
+                    ws.cell(row=row, column=2, value=student_id).border = border
+                    ws.cell(row=row, column=3, value=student_name).border = border
+                    ws.cell(row=row, column=4, value="").border = border
+                    ws.cell(row=row, column=5, value="").border = border
+                    ws.cell(row=row, column=6, value="").border = border
+                    ws.cell(row=row, column=7, value="").border = border
+                    ws.cell(row=row, column=8, value=total_marks).border = border
+                    ws.cell(row=row, column=9, value=total_marks).border = border
+                    row += 1
+                if test_no < test_count:
+                    row += 1
+        else:
+            for row, (student_id, student_name) in enumerate(students, 2):
+                ws.cell(row=row, column=1, value=student_id).border = border
+                ws.cell(row=row, column=2, value=student_name).border = border
+                ws.cell(row=row, column=3, value="").border = border
+                ws.cell(row=row, column=4, value="").border = border
+                ws.cell(row=row, column=5, value="").border = border
+                ws.cell(row=row, column=6, value="").border = border
+                ws.cell(row=row, column=7, value=total_marks).border = border
+                ws.cell(row=row, column=8, value=total_marks).border = border
         
         # Adjust column widths
-        ws.column_dimensions['A'].width = 20
-        ws.column_dimensions['B'].width = 35
-        ws.column_dimensions['C'].width = 20
+        if multi_template:
+            ws.column_dimensions['A'].width = 12
+            ws.column_dimensions['B'].width = 20
+            ws.column_dimensions['C'].width = 35
+            ws.column_dimensions['D'].width = 20
+            ws.column_dimensions['E'].width = 20
+            ws.column_dimensions['F'].width = 28
+            ws.column_dimensions['G'].width = 16
+            ws.column_dimensions['H'].width = 20
+            ws.column_dimensions['I'].width = 18
+        else:
+            ws.column_dimensions['A'].width = 20
+            ws.column_dimensions['B'].width = 35
+            ws.column_dimensions['C'].width = 20
+            ws.column_dimensions['D'].width = 20
+            ws.column_dimensions['E'].width = 28
+            ws.column_dimensions['F'].width = 16
+            ws.column_dimensions['G'].width = 20
+            ws.column_dimensions['H'].width = 18
         
         # Add instructions in a separate sheet
         instructions_ws = wb.create_sheet("Instructions")
         instructions = [
             ["Daily Test Marks Template - Instructions"],
             [""],
-            ["1. Fill in the marks for each student in the 'Marks' column"],
-            ["2. Do not modify the Admission Number or Student Name columns"],
-            ["3. Ensure marks are within the specified range (0 to total marks)"],
-            ["4. Save the file and upload it back to the system"],
-            ["5. Empty marks will be skipped during upload"],
+            ["1. Fill 'Exam Date', 'Subject', and 'Topic / Unit Name' directly in the sheet."],
+            [f"2. This file was generated for {test_count} test set(s). Use 'Test No' to separate tests." if multi_template else "2. You can enter multiple daily tests in one file by varying date/subject/topic rows."],
+            ["3. Do not modify the Admission Number or Student Name columns."],
+            ["4. Fill Marks only for students who attended; empty marks are skipped."],
+            ["5. Subject/Test totals are optional; defaults are used if left empty."],
+            ["6. Save the file and upload it back to the system."],
             [""],
             ["Note: This template is specifically generated for your batch."]
         ]
@@ -1288,7 +1517,7 @@ async def get_daily_test_template(batch_id: int, total_marks: int = 100, current
             excel_file,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={
-                "Content-Disposition": f"attachment; filename=daily_test_template_batch_{batch_id}.xlsx"
+                "Content-Disposition": f"attachment; filename={'daily_test_multi_template' if multi_template else 'daily_test_template'}_batch_{batch_id}.xlsx"
             }
         )
         
@@ -1307,7 +1536,12 @@ async def get_daily_test_template(batch_id: int, total_marks: int = 100, current
 
 
 @app.get("/api/exam/template/mock-test/{batch_id}")
-async def get_mock_test_template(batch_id: int, current_user: dict = Depends(get_current_user)):
+async def get_mock_test_template(
+    batch_id: int,
+    multi_template: bool = Query(False),
+    test_count: int = Query(1, ge=1, le=100),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Generate and download Excel template for mock test marks entry
     """
@@ -1362,7 +1596,18 @@ async def get_mock_test_template(batch_id: int, current_user: dict = Depends(get
         )
         
         # Headers
-        headers = ['Admission Number', 'Student Name'] + [subject_headers[s] for s in active_subjects]
+        if multi_template:
+            headers = ['Test No', 'Admission Number', 'Student Name', 'Exam Date (YYYY-MM-DD)']
+            for subject_key in active_subjects:
+                subject_name = subject_headers[subject_key].replace(' Marks', '')
+                headers.extend([
+                    f'{subject_name} Unit Names',
+                    f'{subject_name} Total Marks',
+                    f'{subject_name} Marks'
+                ])
+            headers.append('Test Total Marks')
+        else:
+            headers = ['Admission Number', 'Student Name', 'Exam Date (YYYY-MM-DD)'] + [subject_headers[s] for s in active_subjects]
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
             cell.fill = header_fill
@@ -1371,29 +1616,59 @@ async def get_mock_test_template(batch_id: int, current_user: dict = Depends(get
             cell.border = border
         
         # Add student data
-        for row, (student_id, student_name) in enumerate(students, 2):
-            ws.cell(row=row, column=1, value=student_id).border = border
-            ws.cell(row=row, column=2, value=student_name).border = border
-            for index, _ in enumerate(active_subjects, 3):
-                ws.cell(row=row, column=index, value="").border = border
+        if multi_template:
+            row = 2
+            for test_no in range(1, test_count + 1):
+                for student_id, student_name in students:
+                    ws.cell(row=row, column=1, value=test_no).border = border
+                    ws.cell(row=row, column=2, value=student_id).border = border
+                    ws.cell(row=row, column=3, value=student_name).border = border
+                    ws.cell(row=row, column=4, value="").border = border
+                    col = 5
+                    for _ in active_subjects:
+                        ws.cell(row=row, column=col, value="").border = border
+                        ws.cell(row=row, column=col + 1, value="").border = border
+                        ws.cell(row=row, column=col + 2, value="").border = border
+                        col += 3
+                    ws.cell(row=row, column=col, value="").border = border
+                    row += 1
+                if test_no < test_count:
+                    row += 1
+        else:
+            for row, (student_id, student_name) in enumerate(students, 2):
+                ws.cell(row=row, column=1, value=student_id).border = border
+                ws.cell(row=row, column=2, value=student_name).border = border
+                ws.cell(row=row, column=3, value="").border = border
+                for index, _ in enumerate(active_subjects, 4):
+                    ws.cell(row=row, column=index, value="").border = border
         
         # Adjust column widths
-        ws.column_dimensions['A'].width = 20
-        ws.column_dimensions['B'].width = 35
-        for index in range(3, len(headers) + 1):
-            ws.column_dimensions[openpyxl.utils.get_column_letter(index)].width = 18
+        if multi_template:
+            ws.column_dimensions['A'].width = 12
+            ws.column_dimensions['B'].width = 20
+            ws.column_dimensions['C'].width = 35
+            ws.column_dimensions['D'].width = 20
+            for index in range(5, len(headers) + 1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(index)].width = 20
+        else:
+            ws.column_dimensions['A'].width = 20
+            ws.column_dimensions['B'].width = 35
+            ws.column_dimensions['C'].width = 20
+            for index in range(4, len(headers) + 1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(index)].width = 18
         
         # Add instructions in a separate sheet
         instructions_ws = wb.create_sheet("Instructions")
         instructions = [
             ["Mock Test Marks Template - Instructions"],
             [""],
-            [f"1. Fill in the marks only for configured batch subjects: {', '.join([s.title() for s in active_subjects])}"],
-            ["2. Do not modify the Admission Number or Student Name columns"],
-            ["3. Leave unsupported subject columns absent; they are not part of this template"],
-            ["4. Subject marks can be left empty if not available"],
-            ["5. Save the file and upload it back to the system"],
-            ["6. Empty marks are skipped during upload"],
+            ["1. Fill Exam Date directly in the sheet."],
+            [f"2. This file was generated for {test_count} test set(s). Use 'Test No' to separate tests." if multi_template else f"2. Fill marks only for configured batch subjects: {', '.join([s.title() for s in active_subjects])}"],
+            ["3. You can enter multiple mock tests in one file by using different dates."],
+            ["4. Do not modify the Admission Number or Student Name columns."],
+            ["5. Subject marks can be left empty if not available."],
+            ["6. For multi template, fill unit names and subject totals in sheet columns." if multi_template else "6. Save the file and upload it back to the system."],
+            ["7. Empty marks are skipped during upload."],
             [""],
             ["Note: This template is specifically generated for your batch."]
         ]
@@ -1415,7 +1690,7 @@ async def get_mock_test_template(batch_id: int, current_user: dict = Depends(get
             excel_file,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={
-                "Content-Disposition": f"attachment; filename=mock_test_template_batch_{batch_id}.xlsx"
+                "Content-Disposition": f"attachment; filename={'mock_test_multi_template' if multi_template else 'mock_test_template'}_batch_{batch_id}.xlsx"
             }
         )
         
@@ -1433,8 +1708,8 @@ async def get_mock_test_template(batch_id: int, current_user: dict = Depends(get
             conn.close()
 
 
-@app.get("/api/exam/daily-test/student/{student_id}")
-async def get_student_daily_tests(student_id: str, current_user: dict = Depends(get_current_user)):
+@app.get("/api/exam/daily-test/student/{student_no}")
+async def get_student_daily_tests(student_no: int, current_user: dict = Depends(get_current_user)):
     """
     Get all daily test marks for a specific student
     """
@@ -1459,9 +1734,9 @@ async def get_student_daily_tests(student_id: str, current_user: dict = Depends(
                 test_total_marks,
                 created_at
             FROM daily_test
-            WHERE student_id = %s
+            WHERE student_no = %s
             ORDER BY test_date DESC, subject, unit_name
-        """, (student_id,))
+        """, (student_no,))
         
         tests = cursor.fetchall()
         
@@ -1482,7 +1757,7 @@ async def get_student_daily_tests(student_id: str, current_user: dict = Depends(
             })
         
         return {
-            "student_id": student_id,
+            "student_no": student_no,
             "daily_tests": daily_tests,
             "total_tests": len(daily_tests)
         }
@@ -1499,8 +1774,8 @@ async def get_student_daily_tests(student_id: str, current_user: dict = Depends(
             conn.close()
 
 
-@app.get("/api/exam/mock-test/student/{student_id}")
-async def get_student_mock_tests(student_id: str, current_user: dict = Depends(get_current_user)):
+@app.get("/api/exam/mock-test/student/{student_no}")
+async def get_student_mock_tests(student_no: int, current_user: dict = Depends(get_current_user)):
     """
     Get all mock test marks for a specific student
     """
@@ -1534,9 +1809,9 @@ async def get_student_mock_tests(student_id: str, current_user: dict = Depends(g
                 test_total_marks,
                 created_at
             FROM mock_test
-            WHERE student_id = %s
+            WHERE student_no = %s
             ORDER BY test_date DESC
-        """, (student_id,))
+        """, (student_no,))
         
         tests = cursor.fetchall()
         
@@ -1566,7 +1841,7 @@ async def get_student_mock_tests(student_id: str, current_user: dict = Depends(g
             })
         
         return {
-            "student_id": student_id,
+            "student_no": student_no,
             "mock_tests": mock_tests,
             "total_tests": len(mock_tests)
         }
@@ -1619,6 +1894,7 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
         # 2. Fetch all students in the batch with basic details
         cursor.execute("""
             SELECT
+                s.student_no,
                 s.student_id,
                 s.student_name,
                 s.gender,
@@ -1636,63 +1912,63 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
         """, (batch_id,))
         student_rows = cursor.fetchall()
 
-        student_ids = [r[0] for r in student_rows]
+        student_nos = [r[0] for r in student_rows]
 
         # 3. Per-student daily test counts
         daily_counts = {}
-        if student_ids:
+        if student_nos:
             cursor.execute("""
-                SELECT student_id, COUNT(*) as cnt
+                SELECT student_no, COUNT(*) as cnt
                 FROM daily_test
-                WHERE student_id = ANY(%s)
-                GROUP BY student_id
-            """, (student_ids,))
+                WHERE student_no = ANY(%s)
+                GROUP BY student_no
+            """, (student_nos,))
             for row in cursor.fetchall():
                 daily_counts[row[0]] = row[1]
 
         # 4. Per-student mock test counts
         mock_counts = {}
-        if student_ids:
+        if student_nos:
             cursor.execute("""
-                SELECT student_id, COUNT(*) as cnt
+                SELECT student_no, COUNT(*) as cnt
                 FROM mock_test
-                WHERE student_id = ANY(%s)
-                GROUP BY student_id
-            """, (student_ids,))
+                WHERE student_no = ANY(%s)
+                GROUP BY student_no
+            """, (student_nos,))
             for row in cursor.fetchall():
                 mock_counts[row[0]] = row[1]
 
         # 5. Total distinct daily tests conducted for this batch
         total_daily_tests = 0
-        if student_ids:
+        if student_nos:
             cursor.execute("""
                 SELECT COUNT(DISTINCT (test_date, subject, unit_name))
                 FROM daily_test
-                WHERE student_id = ANY(%s)
-            """, (student_ids,))
+                WHERE student_no = ANY(%s)
+            """, (student_nos,))
             total_daily_tests = cursor.fetchone()[0] or 0
 
         # 6. Total distinct mock tests conducted for this batch
         total_mock_tests = 0
-        if student_ids:
+        if student_nos:
             cursor.execute("""
                 SELECT COUNT(DISTINCT test_date)
                 FROM mock_test
-                WHERE student_id = ANY(%s)
-            """, (student_ids,))
+                WHERE student_no = ANY(%s)
+            """, (student_nos,))
             total_mock_tests = cursor.fetchone()[0] or 0
 
         # 7. Fetch all daily test records for batch students
         daily_tests = []
-        if student_ids:
+        if student_nos:
             cursor.execute("""
-                SELECT dt.student_id, s.student_name, dt.test_date,
+                SELECT s.student_id, s.student_name, dt.test_date,
                       dt.subject, dt.unit_name, dt.total_marks, dt.subject_total_marks, dt.test_total_marks
                 FROM daily_test dt
-                JOIN student s ON s.student_id = dt.student_id
-                WHERE dt.student_id = ANY(%s)
+                JOIN student s ON s.student_no = dt.student_no
+                WHERE dt.student_no = ANY(%s)
                 ORDER BY dt.test_date, s.student_name
-            """, (student_ids,))
+            """, (student_nos,))
             for r in cursor.fetchall():
                 daily_tests.append({
                     "student_id": r[0],
@@ -1707,18 +1983,18 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
 
         # 8. Fetch all mock test records for batch students
         mock_tests = []
-        if student_ids:
+        if student_nos:
             cursor.execute("""
-                SELECT mt.student_id, s.student_name, mt.test_date,
+                SELECT s.student_id, s.student_name, mt.test_date,
                        mt.maths_marks, mt.physics_marks,
                       mt.chemistry_marks, mt.biology_marks, mt.total_marks,
                       mt.maths_total_marks, mt.physics_total_marks,
                       mt.chemistry_total_marks, mt.biology_total_marks, mt.test_total_marks
                 FROM mock_test mt
-                JOIN student s ON s.student_id = mt.student_id
-                WHERE mt.student_id = ANY(%s)
+                JOIN student s ON s.student_no = mt.student_no
+                WHERE mt.student_no = ANY(%s)
                 ORDER BY mt.test_date, s.student_name
-            """, (student_ids,))
+            """, (student_nos,))
             for r in cursor.fetchall():
                 mock_tests.append({
                     "student_id": r[0],
@@ -1739,21 +2015,23 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
         # Build student list
         students = []
         for row in student_rows:
-            sid = row[0]
+            sno = row[0]
+            sid = row[1]
             students.append({
                 "student_id": sid,
-                "student_name": row[1],
-                "gender": row[2],
-                "dob": row[3].isoformat() if row[3] else None,
-                "community": row[4],
-                "grade": row[5],
-                "enrollment_year": row[6],
-                "course": row[7],
-                "branch": row[8],
-                "student_mobile": row[9],
-                "email": row[10],
-                "daily_test_count": daily_counts.get(sid, 0),
-                "mock_test_count": mock_counts.get(sid, 0),
+                "student_no": sno,
+                "student_name": row[2],
+                "gender": row[3],
+                "dob": row[4].isoformat() if row[4] else None,
+                "community": row[5],
+                "grade": row[6],
+                "enrollment_year": row[7],
+                "course": row[8],
+                "branch": row[9],
+                "student_mobile": row[10],
+                "email": row[11],
+                "daily_test_count": daily_counts.get(sno, 0),
+                "mock_test_count": mock_counts.get(sno, 0),
             })
 
         return {
