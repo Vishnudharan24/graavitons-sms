@@ -2023,7 +2023,7 @@ const StudentProfile = ({ student, batchStats, onBack }) => {
               <Legend {...pdfLegendProps} />
               <Line type="monotone" dataKey="student" stroke="#2563eb" strokeWidth={2.8} dot={renderPdfDotWithValue('#2563eb', 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
               <Line type="monotone" dataKey="high" stroke="#64748b" strokeWidth={2.2} dot={renderPdfDotWithValue('#64748b', 0, ['high', 'student', 'average', 'low'])} name="High" connectNulls />
-              <Line type="monotone" dataKey="average" stroke="#eab308" strokeWidth={2.2} dot={renderPdfDotWithValue('#eab308', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
+              <Line type="monotone" dataKey="average" stroke="#f1ed08" strokeWidth={2.2} dot={renderPdfDotWithValue('#eab308', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
               <Line type="monotone" dataKey="low" stroke="#ef4444" strokeWidth={2.2} dot={renderPdfDotWithValue('#ef4444', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
             </LineChart>
           </div>
