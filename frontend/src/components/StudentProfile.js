@@ -314,6 +314,8 @@ const StudentProfile = ({
     }
   };
 
+  const reportProgram = analysisData?.student?.batch_type || displayData.course;
+
   // Apply date filters to tests
   const filteredDailyTests = dailyTests.filter(test => {
     if (!test.test_date) return true;
@@ -962,7 +964,7 @@ const StudentProfile = ({
       ['Grade', displayData.grade],
       ['Community', displayData.community],
       ['Academic Year', displayData.academicYear],
-      ['Course', displayData.course],
+      ['Program', reportProgram],
       ['Branch', displayData.branch],
       ['Student Mobile', displayData.studentMobile],
       ['Aadhar Number', displayData.aadharNumber],
@@ -2028,7 +2030,7 @@ const StudentProfile = ({
             </div>
             <div>
               <p><strong>Grade:</strong> {displayData.grade}</p>
-              <p><strong>Program:</strong> {displayData.course}</p>
+              <p><strong>Program:</strong> {reportProgram}</p>
               <p><strong>Series:</strong> {analysisData?.student?.batch_name || 'N/A'}</p>
             </div>
           </div>

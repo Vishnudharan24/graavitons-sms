@@ -977,7 +977,7 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
             SELECT
                 s.student_no, s.student_id, s.student_name, s.course, s.branch, s.grade,
                 s.photo_url, s.gender, s.email, s.student_mobile,
-                b.batch_name, b.batch_id, b.subjects
+                b.batch_name, b.batch_id, b.type, b.subjects
             FROM student s
             JOIN batch b ON s.batch_id = b.batch_id
             WHERE s.student_no = %s
@@ -1003,7 +1003,8 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
             "student_mobile": student_row[9],
             "batch_name": student_row[10],
             "batch_id": student_row[11],
-            "batch_subjects": student_row[12] if student_row[12] else []
+            "batch_type": student_row[12],
+            "batch_subjects": student_row[13] if student_row[13] else []
         }
 
         batch_id = student_row[11]
