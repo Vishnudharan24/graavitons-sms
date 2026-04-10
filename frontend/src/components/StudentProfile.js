@@ -743,6 +743,7 @@ const StudentProfile = ({
 
   const exportStudentPdfReport = async (options = {}) => {
     const { download = true, silent = false, returnBlob = false } = options;
+    const isBulkCaptureMode = autoGeneratePdf && returnBlob && !download;
 
     if (exportingPdf) {
       return null;
@@ -763,7 +764,7 @@ const StudentProfile = ({
       for (let i = 0; i < pages.length; i += 1) {
         const page = pages[i];
         const canvas = await html2canvas(page, {
-          scale: 2,
+          scale: isBulkCaptureMode ? 1.35 : 2,
           useCORS: true,
           backgroundColor: '#ffffff',
           logging: false
@@ -780,7 +781,18 @@ const StudentProfile = ({
         const y = (pageHeight - renderHeight) / 2;
 
         if (i > 0) pdf.addPage();
-        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, renderWidth, renderHeight, undefined, 'FAST');
+        if (isBulkCaptureMode) {
+          pdf.addImage(canvas.toDataURL('image/jpeg', 0.82), 'JPEG', x, y, renderWidth, renderHeight, undefined, 'FAST');
+        } else {
+          pdf.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, renderWidth, renderHeight, undefined, 'FAST');
+        }
+
+        // Release canvas memory between pages in bulk mode.
+        if (isBulkCaptureMode) {
+          canvas.width = 1;
+          canvas.height = 1;
+          await new Promise((resolve) => setTimeout(resolve, 30));
+        }
       }
 
       const fileName = `${displayData.name.replace(/\s+/g, '_')}_${displayData.rollNo}_Progress_Report.pdf`;

@@ -353,7 +353,11 @@ const BatchDetail = ({ batch, onBack }) => {
         bulkZipRef.current.file('bulk_export_errors.txt', bulkErrorsRef.current.join('\n'));
       }
 
-      const zipBlob = await bulkZipRef.current.generateAsync({ type: 'blob' });
+      const zipBlob = await bulkZipRef.current.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 },
+      });
       const batchName = (batch.batch_name || batch.name || 'Batch').replace(/\s+/g, '_');
       const datePart = new Date().toISOString().slice(0, 10);
       downloadBlobFile(zipBlob, `${batchName}_Progress_Reports_${datePart}.zip`);
@@ -389,7 +393,7 @@ const BatchDetail = ({ batch, onBack }) => {
       const currentStudent = bulkStudentsRef.current[bulkIndexRef.current];
       bulkErrorsRef.current.push(`${currentStudent?.rollNo || 'Unknown'} - Timed out while generating PDF`);
       moveToNextBulkStudent();
-    }, 120000);
+    }, 240000);
   };
 
   const moveToNextBulkStudent = async () => {
@@ -403,6 +407,9 @@ const BatchDetail = ({ batch, onBack }) => {
     setBulkPdfProgress({ current: nextIndex + 1, total: bulkStudentsRef.current.length });
     setBulkPdfCurrent(bulkStudentsRef.current[nextIndex]);
     startBulkStudentTimeout();
+
+    // Brief pause helps browser GC between PDF captures in large batches.
+    await new Promise((resolve) => setTimeout(resolve, 40));
   };
 
   const handleBulkPdfReady = async ({ blob, fileName }) => {
