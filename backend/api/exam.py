@@ -1379,7 +1379,7 @@ async def get_daily_test_template(
             SELECT student_id, student_name 
             FROM student 
             WHERE batch_id = %s 
-            ORDER BY student_name
+            ORDER BY student_id ASC, student_name ASC
         """, (batch_id,))
         
         students = cursor.fetchall()
@@ -1539,7 +1539,7 @@ async def get_mock_test_template(
             SELECT student_id, student_name 
             FROM student 
             WHERE batch_id = %s 
-            ORDER BY student_name
+            ORDER BY student_id ASC, student_name ASC
         """, (batch_id,))
         
         students = cursor.fetchall()
@@ -1589,7 +1589,7 @@ async def get_mock_test_template(
                 ])
             headers.append('Test Total Marks')
         else:
-            headers = ['Admission Number', 'Student Name', 'Exam Date (YYYY-MM-DD)'] + [subject_headers[s] for s in active_subjects]
+            headers = ['Student Name', 'Marks']
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
             cell.fill = header_fill
@@ -1617,12 +1617,9 @@ async def get_mock_test_template(
                 if test_no < test_count:
                     row += 1
         else:
-            for row, (student_id, student_name) in enumerate(students, 2):
-                ws.cell(row=row, column=1, value=student_id).border = border
-                ws.cell(row=row, column=2, value=student_name).border = border
-                ws.cell(row=row, column=3, value="").border = border
-                for index, _ in enumerate(active_subjects, 4):
-                    ws.cell(row=row, column=index, value="").border = border
+            for row, (_, student_name) in enumerate(students, 2):
+                ws.cell(row=row, column=1, value=student_name).border = border
+                ws.cell(row=row, column=2, value="").border = border
         
         # Adjust column widths
         if multi_template:
@@ -1633,24 +1630,21 @@ async def get_mock_test_template(
             for index in range(5, len(headers) + 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(index)].width = 20
         else:
-            ws.column_dimensions['A'].width = 20
-            ws.column_dimensions['B'].width = 35
-            ws.column_dimensions['C'].width = 20
-            for index in range(4, len(headers) + 1):
-                ws.column_dimensions[openpyxl.utils.get_column_letter(index)].width = 18
+            ws.column_dimensions['A'].width = 35
+            ws.column_dimensions['B'].width = 16
         
         # Add instructions in a separate sheet
         instructions_ws = wb.create_sheet("Instructions")
         instructions = [
             ["Mock Test Marks Template - Instructions"],
             [""],
-            ["1. Fill Exam Date directly in the sheet."],
-            [f"2. This file was generated for {test_count} test set(s). Use 'Test No' to separate tests." if multi_template else f"2. Fill marks only for configured batch subjects: {', '.join([s.title() for s in active_subjects])}"],
-            ["3. You can enter multiple mock tests in one file by using different dates."],
-            ["4. Do not modify the Admission Number or Student Name columns."],
-            ["5. Subject marks can be left empty if not available."],
-            ["6. For multi template, fill unit names and subject totals in sheet columns." if multi_template else "6. Save the file and upload it back to the system."],
-            ["7. Empty marks are skipped during upload."],
+            ["1. Fill Exam Date directly in the sheet." if multi_template else "1. Fill only the Marks column."],
+            [f"2. This file was generated for {test_count} test set(s). Use 'Test No' to separate tests." if multi_template else "2. Do not modify the Student Name column."],
+            ["3. You can enter multiple mock tests in one file by using different dates." if multi_template else "3. Leave marks empty for students who were absent; empty marks are skipped."],
+            ["4. Do not modify the Admission Number or Student Name columns." if multi_template else "4. Save the file and upload it back to the system."],
+            ["5. Subject marks can be left empty if not available." if multi_template else ""],
+            ["6. For multi template, fill unit names and subject totals in sheet columns." if multi_template else ""],
+            ["7. Empty marks are skipped during upload." if multi_template else ""],
             [""],
             ["Note: This template is specifically generated for your batch."]
         ]

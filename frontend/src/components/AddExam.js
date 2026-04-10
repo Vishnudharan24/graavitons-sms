@@ -540,6 +540,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
             } else if (examData.examType === 'mock test') {
                 const dateIndex = findIndex('exam date (yyyy-mm-dd)', 'exam date', 'date');
                 const testTotalIndex = findIndex('test total marks', 'test total');
+              const simpleMarksIndex = findIndex('marks', 'score');
                 const subjectIndexes = activeMockSubjects.reduce((acc, subject) => {
                   const headerAliasesBySubject = {
                     maths: ['maths', 'mathematics', 'math'],
@@ -563,6 +564,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                 }, {});
 
                 const hasDateColumn = dateIndex >= 0;
+                const hasSubjectColumns = activeMockSubjects.some(subject => subjectIndexes[subject.key] >= 0);
 
                 if (hasDateColumn) {
                   const groupMap = new Map();
@@ -674,9 +676,28 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     });
                     if (row) {
                       const updatedStudent = { ...student };
-                      activeMockSubjects.forEach((subject, index) => {
-                        updatedStudent[subject.marksField] = row[2 + index]?.toString().trim() || '';
-                      });
+
+                      if (hasSubjectColumns) {
+                        activeMockSubjects.forEach((subject, index) => {
+                          const idx = subjectIndexes[subject.key];
+                          if (idx >= 0) {
+                            updatedStudent[subject.marksField] = String(row?.[idx] ?? '').trim();
+                          } else {
+                            updatedStudent[subject.marksField] = row[2 + index]?.toString().trim() || '';
+                          }
+                        });
+                      } else if (simpleMarksIndex >= 0 && activeMockSubjects.length > 0) {
+                        const firstField = activeMockSubjects[0].marksField;
+                        updatedStudent[firstField] = String(row?.[simpleMarksIndex] ?? '').trim();
+                        activeMockSubjects.slice(1).forEach((subject) => {
+                          updatedStudent[subject.marksField] = '';
+                        });
+                      } else {
+                        activeMockSubjects.forEach((subject, index) => {
+                          updatedStudent[subject.marksField] = row[2 + index]?.toString().trim() || '';
+                        });
+                      }
+
                       return updatedStudent;
                     }
                     return student;
