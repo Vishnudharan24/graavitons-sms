@@ -69,6 +69,11 @@ const BatchDetail = ({ batch, onBack }) => {
         student_mobile: student.student_mobile,
         email: student.email
       }));
+
+      transformedStudents.sort((a, b) => String(a.rollNo || '').localeCompare(String(b.rollNo || ''), undefined, { numeric: true, sensitivity: 'base' }));
+      transformedStudents.forEach((student, idx) => {
+        student.id = idx + 1;
+      });
       
       setStudents(transformedStudents);
     } catch (err) {

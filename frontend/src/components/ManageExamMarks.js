@@ -10,6 +10,10 @@ const subjectLabel = {
   biology: 'Biology'
 };
 
+const sortByStudentId = (rows) => [...(rows || [])].sort((a, b) => (
+  String(a?.student_id || '').localeCompare(String(b?.student_id || ''), undefined, { numeric: true, sensitivity: 'base' })
+));
+
 const ManageExamMarks = ({ batchId }) => {
   const [examType, setExamType] = useState('daily test');
   const [groups, setGroups] = useState([]);
@@ -116,7 +120,7 @@ const ManageExamMarks = ({ batchId }) => {
       }
 
       const data = await response.json();
-      setRecords(data.records || []);
+      setRecords(sortByStudentId(data.records || []));
     } catch (error) {
       alert(error.message || 'Failed to load selected exam marks');
     } finally {

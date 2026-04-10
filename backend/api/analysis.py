@@ -352,7 +352,7 @@ async def get_subjectwise_analysis(
             query += " AND dt.test_date <= %s"
             params.append(to_date)
 
-        query += " ORDER BY s.student_name, dt.subject, dt.test_date"
+        query += " ORDER BY s.student_id ASC, s.student_name ASC, dt.subject, dt.test_date"
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
@@ -402,7 +402,7 @@ async def get_subjectwise_analysis(
             mock_query += " AND mt.test_date <= %s"
             mock_params.append(to_date)
 
-        mock_query += " ORDER BY s.student_name, mt.test_date"
+        mock_query += " ORDER BY s.student_id ASC, s.student_name ASC, mt.test_date"
         cursor.execute(mock_query, mock_params)
         mock_rows = cursor.fetchall()
 
@@ -798,7 +798,7 @@ async def get_branchwise_analysis(
             student_params.append(to_date)
 
         student_query += " GROUP BY s.student_id, s.student_name, s.branch, s.grade, b.batch_name, dt.subject"
-        student_query += " ORDER BY s.branch, s.student_name"
+        student_query += " ORDER BY s.branch, s.student_id ASC, s.student_name ASC"
 
         cursor.execute(student_query, student_params)
         student_rows = cursor.fetchall()
@@ -894,7 +894,7 @@ async def get_students_for_analysis(
             query += " AND s.branch = %s"
             params.append(branch)
 
-        query += " ORDER BY s.student_name"
+        query += " ORDER BY s.student_id ASC, s.student_name ASC"
 
         cursor.execute(query, params)
         rows = cursor.fetchall()

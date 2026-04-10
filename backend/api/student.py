@@ -658,7 +658,7 @@ async def get_students_by_batch(batch_id: int, current_user: dict = Depends(get_
                 s.created_at
             FROM student s
             WHERE s.batch_id = %s
-            ORDER BY s.student_name
+            ORDER BY s.student_id ASC, s.student_name ASC
         """
         
         cursor.execute(query, (batch_id,))
@@ -1199,7 +1199,7 @@ async def download_edit_template(batch_id: int, current_user: dict = Depends(get
         cursor.execute("""
             SELECT s.student_no, s.student_id
             FROM student s
-            WHERE s.batch_id = %s ORDER BY s.student_name
+            WHERE s.batch_id = %s ORDER BY s.student_id ASC, s.student_name ASC
         """, (batch_id,))
         student_rows = cursor.fetchall()
 
