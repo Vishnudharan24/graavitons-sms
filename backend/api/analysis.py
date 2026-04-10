@@ -986,7 +986,7 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
                     report_subject_keys.append(key)
                 if len(report_subject_keys) >= 3:
                     break
-        report_subject_keys = report_subject_keys[:3]
+        report_subject_keys = report_subject_keys[:4]
 
         # 2. Get daily test performance
         cursor.execute("""
@@ -1157,7 +1157,7 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
                 "class_low_biology": row[15] if row[15] is not None else None,
             }
 
-        # Class band for report chart: sum of selected three subject marks per student per test date
+        # Class band for report chart: sum of selected report-subject marks per student per test date
         cursor.execute("""
             WITH student_mock_dates AS (
                 SELECT DISTINCT mt.test_date

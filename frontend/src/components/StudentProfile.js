@@ -116,6 +116,7 @@ const StudentProfile = ({
   const fetchStudentData = async () => {
     setLoading(true);
     setError('');
+    const isBulkAutoMode = autoGeneratePdf && !!onBulkPdfReady;
     
     try {
       const response = await authFetch(`${API_BASE}/api/student/${studentNo}`);
@@ -127,14 +128,21 @@ const StudentProfile = ({
       const data = await response.json();
       setStudentData(data);
 
-      // Fetch analysis + metrics + per-test insights in parallel for faster page load
-      setMetricsLoading(true);
+      // Fetch analysis + per-test insights for report content.
+      // In bulk PDF auto mode, skip only metrics to reduce load.
+      setMetricsLoading(!isBulkAutoMode);
       setInsightsLoading(true);
-      const [analysisReq, metricsReq, insightsReq] = await Promise.allSettled([
+      const requestList = [
         authFetch(`${API_BASE}/api/analysis/individual/${studentNo}`),
-        authFetch(`${API_BASE}/api/analysis/student-metrics/${studentNo}`),
         authFetch(`${API_BASE}/api/analysis/student-test-insights/${studentNo}?test_type=both&limit=6`)
-      ]);
+      ];
+      if (!isBulkAutoMode) {
+        requestList.push(authFetch(`${API_BASE}/api/analysis/student-metrics/${studentNo}`));
+      }
+      const settledRequests = await Promise.allSettled(requestList);
+      const analysisReq = settledRequests[0];
+      const insightsReq = settledRequests[1];
+      const metricsReq = isBulkAutoMode ? null : settledRequests[2];
 
       // Analysis bundle
       try {
@@ -158,24 +166,9 @@ const StudentProfile = ({
         await fetchFeedback();
       }
 
-      // Metrics
+      // Per-test insights (required for remediation section)
       try {
-        if (metricsReq.status === 'fulfilled' && metricsReq.value.ok) {
-          const metricsResult = await metricsReq.value.json();
-          setStudentMetrics(metricsResult);
-        } else {
-          setStudentMetrics(null);
-        }
-      } catch (err) {
-        console.error('Error fetching student metrics:', err);
-        setStudentMetrics(null);
-      } finally {
-        setMetricsLoading(false);
-      }
-
-      // Per-test insights
-      try {
-        if (insightsReq.status === 'fulfilled' && insightsReq.value.ok) {
+        if (insightsReq && insightsReq.status === 'fulfilled' && insightsReq.value.ok) {
           const insightsResult = await insightsReq.value.json();
           setStudentTestInsights(insightsResult.insights || { daily: [], mock: [], combined_latest: [] });
         } else {
@@ -186,6 +179,27 @@ const StudentProfile = ({
         setStudentTestInsights({ daily: [], mock: [], combined_latest: [] });
       } finally {
         setInsightsLoading(false);
+      }
+
+      // Metrics (skip in bulk auto mode)
+      if (!isBulkAutoMode) {
+        try {
+          if (metricsReq && metricsReq.status === 'fulfilled' && metricsReq.value.ok) {
+            const metricsResult = await metricsReq.value.json();
+            setStudentMetrics(metricsResult);
+          } else {
+            setStudentMetrics(null);
+          }
+        } catch (err) {
+          console.error('Error fetching student metrics:', err);
+          setStudentMetrics(null);
+        } finally {
+          setMetricsLoading(false);
+        }
+
+      } else {
+        setStudentMetrics(null);
+        setMetricsLoading(false);
       }
       
     } catch (err) {
@@ -460,14 +474,15 @@ const StudentProfile = ({
 
     const uniqueFromBatch = [...new Set(normalizedFromBatch)]
       .sort((a, b) => subjectDisplayPriority.indexOf(a) - subjectDisplayPriority.indexOf(b));
-    if (uniqueFromBatch.length >= 3) return uniqueFromBatch.slice(0, 3);
+    const maxSubjectCount = uniqueFromBatch.length >= 4 ? 4 : 3;
+    if (uniqueFromBatch.length >= 3) return uniqueFromBatch.slice(0, maxSubjectCount);
 
     const presentInMock = subjectDisplayPriority.filter((key) =>
       reportTests.some((test) => parseNumericMark(test[`${key}_marks`]) !== null)
     );
 
     const merged = [...new Set([...uniqueFromBatch, ...presentInMock, ...subjectDisplayPriority])];
-    return merged.slice(0, 3);
+    return merged.slice(0, maxSubjectCount);
   }, [analysisData, reportTests]);
 
   const buildReportPointLabel = (test, index) => {
@@ -728,13 +743,8 @@ const StudentProfile = ({
 
   const exportStudentPdfReport = async (options = {}) => {
     const { download = true, silent = false, returnBlob = false } = options;
-    const hasMockData = reportTests.length > 0;
-    const hasDailyData = dailySubjectComparisonReportData.length > 0;
 
-    if (exportingPdf || (!hasMockData && !hasDailyData)) {
-      if (!silent && !hasMockData && !hasDailyData) {
-        alert('No mock/daily test data available to generate PDF report.');
-      }
+    if (exportingPdf) {
       return null;
     }
 
@@ -743,6 +753,10 @@ const StudentProfile = ({
 
     try {
       setExportingPdf(true);
+
+      // Allow chart layers to finish rendering before capture.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
       const pages = Array.from(root.querySelectorAll('.student-pdf-page'));
 
@@ -794,6 +808,12 @@ const StudentProfile = ({
 
   useEffect(() => {
     if (!autoGeneratePdf || autoPdfTriggeredRef.current || loading || exportingPdf) return;
+
+    if (error) {
+      autoPdfTriggeredRef.current = true;
+      if (onBulkPdfError) onBulkPdfError(error);
+      return;
+    }
 
     autoPdfTriggeredRef.current = true;
 
@@ -2042,6 +2062,7 @@ const StudentProfile = ({
                   key={subjectKey}
                   type="monotone"
                   dataKey={subjectKey}
+                  isAnimationActive={false}
                   stroke={reportSubjectMeta[subjectKey]?.color || '#64748b'}
                   strokeWidth={2.2}
                   activeDot={{ r: 4, fill: '#111827', stroke: '#111827', strokeWidth: 1 }}
@@ -2062,10 +2083,10 @@ const StudentProfile = ({
               <YAxis {...pdfYAxisProps} />
               <Tooltip />
               <Legend {...pdfLegendProps} />
-              <Line type="monotone" dataKey="student" stroke="#2563eb" strokeWidth={2.8} dot={renderPdfDotWithValue('#2563eb', 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
-              <Line type="monotone" dataKey="high" stroke="#22c55e" strokeWidth={2.2} dot={renderPdfDotWithValue('#22c55e', 0, ['high', 'student', 'average', 'low'])} name="High" connectNulls />
-              <Line type="monotone" dataKey="average" stroke="#f1ed08" strokeWidth={2.2} dot={renderPdfDotWithValue('#f1ed08', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
-              <Line type="monotone" dataKey="low" stroke="#ef4444" strokeWidth={2.2} dot={renderPdfDotWithValue('#ef4444', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
+              <Line type="monotone" dataKey="student" isAnimationActive={false} stroke="#2563eb" strokeWidth={2.8} dot={renderPdfDotWithValue('#2563eb', 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
+              <Line type="monotone" dataKey="high" isAnimationActive={false} stroke="#22c55e" strokeWidth={2.2} dot={renderPdfDotWithValue('#22c55e', 0, ['high', 'student', 'average', 'low'])} name="High" connectNulls />
+              <Line type="monotone" dataKey="average" isAnimationActive={false} stroke="#f1ed08" strokeWidth={2.2} dot={renderPdfDotWithValue('#f1ed08', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
+              <Line type="monotone" dataKey="low" isAnimationActive={false} stroke="#ef4444" strokeWidth={2.2} dot={renderPdfDotWithValue('#ef4444', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
             </LineChart>
           </div>
         </div>
@@ -2086,10 +2107,10 @@ const StudentProfile = ({
                   <YAxis {...pdfYAxisProps} />
                   <Tooltip />
                   <Legend {...pdfLegendProps} />
-                  <Line type="monotone" dataKey="student" stroke="#2563eb" strokeWidth={2.6} dot={renderPdfDotWithValue('#2563eb', 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
-                  <Line type="monotone" dataKey="high" stroke="#22c55e" strokeWidth={2} dot={renderPdfDotWithValue('#22c55e', 0, ['high', 'student', 'average', 'low'])} name="High" connectNulls />
-                  <Line type="monotone" dataKey="average" stroke="#f1ed08" strokeWidth={2} dot={renderPdfDotWithValue('#f1ed08', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
-                  <Line type="monotone" dataKey="low" stroke="#ef4444" strokeWidth={2} dot={renderPdfDotWithValue('#ef4444', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
+                  <Line type="monotone" dataKey="student" isAnimationActive={false} stroke="#2563eb" strokeWidth={2.6} dot={renderPdfDotWithValue('#2563eb', 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
+                  <Line type="monotone" dataKey="high" isAnimationActive={false} stroke="#22c55e" strokeWidth={2} dot={renderPdfDotWithValue('#22c55e', 0, ['high', 'student', 'average', 'low'])} name="High" connectNulls />
+                  <Line type="monotone" dataKey="average" isAnimationActive={false} stroke="#f1ed08" strokeWidth={2} dot={renderPdfDotWithValue('#f1ed08', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
+                  <Line type="monotone" dataKey="low" isAnimationActive={false} stroke="#ef4444" strokeWidth={2} dot={renderPdfDotWithValue('#ef4444', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
                 </LineChart>
               </div>
             );

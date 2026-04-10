@@ -218,6 +218,7 @@ const BatchDetail = ({ batch, onBack }) => {
   const bulkStudentsRef = useRef([]);
   const bulkIndexRef = useRef(0);
   const bulkErrorsRef = useRef([]);
+  const bulkTimeoutRef = useRef(null);
 
   const handleGenerateReport = async () => {
     setReportLoading(true);
@@ -341,6 +342,11 @@ const BatchDetail = ({ batch, onBack }) => {
 
   const finalizeBulkProgressZip = async () => {
     try {
+      if (bulkTimeoutRef.current) {
+        clearTimeout(bulkTimeoutRef.current);
+        bulkTimeoutRef.current = null;
+      }
+
       if (!bulkZipRef.current) throw new Error('ZIP archive not initialized');
 
       if (bulkErrorsRef.current.length > 0) {
@@ -369,7 +375,21 @@ const BatchDetail = ({ batch, onBack }) => {
       bulkStudentsRef.current = [];
       bulkIndexRef.current = 0;
       bulkErrorsRef.current = [];
+      if (bulkTimeoutRef.current) {
+        clearTimeout(bulkTimeoutRef.current);
+        bulkTimeoutRef.current = null;
+      }
     }
+  };
+
+  const startBulkStudentTimeout = () => {
+    if (bulkTimeoutRef.current) clearTimeout(bulkTimeoutRef.current);
+
+    bulkTimeoutRef.current = setTimeout(() => {
+      const currentStudent = bulkStudentsRef.current[bulkIndexRef.current];
+      bulkErrorsRef.current.push(`${currentStudent?.rollNo || 'Unknown'} - Timed out while generating PDF`);
+      moveToNextBulkStudent();
+    }, 120000);
   };
 
   const moveToNextBulkStudent = async () => {
@@ -382,15 +402,23 @@ const BatchDetail = ({ batch, onBack }) => {
     bulkIndexRef.current = nextIndex;
     setBulkPdfProgress({ current: nextIndex + 1, total: bulkStudentsRef.current.length });
     setBulkPdfCurrent(bulkStudentsRef.current[nextIndex]);
+    startBulkStudentTimeout();
   };
 
   const handleBulkPdfReady = async ({ blob, fileName }) => {
     try {
+      if (bulkTimeoutRef.current) {
+        clearTimeout(bulkTimeoutRef.current);
+        bulkTimeoutRef.current = null;
+      }
+
       const currentStudent = bulkStudentsRef.current[bulkIndexRef.current];
       if (!blob) {
         bulkErrorsRef.current.push(`${currentStudent?.rollNo || 'Unknown'} - PDF blob not generated`);
       } else {
-        bulkZipRef.current.file(fileName || `${currentStudent?.name || 'Student'}_Progress_Report.pdf`, blob);
+        const unsafeName = fileName || `${currentStudent?.name || 'Student'}_Progress_Report.pdf`;
+        const safeName = String(unsafeName).replace(/[\\/:*?"<>|]/g, '_');
+        bulkZipRef.current.file(safeName, blob);
       }
     } catch (err) {
       const currentStudent = bulkStudentsRef.current[bulkIndexRef.current];
@@ -401,6 +429,11 @@ const BatchDetail = ({ batch, onBack }) => {
   };
 
   const handleBulkPdfError = async (message) => {
+    if (bulkTimeoutRef.current) {
+      clearTimeout(bulkTimeoutRef.current);
+      bulkTimeoutRef.current = null;
+    }
+
     const currentStudent = bulkStudentsRef.current[bulkIndexRef.current];
     bulkErrorsRef.current.push(`${currentStudent?.rollNo || 'Unknown'} - ${message || 'PDF generation failed'}`);
     await moveToNextBulkStudent();
@@ -421,6 +454,7 @@ const BatchDetail = ({ batch, onBack }) => {
 
     setBulkPdfProgress({ current: 1, total: students.length });
     setBulkPdfCurrent(students[0]);
+    startBulkStudentTimeout();
   };
 
   if (showAddExam) {
@@ -726,6 +760,7 @@ const BatchDetail = ({ batch, onBack }) => {
       {bulkPdfLoading && bulkPdfCurrent && (
         <div style={{ position: 'fixed', left: '-20000px', top: 0, width: '1200px', opacity: 0, pointerEvents: 'none' }}>
           <StudentProfile
+            key={`bulk-pdf-${bulkPdfCurrent.studentNo || bulkPdfCurrent.rollNo || bulkIndexRef.current}`}
             student={bulkPdfCurrent}
             onBack={() => {}}
             autoGeneratePdf={true}
