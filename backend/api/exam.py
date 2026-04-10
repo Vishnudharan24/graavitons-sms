@@ -1420,14 +1420,8 @@ async def get_daily_test_template(
             ]
         else:
             headers = [
-                'Admission Number',
                 'Student Name',
-                'Exam Date (YYYY-MM-DD)',
-                'Subject',
-                'Topic / Unit Name',
-                'Marks',
-                'Subject Total Marks',
-                'Test Total Marks'
+                'Marks'
             ]
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
@@ -1454,15 +1448,9 @@ async def get_daily_test_template(
                 if test_no < test_count:
                     row += 1
         else:
-            for row, (student_id, student_name) in enumerate(students, 2):
-                ws.cell(row=row, column=1, value=student_id).border = border
-                ws.cell(row=row, column=2, value=student_name).border = border
-                ws.cell(row=row, column=3, value="").border = border
-                ws.cell(row=row, column=4, value="").border = border
-                ws.cell(row=row, column=5, value="").border = border
-                ws.cell(row=row, column=6, value="").border = border
-                ws.cell(row=row, column=7, value=total_marks).border = border
-                ws.cell(row=row, column=8, value=total_marks).border = border
+            for row, (_, student_name) in enumerate(students, 2):
+                ws.cell(row=row, column=1, value=student_name).border = border
+                ws.cell(row=row, column=2, value="").border = border
         
         # Adjust column widths
         if multi_template:
@@ -1476,26 +1464,20 @@ async def get_daily_test_template(
             ws.column_dimensions['H'].width = 20
             ws.column_dimensions['I'].width = 18
         else:
-            ws.column_dimensions['A'].width = 20
-            ws.column_dimensions['B'].width = 35
-            ws.column_dimensions['C'].width = 20
-            ws.column_dimensions['D'].width = 20
-            ws.column_dimensions['E'].width = 28
-            ws.column_dimensions['F'].width = 16
-            ws.column_dimensions['G'].width = 20
-            ws.column_dimensions['H'].width = 18
+            ws.column_dimensions['A'].width = 35
+            ws.column_dimensions['B'].width = 16
         
         # Add instructions in a separate sheet
         instructions_ws = wb.create_sheet("Instructions")
         instructions = [
             ["Daily Test Marks Template - Instructions"],
             [""],
-            ["1. Fill 'Exam Date', 'Subject', and 'Topic / Unit Name' directly in the sheet."],
-            [f"2. This file was generated for {test_count} test set(s). Use 'Test No' to separate tests." if multi_template else "2. You can enter multiple daily tests in one file by varying date/subject/topic rows."],
-            ["3. Do not modify the Admission Number or Student Name columns."],
-            ["4. Fill Marks only for students who attended; empty marks are skipped."],
-            ["5. Subject/Test totals are optional; defaults are used if left empty."],
-            ["6. Save the file and upload it back to the system."],
+            ["1. Fill 'Exam Date', 'Subject', and 'Topic / Unit Name' directly in the sheet." if multi_template else "1. Fill only the Marks column."],
+            [f"2. This file was generated for {test_count} test set(s). Use 'Test No' to separate tests." if multi_template else "2. Do not modify the Student Name column."],
+            ["3. Do not modify the Admission Number or Student Name columns." if multi_template else "3. Leave marks empty for students who were absent; empty marks are skipped."],
+            ["4. Fill Marks only for students who attended; empty marks are skipped." if multi_template else "4. Save the file and upload it back to the system."],
+            ["5. Subject/Test totals are optional; defaults are used if left empty." if multi_template else ""],
+            ["6. Save the file and upload it back to the system." if multi_template else ""],
             [""],
             ["Note: This template is specifically generated for your batch."]
         ]

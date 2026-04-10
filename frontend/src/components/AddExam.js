@@ -150,6 +150,11 @@ const normalizeAdmissionValue = (value) => {
   return raw;
 };
 
+const normalizeStudentNameKey = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/\s+/g, ' ');
+
 const getAllSheetRows = (worksheet) => {
   const ref = worksheet?.['!ref'];
   if (!ref) return [];
@@ -394,15 +399,37 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
               const findIndex = (...aliases) => header.findIndex(h => aliases.includes(h));
 
               const admissionIndex = findIndex('admission number', 'admission no', 'student id', 'student_id', 'roll no', 'roll number');
+              const studentNameIndex = findIndex('student name', 'name');
               const testNoIndex = findIndex('test no', 'test number', 'test_no');
               const studentIdLookup = new Map();
+              const studentNameLookup = new Map();
               students.forEach((s) => {
                 const normalized = normalizeAdmissionValue(s.rollNo);
                 if (normalized) studentIdLookup.set(normalized, String(s.rollNo || '').trim());
+                const normalizedName = normalizeStudentNameKey(s.name);
+                if (normalizedName && !studentNameLookup.has(normalizedName)) {
+                  studentNameLookup.set(normalizedName, String(s.rollNo || '').trim());
+                }
               });
 
-              if (admissionIndex < 0) {
-                throw new Error('Admission Number column is missing in uploaded file');
+              const resolveStudentId = (row) => {
+                if (admissionIndex >= 0) {
+                  const parsedAdmission = normalizeAdmissionValue(row?.[admissionIndex]);
+                  const byAdmission = studentIdLookup.get(parsedAdmission);
+                  if (byAdmission) return byAdmission;
+                }
+
+                if (studentNameIndex >= 0) {
+                  const parsedName = normalizeStudentNameKey(row?.[studentNameIndex]);
+                  const byName = studentNameLookup.get(parsedName);
+                  if (byName) return byName;
+                }
+
+                return '';
+              };
+
+              if (admissionIndex < 0 && studentNameIndex < 0) {
+                throw new Error('Uploaded file must contain either Admission Number or Student Name column');
               }
 
             if (examData.examType === 'daily test') {
@@ -425,11 +452,10 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     if (!Array.isArray(row) || row.every(cell => String(cell ?? '').trim() === '')) {
                       return;
                     }
-                    const parsedAdmission = normalizeAdmissionValue(row?.[admissionIndex]);
-                    const studentId = studentIdLookup.get(parsedAdmission);
+                    const studentId = resolveStudentId(row);
                     if (!studentId) {
                       skippedRows += 1;
-                      rowErrors.push(`Row ${excelRowNo}: Admission Number not found in selected batch (${parsedAdmission || 'empty'})`);
+                      rowErrors.push(`Row ${excelRowNo}: Student not found in selected batch`);
                       return;
                     }
 
@@ -495,9 +521,14 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                   }
                 } else {
                   const updatedMarks = studentMarks.map(student => {
-                    const row = rows.find(r => String(r?.[admissionIndex] ?? '').trim() === student.rollNo);
+                    const row = rows.find((r) => {
+                      const rowStudentId = resolveStudentId(r);
+                      return rowStudentId && rowStudentId === student.rollNo;
+                    });
                     if (row) {
-                      const marks = row?.[2]?.toString().trim();
+                      const marksIndex = findIndex('marks', 'marks (out of 100)', 'score');
+                      const fallbackIndex = studentNameIndex >= 0 ? studentNameIndex + 1 : (admissionIndex >= 0 ? admissionIndex + 2 : 1);
+                      const marks = row?.[marksIndex >= 0 ? marksIndex : fallbackIndex]?.toString().trim();
                       return { ...student, marks: marks || '' };
                     }
                     return student;
@@ -543,11 +574,10 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     if (!Array.isArray(row) || row.every(cell => String(cell ?? '').trim() === '')) {
                       return;
                     }
-                    const parsedAdmission = normalizeAdmissionValue(row?.[admissionIndex]);
-                    const studentId = studentIdLookup.get(parsedAdmission);
+                    const studentId = resolveStudentId(row);
                     if (!studentId) {
                       skippedRows += 1;
-                      rowErrors.push(`Row ${excelRowNo}: Admission Number not found in selected batch (${parsedAdmission || 'empty'})`);
+                      rowErrors.push(`Row ${excelRowNo}: Student not found in selected batch`);
                       return;
                     }
 
@@ -638,7 +668,10 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                   }
                 } else {
                   const updatedMarks = studentMarks.map(student => {
-                    const row = rows.find(r => String(r?.[admissionIndex] ?? '').trim() === student.rollNo);
+                    const row = rows.find((r) => {
+                      const rowStudentId = resolveStudentId(r);
+                      return rowStudentId && rowStudentId === student.rollNo;
+                    });
                     if (row) {
                       const updatedStudent = { ...student };
                       activeMockSubjects.forEach((subject, index) => {
