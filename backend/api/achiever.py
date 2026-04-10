@@ -223,7 +223,11 @@ async def search_students_for_achiever(
             FROM student s
             LEFT JOIN batch b ON b.batch_id = s.batch_id
             WHERE LOWER(s.student_id) LIKE LOWER(%s)
-            ORDER BY s.student_id
+            ORDER BY
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
+                s.student_id ASC,
+                s.student_name ASC
             LIMIT %s
         """, (f"%{q}%", limit))
 

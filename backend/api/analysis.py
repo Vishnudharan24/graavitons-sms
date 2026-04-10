@@ -352,7 +352,15 @@ async def get_subjectwise_analysis(
             query += " AND dt.test_date <= %s"
             params.append(to_date)
 
-        query += " ORDER BY s.student_id ASC, s.student_name ASC, dt.subject, dt.test_date"
+        query += """
+            ORDER BY
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
+                s.student_id ASC,
+                s.student_name ASC,
+                dt.subject,
+                dt.test_date
+        """
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
@@ -402,7 +410,14 @@ async def get_subjectwise_analysis(
             mock_query += " AND mt.test_date <= %s"
             mock_params.append(to_date)
 
-        mock_query += " ORDER BY s.student_id ASC, s.student_name ASC, mt.test_date"
+        mock_query += """
+            ORDER BY
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
+                s.student_id ASC,
+                s.student_name ASC,
+                mt.test_date
+        """
         cursor.execute(mock_query, mock_params)
         mock_rows = cursor.fetchall()
 
@@ -798,7 +813,14 @@ async def get_branchwise_analysis(
             student_params.append(to_date)
 
         student_query += " GROUP BY s.student_id, s.student_name, s.branch, s.grade, b.batch_name, dt.subject"
-        student_query += " ORDER BY s.branch, s.student_id ASC, s.student_name ASC"
+        student_query += """
+            ORDER BY
+                s.branch,
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
+                s.student_id ASC,
+                s.student_name ASC
+        """
 
         cursor.execute(student_query, student_params)
         student_rows = cursor.fetchall()
@@ -894,7 +916,13 @@ async def get_students_for_analysis(
             query += " AND s.branch = %s"
             params.append(branch)
 
-        query += " ORDER BY s.student_id ASC, s.student_name ASC"
+        query += """
+            ORDER BY
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
+                s.student_id ASC,
+                s.student_name ASC
+        """
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
@@ -3385,7 +3413,11 @@ async def get_subject_diagnostics(
             FROM daily_test dt
             JOIN student s ON s.student_no = dt.student_no
             WHERE s.batch_id = %s {date_filter}
-            ORDER BY s.student_id, dt.test_date
+            ORDER BY
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
+                s.student_id,
+                dt.test_date
         """, params)
         points_by_student = defaultdict(list)
         names = {}

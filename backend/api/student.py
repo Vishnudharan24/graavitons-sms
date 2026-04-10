@@ -658,7 +658,11 @@ async def get_students_by_batch(batch_id: int, current_user: dict = Depends(get_
                 s.created_at
             FROM student s
             WHERE s.batch_id = %s
-            ORDER BY s.student_id ASC, s.student_name ASC
+            ORDER BY
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
+                s.student_id ASC,
+                s.student_name ASC
         """
         
         cursor.execute(query, (batch_id,))

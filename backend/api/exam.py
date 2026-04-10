@@ -773,7 +773,11 @@ async def get_daily_test_group_records(
                 AND COALESCE(dt.unit_name, '') = COALESCE(%s, '')
                 AND {normalized_subject_sql('dt.subject')} = %s
             WHERE s.batch_id = %s
-            ORDER BY s.student_id ASC, s.student_name ASC
+            ORDER BY
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
+                s.student_id ASC,
+                s.student_name ASC
         """, (group_ref.test_date, group_ref.unit_name, normalized_subject, batch_id))
 
         rows = cursor.fetchall()
@@ -1066,7 +1070,11 @@ async def get_mock_test_group_records(
                 AND mt.biology_total_marks IS NOT DISTINCT FROM %s
                 AND mt.test_total_marks IS NOT DISTINCT FROM %s
             WHERE s.batch_id = %s
-            ORDER BY s.student_id ASC, s.student_name ASC
+            ORDER BY
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
+                s.student_id ASC,
+                s.student_name ASC
         """, (
             group_ref.test_date,
             group_ref.maths_unit_names,
@@ -1899,7 +1907,11 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
                 s.email
             FROM student s
             WHERE s.batch_id = %s
-            ORDER BY s.student_id ASC, s.student_name ASC
+            ORDER BY
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
+                CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
+                s.student_id ASC,
+                s.student_name ASC
         """, (batch_id,))
         student_rows = cursor.fetchall()
 
@@ -1958,7 +1970,12 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
                 FROM daily_test dt
                 JOIN student s ON s.student_no = dt.student_no
                 WHERE dt.student_no = ANY(%s)
-                ORDER BY dt.test_date, s.student_id ASC, s.student_name ASC
+                ORDER BY
+                    dt.test_date,
+                    CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
+                    CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
+                    s.student_id ASC,
+                    s.student_name ASC
             """, (student_nos,))
             for r in cursor.fetchall():
                 daily_tests.append({
@@ -1984,7 +2001,12 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
                 FROM mock_test mt
                 JOIN student s ON s.student_no = mt.student_no
                 WHERE mt.student_no = ANY(%s)
-                ORDER BY mt.test_date, s.student_id ASC, s.student_name ASC
+                ORDER BY
+                    mt.test_date,
+                    CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
+                    CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
+                    s.student_id ASC,
+                    s.student_name ASC
             """, (student_nos,))
             for r in cursor.fetchall():
                 mock_tests.append({
