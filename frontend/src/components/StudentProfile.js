@@ -42,7 +42,19 @@ const toPercentage = (obtained, total) => {
 const isAbsentMark = (value) => {
   if (value === null || value === undefined) return false;
   const normalized = String(value).trim().toLowerCase();
-  return normalized === 'a' || normalized === 'ab';
+  return normalized === 'a' || normalized === 'ab' || normalized === 'ta';
+};
+
+const getAbsentMarkLabel = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  return isAbsentMark(value) ? String(value).trim().toUpperCase() : null;
+};
+
+const formatChartValue = (value) => {
+  const num = Number(value);
+  if (Number.isNaN(num)) return '';
+  if (Number.isInteger(num)) return String(num);
+  return num.toFixed(2).replace(/\.00$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
 };
 
 const chartAxisStyle = {
@@ -333,6 +345,25 @@ const StudentProfile = ({
     return true;
   });
 
+  const chronologicalMockTests = useMemo(() => {
+    return [...(filteredMockTests || [])].sort((a, b) => {
+      const aTime = a?.test_date ? new Date(a.test_date).getTime() : 0;
+      const bTime = b?.test_date ? new Date(b.test_date).getTime() : 0;
+      return aTime - bTime;
+    });
+  }, [filteredMockTests]);
+
+  const hasAbsentInMockTestRecord = useCallback((test) => {
+    const markFields = [
+      test?.total_marks,
+      test?.maths_marks,
+      test?.physics_marks,
+      test?.chemistry_marks,
+      test?.biology_marks
+    ];
+    return markFields.some((value) => isAbsentMark(value));
+  }, []);
+
   // Build performance trend from filtered daily tests
   const buildPerformanceTrend = () => {
     if (!filteredDailyTests || filteredDailyTests.length === 0) return [];
@@ -361,8 +392,8 @@ const StudentProfile = ({
 
   // Build mock test chart data from filtered mock tests
   const buildMockTestChartData = () => {
-    if (!filteredMockTests || filteredMockTests.length === 0) return [];
-    const hasMockSubjectTotals = filteredMockTests.some(test =>
+    if (!chronologicalMockTests || chronologicalMockTests.length === 0) return [];
+    const hasMockSubjectTotals = chronologicalMockTests.some(test =>
       parseNumericMark(test.maths_total_marks) !== null ||
       parseNumericMark(test.physics_total_marks) !== null ||
       parseNumericMark(test.chemistry_total_marks) !== null ||
@@ -374,26 +405,33 @@ const StudentProfile = ({
       return toPercentage(obtained, total) ?? parseNumericMark(obtained);
     };
 
-    return filteredMockTests.map((test, idx) => ({
+    return chronologicalMockTests.map((test, idx) => {
+      const isAbsent = hasAbsentInMockTestRecord(test);
+      return {
       exam: `Mock ${idx + 1} (${test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''})`,
-      physics: getSubjectValue(test.physics_marks, test.physics_total_marks),
-      chemistry: getSubjectValue(test.chemistry_marks, test.chemistry_total_marks),
-      biology: getSubjectValue(test.biology_marks, test.biology_total_marks),
-      maths: getSubjectValue(test.maths_marks, test.maths_total_marks),
-      total: getSubjectValue(test.total_marks, test.test_total_marks),
+      physics: isAbsent ? null : getSubjectValue(test.physics_marks, test.physics_total_marks),
+      chemistry: isAbsent ? null : getSubjectValue(test.chemistry_marks, test.chemistry_total_marks),
+      biology: isAbsent ? null : getSubjectValue(test.biology_marks, test.biology_total_marks),
+      maths: isAbsent ? null : getSubjectValue(test.maths_marks, test.maths_total_marks),
+      total: isAbsent ? null : getSubjectValue(test.total_marks, test.test_total_marks),
       unit: hasMockSubjectTotals ? '%' : 'marks'
-    }));
+      };
+    });
   };
 
   const buildMockTrendData = () => {
-    if (!filteredMockTests || filteredMockTests.length === 0) return [];
-    const hasMockTotal = filteredMockTests.some(test => parseNumericMark(test.test_total_marks) !== null);
-    return filteredMockTests.map((test, idx) => ({
+    if (!chronologicalMockTests || chronologicalMockTests.length === 0) return [];
+    const hasMockTotal = chronologicalMockTests.some(test => parseNumericMark(test.test_total_marks) !== null);
+    return chronologicalMockTests.map((test, idx) => {
+      const isAbsent = hasAbsentInMockTestRecord(test);
+      return {
       exam: `Mock ${idx + 1}`,
       date: test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-',
-      total: hasMockTotal
+      total: isAbsent
+        ? null
+        : (hasMockTotal
         ? (toPercentage(test.total_marks, test.test_total_marks) ?? parseNumericMark(test.total_marks))
-        : parseNumericMark(test.total_marks),
+        : parseNumericMark(test.total_marks)),
       classAvg: hasMockTotal
         ? (toPercentage(test.class_avg_total, test.test_total_marks) ?? parseNumericMark(test.class_avg_total))
         : parseNumericMark(test.class_avg_total),
@@ -401,12 +439,13 @@ const StudentProfile = ({
         ? (toPercentage(test.top_score_total, test.test_total_marks) ?? parseNumericMark(test.top_score_total))
         : parseNumericMark(test.top_score_total),
       unit: hasMockTotal ? '%' : 'marks'
-    }));
+      };
+    });
   };
 
   const buildLatestMockSubjectShare = () => {
-    if (!filteredMockTests || filteredMockTests.length === 0) return [];
-    const lastMock = filteredMockTests[filteredMockTests.length - 1];
+    if (!chronologicalMockTests || chronologicalMockTests.length === 0) return [];
+    const lastMock = chronologicalMockTests[chronologicalMockTests.length - 1];
     const hasMockSubjectTotals =
       parseNumericMark(lastMock.maths_total_marks) !== null ||
       parseNumericMark(lastMock.physics_total_marks) !== null ||
@@ -417,6 +456,8 @@ const StudentProfile = ({
       if (!hasMockSubjectTotals) return parseNumericMark(obtained);
       return toPercentage(obtained, total) ?? parseNumericMark(obtained);
     };
+
+    if (hasAbsentInMockTestRecord(lastMock)) return [];
 
     const rows = [
       { name: 'Maths', value: getLatestValue(lastMock.maths_marks, lastMock.maths_total_marks), fill: '#f1ed08' },
@@ -494,6 +535,7 @@ const StudentProfile = ({
 
   const dailySubjectComparisonReportData = useMemo(() => {
     const timeline = {};
+    const groupedSubjectScores = {};
     (dailyTests || []).forEach((test) => {
       if (!test?.test_date || !test?.subject) return;
       const subjectKey = String(test.subject).trim().toLowerCase() === 'mathematics'
@@ -506,11 +548,35 @@ const StudentProfile = ({
         timeline[test.test_date] = { label: `DT-${Object.keys(timeline).length + 1}` };
       }
 
-      const score = toPercentage(test.marks, test.subject_total_marks ?? test.test_total_marks)
-        ?? parseNumericMark(test.marks);
+      const groupKey = `${test.test_date}::${subjectKey}`;
+      if (!groupedSubjectScores[groupKey]) {
+        groupedSubjectScores[groupKey] = { scores: [], absentLabel: null };
+      }
 
-      if (score !== null) {
-        timeline[test.test_date][subjectKey] = Math.round(score);
+      const numericScore = parseNumericMark(test.marks);
+      if (numericScore !== null) {
+        groupedSubjectScores[groupKey].scores.push(numericScore);
+      } else {
+        const absentLabel = getAbsentMarkLabel(test.marks);
+        if (absentLabel) {
+          groupedSubjectScores[groupKey].absentLabel = absentLabel;
+        }
+      }
+    });
+
+    Object.entries(groupedSubjectScores).forEach(([groupKey, grouped]) => {
+      const [dateKey, subjectKey] = groupKey.split('::');
+      if (!timeline[dateKey]) return;
+
+      if (grouped?.scores?.length > 0) {
+        const avgScore = grouped.scores.reduce((sum, value) => sum + value, 0) / grouped.scores.length;
+        const normalizedScore = Number(avgScore.toFixed(2));
+        timeline[dateKey][subjectKey] = normalizedScore;
+        timeline[dateKey][`${subjectKey}_display`] = formatChartValue(normalizedScore);
+      } else if (grouped?.absentLabel) {
+        // Keep numeric baseline for plotting but show AB/TA text label.
+        timeline[dateKey][subjectKey] = 0;
+        timeline[dateKey][`${subjectKey}_display`] = grouped.absentLabel;
       }
     });
 
@@ -542,11 +608,13 @@ const StudentProfile = ({
     };
 
     return reportTests.map((test, index) => {
-      const student = parseNumericMark(test.report_student_total)
+      const student = hasAbsentInMockTestRecord(test)
+        ? null
+        : (parseNumericMark(test.report_student_total)
         ?? sumNumericFields(
         test,
         reportSubjectKeys.map((key) => `${key}_marks`)
-      );
+      ));
       const high = parseNumericMark(test.report_class_high_total)
         ?? sumNumericFields(
         test,
@@ -571,12 +639,14 @@ const StudentProfile = ({
         low: roundedOrNull(low)
       };
     });
-  }, [reportTests, reportSubjectKeys]);
+  }, [reportTests, reportSubjectKeys, hasAbsentInMockTestRecord]);
 
   const buildMockSubjectVsClassData = useCallback((subjectKey) => {
     return reportTests.map((test, index) => {
-      const student = toPercentage(test[`${subjectKey}_marks`], test[`${subjectKey}_total_marks`])
-        ?? parseNumericMark(test[`${subjectKey}_marks`]);
+      const student = hasAbsentInMockTestRecord(test)
+        ? null
+        : (toPercentage(test[`${subjectKey}_marks`], test[`${subjectKey}_total_marks`])
+        ?? parseNumericMark(test[`${subjectKey}_marks`]));
       const average = toPercentage(test[`class_avg_${subjectKey}`], test[`${subjectKey}_total_marks`])
         ?? parseNumericMark(test[`class_avg_${subjectKey}`]);
       const high = toPercentage(test[`class_high_${subjectKey}`], test[`${subjectKey}_total_marks`])
@@ -592,7 +662,7 @@ const StudentProfile = ({
         low: low !== null ? Math.round(low) : null
       };
     });
-  }, [reportTests]);
+  }, [reportTests, hasAbsentInMockTestRecord]);
 
   const mockSubjectVsClassReportData = useMemo(() => {
     const report = {};
@@ -602,17 +672,45 @@ const StudentProfile = ({
     return report;
   }, [reportSubjectKeys, buildMockSubjectVsClassData]);
 
-  const dailyAttemptedCount = useMemo(() => {
+  const buildMockGroupKey = useCallback((test) => {
+    const normalizeArray = (value) => Array.isArray(value) ? value : (value ? [value] : []);
+    return [
+      test?.test_date || '',
+      JSON.stringify(normalizeArray(test?.maths_unit_names)),
+      JSON.stringify(normalizeArray(test?.physics_unit_names)),
+      JSON.stringify(normalizeArray(test?.chemistry_unit_names)),
+      JSON.stringify(normalizeArray(test?.biology_unit_names)),
+      test?.maths_total_marks ?? '',
+      test?.physics_total_marks ?? '',
+      test?.chemistry_total_marks ?? '',
+      test?.biology_total_marks ?? '',
+      test?.test_total_marks ?? ''
+    ].join('::');
+  }, []);
+
+  const dailyConductedCount = useMemo(() => {
     const keySet = new Set(
-      (dailyTests || [])
-        .filter((t) => !isAbsentMark(t.marks))
-        .map((t) => `${t.test_date || ''}::${(t.subject || '').toLowerCase()}::${t.unit_name || ''}`)
+      (dailyTests || []).map((t) => `${t.test_date || ''}::${(t.subject || '').trim().toLowerCase()}::${(t.unit_name || '').trim().toLowerCase() || 'unknown'}`)
     );
     return keySet.size;
   }, [dailyTests]);
 
+  const dailyAttemptedCount = useMemo(() => {
+    const keySet = new Set(
+      (dailyTests || [])
+        .filter((t) => parseNumericMark(t.marks) !== null)
+        .map((t) => `${t.test_date || ''}::${(t.subject || '').trim().toLowerCase()}::${(t.unit_name || '').trim().toLowerCase() || 'unknown'}`)
+    );
+    return keySet.size;
+  }, [dailyTests]);
+
+  const mockConductedCount = useMemo(() => {
+    const keySet = new Set((mockTests || []).map((t) => buildMockGroupKey(t)));
+    return keySet.size;
+  }, [mockTests, buildMockGroupKey]);
+
   const mockAttemptedCount = useMemo(() => {
-    const hasAbsentInMockTest = (test) => {
+    const hasAnyNumericInMockTest = (test) => {
       const markFields = [
         test?.total_marks,
         test?.maths_marks,
@@ -620,21 +718,21 @@ const StudentProfile = ({
         test?.chemistry_marks,
         test?.biology_marks
       ];
-      return markFields.some((value) => isAbsentMark(value));
+      return markFields.some((value) => parseNumericMark(value) !== null);
     };
 
     const keySet = new Set(
       (mockTests || [])
-        .filter((t) => !hasAbsentInMockTest(t))
-        .map((t) => `${t.test_id || ''}::${t.test_date || ''}`)
+        .filter((t) => hasAnyNumericInMockTest(t))
+        .map((t) => buildMockGroupKey(t))
     );
     return keySet.size;
-  }, [mockTests]);
+  }, [mockTests, buildMockGroupKey]);
 
   const attendanceSummaryRows = useMemo(() => {
-    const weeklyConducted = Number(studentMetrics?.daily_tests_conducted ?? dailyAttemptedCount);
+    const weeklyConducted = Number(studentMetrics?.daily_tests_conducted ?? dailyConductedCount);
     const weeklyAttended = Number(studentMetrics?.daily_tests_attended ?? dailyAttemptedCount);
-    const mockConducted = Number(studentMetrics?.mock_tests_conducted ?? mockAttemptedCount);
+    const mockConducted = Number(studentMetrics?.mock_tests_conducted ?? mockConductedCount);
     const mockAttended = Number(studentMetrics?.mock_tests_attended ?? mockAttemptedCount);
 
     return [
@@ -651,7 +749,7 @@ const StudentProfile = ({
         summary: `${mockAttended}/${mockConducted || 0}`
       }
     ];
-  }, [studentMetrics, dailyAttemptedCount, mockAttemptedCount]);
+  }, [studentMetrics, dailyAttemptedCount, dailyConductedCount, mockAttemptedCount, mockConductedCount]);
 
   const activeInsightRows = useMemo(() => {
     if (insightTab === 'daily') return studentTestInsights?.daily || [];
@@ -719,7 +817,10 @@ const StudentProfile = ({
     const baseY = Number(cy) + stackedOffset + yOffset;
     const labelY = baseY < 14 ? Number(cy) + 14 : (baseY > 244 ? Number(cy) - 10 : baseY);
 
-    const shown = isNumeric ? String(Math.round(num)) : '';
+    const customDisplay = payload?.[`${dataKey}_display`];
+    const shown = customDisplay !== null && customDisplay !== undefined && customDisplay !== ''
+      ? String(customDisplay)
+      : (isNumeric ? formatChartValue(num) : '');
 
     return (
       <g>

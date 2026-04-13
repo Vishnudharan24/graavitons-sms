@@ -15,6 +15,8 @@ const formatObtainedWithTotal = (obtained, total) => {
   return `${obtained}/${total}`;
 };
 
+const compareStudentId = (a, b) => String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' });
+
 const BatchDetail = ({ batch, onBack }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
@@ -226,6 +228,17 @@ const BatchDetail = ({ batch, onBack }) => {
       const response = await authFetch(`${API_BASE}/api/exam/batch-report/${batch.batch_id}`);
       if (!response.ok) throw new Error('Failed to fetch batch report data');
       const data = await response.json();
+      const sortedStudents = [...(data.students || [])].sort((a, b) => compareStudentId(a.student_id, b.student_id));
+      const sortedDailyTests = [...(data.daily_tests || [])].sort((a, b) => {
+        const sidCompare = compareStudentId(a.student_id, b.student_id);
+        if (sidCompare !== 0) return sidCompare;
+        return String(a.test_date || '').localeCompare(String(b.test_date || ''));
+      });
+      const sortedMockTests = [...(data.mock_tests || [])].sort((a, b) => {
+        const sidCompare = compareStudentId(a.student_id, b.student_id);
+        if (sidCompare !== 0) return sidCompare;
+        return String(a.test_date || '').localeCompare(String(b.test_date || ''));
+      });
 
       const wb = XLSX.utils.book_new();
 
@@ -238,8 +251,8 @@ const BatchDetail = ({ batch, onBack }) => {
         ['Academic Year', `${data.batch.start_year} - ${data.batch.end_year}`],
         [''],
         ['Total Students', data.total_students],
-        ['Boys', data.students.filter(s => s.gender === 'Male').length],
-        ['Girls', data.students.filter(s => s.gender === 'Female').length],
+        ['Boys', sortedStudents.filter(s => s.gender === 'Male').length],
+        ['Girls', sortedStudents.filter(s => s.gender === 'Female').length],
         [''],
         ['Total Daily Tests Conducted', data.total_daily_tests_conducted],
         ['Total Mock Tests Conducted', data.total_mock_tests_conducted],
@@ -256,7 +269,7 @@ const BatchDetail = ({ batch, onBack }) => {
         'Community', 'Grade', 'Enrollment Year', 'Course', 'Branch',
         'Mobile', 'Email', 'Daily Tests Attended', 'Mock Tests Attended'
       ];
-      const studentRows = data.students.map((s, i) => [
+      const studentRows = sortedStudents.map((s, i) => [
         i + 1,
         s.student_id,
         s.student_name,
@@ -281,7 +294,7 @@ const BatchDetail = ({ batch, onBack }) => {
         'S.No', 'Admission No', 'Student Name', 'Test Date',
         'Subject', 'Unit Name', 'Marks (Obtained/Total)'
       ];
-      const dailyRows = (data.daily_tests || []).map((t, i) => [
+      const dailyRows = sortedDailyTests.map((t, i) => [
         i + 1,
         t.student_id,
         t.student_name,
@@ -301,7 +314,7 @@ const BatchDetail = ({ batch, onBack }) => {
         'Chemistry (Obtained/Total)', 'Biology (Obtained/Total)',
         'Total (Obtained/Total)'
       ];
-      const mockRows = (data.mock_tests || []).map((t, i) => [
+      const mockRows = sortedMockTests.map((t, i) => [
         i + 1,
         t.student_id,
         t.student_name,

@@ -1136,14 +1136,34 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
             return sum(values)
 
         # Fetch all required mock class stats in one query (avoids N+1)
+        # Group by full mock-test identity to avoid mixing different mocks on the same date.
         cursor.execute("""
-            WITH student_mock_dates AS (
-                SELECT DISTINCT mt.test_date
+            WITH student_mock_groups AS (
+                SELECT DISTINCT
+                    mt.test_date,
+                    COALESCE(mt.maths_unit_names, ARRAY[]::text[]) AS maths_unit_names,
+                    COALESCE(mt.physics_unit_names, ARRAY[]::text[]) AS physics_unit_names,
+                    COALESCE(mt.chemistry_unit_names, ARRAY[]::text[]) AS chemistry_unit_names,
+                    COALESCE(mt.biology_unit_names, ARRAY[]::text[]) AS biology_unit_names,
+                    mt.maths_total_marks,
+                    mt.physics_total_marks,
+                    mt.chemistry_total_marks,
+                    mt.biology_total_marks,
+                    mt.test_total_marks
                 FROM mock_test mt
                 WHERE mt.student_no = %s
             )
             SELECT
-                d.test_date,
+                g.test_date,
+                g.maths_unit_names,
+                g.physics_unit_names,
+                g.chemistry_unit_names,
+                g.biology_unit_names,
+                g.maths_total_marks,
+                g.physics_total_marks,
+                g.chemistry_total_marks,
+                g.biology_total_marks,
+                g.test_total_marks,
                 ROUND(AVG(safe_numeric(mt2.total_marks))::numeric, 1) AS class_avg_total,
                 MAX(safe_numeric(mt2.total_marks)) AS class_high_total,
                 MIN(safe_numeric(mt2.total_marks)) AS class_low_total,
@@ -1159,81 +1179,165 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
                 ROUND(AVG(safe_numeric(mt2.biology_marks))::numeric, 1) AS class_avg_biology,
                 MAX(safe_numeric(mt2.biology_marks)) AS class_high_biology,
                 MIN(safe_numeric(mt2.biology_marks)) AS class_low_biology
-            FROM student_mock_dates d
-            JOIN mock_test mt2 ON mt2.test_date = d.test_date
+            FROM student_mock_groups g
+            JOIN mock_test mt2
+                ON mt2.test_date = g.test_date
+               AND COALESCE(mt2.maths_unit_names, ARRAY[]::text[]) = g.maths_unit_names
+               AND COALESCE(mt2.physics_unit_names, ARRAY[]::text[]) = g.physics_unit_names
+               AND COALESCE(mt2.chemistry_unit_names, ARRAY[]::text[]) = g.chemistry_unit_names
+               AND COALESCE(mt2.biology_unit_names, ARRAY[]::text[]) = g.biology_unit_names
+               AND mt2.maths_total_marks IS NOT DISTINCT FROM g.maths_total_marks
+               AND mt2.physics_total_marks IS NOT DISTINCT FROM g.physics_total_marks
+               AND mt2.chemistry_total_marks IS NOT DISTINCT FROM g.chemistry_total_marks
+               AND mt2.biology_total_marks IS NOT DISTINCT FROM g.biology_total_marks
+               AND mt2.test_total_marks IS NOT DISTINCT FROM g.test_total_marks
             JOIN student s2 ON s2.student_no = mt2.student_no
             WHERE s2.batch_id = %s
-            GROUP BY d.test_date
+            GROUP BY
+                g.test_date,
+                g.maths_unit_names,
+                g.physics_unit_names,
+                g.chemistry_unit_names,
+                g.biology_unit_names,
+                g.maths_total_marks,
+                g.physics_total_marks,
+                g.chemistry_total_marks,
+                g.biology_total_marks,
+                g.test_total_marks
         """, (student_no, batch_id))
 
         mock_stats_map = {}
         for row in cursor.fetchall():
-            mock_stats_map[row[0]] = {
-                "class_avg_total": float(row[1]) if row[1] is not None else None,
-                "class_high_total": row[2] if row[2] is not None else None,
-                "class_low_total": row[3] if row[3] is not None else None,
-                "class_avg_maths": float(row[4]) if row[4] is not None else None,
-                "class_high_maths": row[5] if row[5] is not None else None,
-                "class_low_maths": row[6] if row[6] is not None else None,
-                "class_avg_physics": float(row[7]) if row[7] is not None else None,
-                "class_high_physics": row[8] if row[8] is not None else None,
-                "class_low_physics": row[9] if row[9] is not None else None,
-                "class_avg_chemistry": float(row[10]) if row[10] is not None else None,
-                "class_high_chemistry": row[11] if row[11] is not None else None,
-                "class_low_chemistry": row[12] if row[12] is not None else None,
-                "class_avg_biology": float(row[13]) if row[13] is not None else None,
-                "class_high_biology": row[14] if row[14] is not None else None,
-                "class_low_biology": row[15] if row[15] is not None else None,
+            mock_key = (
+                row[0],
+                tuple(row[1] or []),
+                tuple(row[2] or []),
+                tuple(row[3] or []),
+                tuple(row[4] or []),
+                row[5],
+                row[6],
+                row[7],
+                row[8],
+                row[9],
+            )
+            mock_stats_map[mock_key] = {
+                "class_avg_total": float(row[10]) if row[10] is not None else None,
+                "class_high_total": row[11] if row[11] is not None else None,
+                "class_low_total": row[12] if row[12] is not None else None,
+                "class_avg_maths": float(row[13]) if row[13] is not None else None,
+                "class_high_maths": row[14] if row[14] is not None else None,
+                "class_low_maths": row[15] if row[15] is not None else None,
+                "class_avg_physics": float(row[16]) if row[16] is not None else None,
+                "class_high_physics": row[17] if row[17] is not None else None,
+                "class_low_physics": row[18] if row[18] is not None else None,
+                "class_avg_chemistry": float(row[19]) if row[19] is not None else None,
+                "class_high_chemistry": row[20] if row[20] is not None else None,
+                "class_low_chemistry": row[21] if row[21] is not None else None,
+                "class_avg_biology": float(row[22]) if row[22] is not None else None,
+                "class_high_biology": row[23] if row[23] is not None else None,
+                "class_low_biology": row[24] if row[24] is not None else None,
             }
 
         # Class band for report chart: sum of selected report-subject marks per student per test date
         cursor.execute("""
-            WITH student_mock_dates AS (
-                SELECT DISTINCT mt.test_date
+            WITH student_mock_groups AS (
+                SELECT DISTINCT
+                    mt.test_date,
+                    COALESCE(mt.maths_unit_names, ARRAY[]::text[]) AS maths_unit_names,
+                    COALESCE(mt.physics_unit_names, ARRAY[]::text[]) AS physics_unit_names,
+                    COALESCE(mt.chemistry_unit_names, ARRAY[]::text[]) AS chemistry_unit_names,
+                    COALESCE(mt.biology_unit_names, ARRAY[]::text[]) AS biology_unit_names,
+                    mt.maths_total_marks,
+                    mt.physics_total_marks,
+                    mt.chemistry_total_marks,
+                    mt.biology_total_marks,
+                    mt.test_total_marks
                 FROM mock_test mt
                 WHERE mt.student_no = %s
             )
             SELECT
-                d.test_date,
+                g.test_date,
+                g.maths_unit_names,
+                g.physics_unit_names,
+                g.chemistry_unit_names,
+                g.biology_unit_names,
+                g.maths_total_marks,
+                g.physics_total_marks,
+                g.chemistry_total_marks,
+                g.biology_total_marks,
+                g.test_total_marks,
                 mt2.student_no,
                 safe_numeric(mt2.maths_marks) AS maths_marks,
                 safe_numeric(mt2.physics_marks) AS physics_marks,
                 safe_numeric(mt2.chemistry_marks) AS chemistry_marks,
                 safe_numeric(mt2.biology_marks) AS biology_marks
-            FROM student_mock_dates d
-            JOIN mock_test mt2 ON mt2.test_date = d.test_date
+            FROM student_mock_groups g
+            JOIN mock_test mt2
+                ON mt2.test_date = g.test_date
+               AND COALESCE(mt2.maths_unit_names, ARRAY[]::text[]) = g.maths_unit_names
+               AND COALESCE(mt2.physics_unit_names, ARRAY[]::text[]) = g.physics_unit_names
+               AND COALESCE(mt2.chemistry_unit_names, ARRAY[]::text[]) = g.chemistry_unit_names
+               AND COALESCE(mt2.biology_unit_names, ARRAY[]::text[]) = g.biology_unit_names
+               AND mt2.maths_total_marks IS NOT DISTINCT FROM g.maths_total_marks
+               AND mt2.physics_total_marks IS NOT DISTINCT FROM g.physics_total_marks
+               AND mt2.chemistry_total_marks IS NOT DISTINCT FROM g.chemistry_total_marks
+               AND mt2.biology_total_marks IS NOT DISTINCT FROM g.biology_total_marks
+               AND mt2.test_total_marks IS NOT DISTINCT FROM g.test_total_marks
             JOIN student s2 ON s2.student_no = mt2.student_no
             WHERE s2.batch_id = %s
         """, (student_no, batch_id))
 
         report_total_class_stats_map = {}
         for row in cursor.fetchall():
-            test_date = row[0]
+            mock_key = (
+                row[0],
+                tuple(row[1] or []),
+                tuple(row[2] or []),
+                tuple(row[3] or []),
+                tuple(row[4] or []),
+                row[5],
+                row[6],
+                row[7],
+                row[8],
+                row[9],
+            )
             subject_values = {
-                "maths": row[2],
-                "physics": row[3],
-                "chemistry": row[4],
-                "biology": row[5],
+                "maths": row[11],
+                "physics": row[12],
+                "chemistry": row[13],
+                "biology": row[14],
             }
 
             total_sum = sum_selected_subject_marks(lambda key: subject_values.get(key), report_subject_keys, True)
             if total_sum is None:
                 continue
 
-            report_total_class_stats_map.setdefault(test_date, []).append(total_sum)
+            report_total_class_stats_map.setdefault(mock_key, []).append(total_sum)
 
         report_total_class_stats_map = {
-            test_date: {
+            mock_key: {
                 "report_class_avg_total": round(sum(totals) / len(totals), 1) if totals else None,
                 "report_class_high_total": max(totals) if totals else None,
                 "report_class_low_total": min(totals) if totals else None,
             }
-            for test_date, totals in report_total_class_stats_map.items()
+            for mock_key, totals in report_total_class_stats_map.items()
         }
 
         for test in mock_tests_raw:
             test_date = test[1]
-            mock_stats = mock_stats_map.get(test_date, {
+            current_mock_key = (
+                test_date,
+                tuple(test[7] or []),
+                tuple(test[8] or []),
+                tuple(test[9] or []),
+                tuple(test[10] or []),
+                test[13],
+                test[14],
+                test[15],
+                test[16],
+                test[17],
+            )
+            mock_stats = mock_stats_map.get(current_mock_key, {
                 "class_avg_total": None,
                 "class_high_total": None,
                 "class_low_total": None,
@@ -1287,9 +1391,9 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
                 "class_high_biology": mock_stats["class_high_biology"],
                 "class_low_biology": mock_stats["class_low_biology"],
                 "report_student_total": sum_selected_subject_marks(lambda key: test[mock_mark_index[key]], report_subject_keys, True),
-                "report_class_avg_total": report_total_class_stats_map.get(test_date, {}).get("report_class_avg_total"),
-                "report_class_high_total": report_total_class_stats_map.get(test_date, {}).get("report_class_high_total"),
-                "report_class_low_total": report_total_class_stats_map.get(test_date, {}).get("report_class_low_total"),
+                "report_class_avg_total": report_total_class_stats_map.get(current_mock_key, {}).get("report_class_avg_total"),
+                "report_class_high_total": report_total_class_stats_map.get(current_mock_key, {}).get("report_class_high_total"),
+                "report_class_low_total": report_total_class_stats_map.get(current_mock_key, {}).get("report_class_low_total"),
             })
 
         # 4. Get feedback history
@@ -2048,7 +2152,11 @@ async def get_student_metrics(
 
         # Participation (tests attempted vs tests conducted in batch)
         cursor.execute(f"""
-            SELECT COUNT(DISTINCT (dt.test_date, dt.subject, dt.unit_name))
+            SELECT COUNT(DISTINCT (
+                dt.test_date,
+                {normalized_subject_sql('dt.subject')},
+                COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown')
+            ))
             FROM daily_test dt
             JOIN student s ON s.student_no = dt.student_no
             WHERE s.batch_id = %s {daily_date_filter}
@@ -2056,17 +2164,30 @@ async def get_student_metrics(
         total_daily_conducted = cursor.fetchone()[0] or 0
 
         cursor.execute(f"""
-            SELECT COUNT(DISTINCT (dt.test_date, dt.subject, dt.unit_name))
+            SELECT COUNT(DISTINCT (
+                dt.test_date,
+                {normalized_subject_sql('dt.subject')},
+                COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown')
+            ))
             FROM daily_test dt
-                        WHERE dt.student_no = %s {daily_date_filter}
-              AND dt.total_marks IS NOT NULL
-              AND trim(dt.total_marks) <> ''
-              AND LOWER(TRIM(dt.total_marks)) NOT IN ('a', 'ab')
-                """, [student_no] + daily_params)
+            WHERE dt.student_no = %s {daily_date_filter}
+              AND safe_numeric(dt.total_marks) IS NOT NULL
+        """, [student_no] + daily_params)
         student_daily_attempted = cursor.fetchone()[0] or 0
 
         cursor.execute(f"""
-            SELECT COUNT(DISTINCT mt.test_date)
+            SELECT COUNT(DISTINCT (
+                mt.test_date,
+                COALESCE(mt.maths_unit_names, ARRAY[]::text[]),
+                COALESCE(mt.physics_unit_names, ARRAY[]::text[]),
+                COALESCE(mt.chemistry_unit_names, ARRAY[]::text[]),
+                COALESCE(mt.biology_unit_names, ARRAY[]::text[]),
+                mt.maths_total_marks,
+                mt.physics_total_marks,
+                mt.chemistry_total_marks,
+                mt.biology_total_marks,
+                mt.test_total_marks
+            ))
             FROM mock_test mt
             JOIN student s ON s.student_no = mt.student_no
             WHERE s.batch_id = %s {mock_date_filter}
@@ -2074,22 +2195,26 @@ async def get_student_metrics(
         total_mock_conducted = cursor.fetchone()[0] or 0
 
         cursor.execute(f"""
-            SELECT COUNT(DISTINCT mt.test_date)
+            SELECT COUNT(DISTINCT (
+                mt.test_date,
+                COALESCE(mt.maths_unit_names, ARRAY[]::text[]),
+                COALESCE(mt.physics_unit_names, ARRAY[]::text[]),
+                COALESCE(mt.chemistry_unit_names, ARRAY[]::text[]),
+                COALESCE(mt.biology_unit_names, ARRAY[]::text[]),
+                mt.maths_total_marks,
+                mt.physics_total_marks,
+                mt.chemistry_total_marks,
+                mt.biology_total_marks,
+                mt.test_total_marks
+            ))
             FROM mock_test mt
             WHERE mt.student_no = %s {mock_date_filter}
-                  AND NOT (
-                          LOWER(TRIM(COALESCE(mt.total_marks, ''))) IN ('a', 'ab')
-                      OR LOWER(TRIM(COALESCE(mt.maths_marks, ''))) IN ('a', 'ab')
-                      OR LOWER(TRIM(COALESCE(mt.physics_marks, ''))) IN ('a', 'ab')
-                      OR LOWER(TRIM(COALESCE(mt.chemistry_marks, ''))) IN ('a', 'ab')
-                      OR LOWER(TRIM(COALESCE(mt.biology_marks, ''))) IN ('a', 'ab')
-                  )
                   AND (
-                          trim(COALESCE(mt.total_marks, '')) <> ''
-                      OR trim(COALESCE(mt.maths_marks, '')) <> ''
-                      OR trim(COALESCE(mt.physics_marks, '')) <> ''
-                      OR trim(COALESCE(mt.chemistry_marks, '')) <> ''
-                      OR trim(COALESCE(mt.biology_marks, '')) <> ''
+                          safe_numeric(mt.total_marks) IS NOT NULL
+                      OR safe_numeric(mt.maths_marks) IS NOT NULL
+                      OR safe_numeric(mt.physics_marks) IS NOT NULL
+                      OR safe_numeric(mt.chemistry_marks) IS NOT NULL
+                      OR safe_numeric(mt.biology_marks) IS NOT NULL
                   )
         """, [student_no] + mock_params)
         student_mock_attempted = cursor.fetchone()[0] or 0

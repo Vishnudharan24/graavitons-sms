@@ -1920,11 +1920,17 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
         # 3. Per-student daily test counts
         daily_counts = {}
         if student_nos:
-            cursor.execute("""
-                SELECT student_no, COUNT(*) as cnt
-                FROM daily_test
-                WHERE student_no = ANY(%s)
-                GROUP BY student_no
+            cursor.execute(f"""
+                SELECT
+                    dt.student_no,
+                    COUNT(DISTINCT (
+                        dt.test_date,
+                        {normalized_subject_sql('dt.subject')},
+                        COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown')
+                    )) as cnt
+                FROM daily_test dt
+                WHERE dt.student_no = ANY(%s)
+                GROUP BY dt.student_no
             """, (student_nos,))
             for row in cursor.fetchall():
                 daily_counts[row[0]] = row[1]
@@ -1933,10 +1939,23 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
         mock_counts = {}
         if student_nos:
             cursor.execute("""
-                SELECT student_no, COUNT(*) as cnt
-                FROM mock_test
-                WHERE student_no = ANY(%s)
-                GROUP BY student_no
+                SELECT
+                    mt.student_no,
+                    COUNT(DISTINCT (
+                        mt.test_date,
+                        COALESCE(mt.maths_unit_names, ARRAY[]::text[]),
+                        COALESCE(mt.physics_unit_names, ARRAY[]::text[]),
+                        COALESCE(mt.chemistry_unit_names, ARRAY[]::text[]),
+                        COALESCE(mt.biology_unit_names, ARRAY[]::text[]),
+                        mt.maths_total_marks,
+                        mt.physics_total_marks,
+                        mt.chemistry_total_marks,
+                        mt.biology_total_marks,
+                        mt.test_total_marks
+                    )) as cnt
+                FROM mock_test mt
+                WHERE mt.student_no = ANY(%s)
+                GROUP BY mt.student_no
             """, (student_nos,))
             for row in cursor.fetchall():
                 mock_counts[row[0]] = row[1]
@@ -1944,10 +1963,14 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
         # 5. Total distinct daily tests conducted for this batch
         total_daily_tests = 0
         if student_nos:
-            cursor.execute("""
-                SELECT COUNT(DISTINCT (test_date, subject, unit_name))
-                FROM daily_test
-                WHERE student_no = ANY(%s)
+            cursor.execute(f"""
+                SELECT COUNT(DISTINCT (
+                    dt.test_date,
+                    {normalized_subject_sql('dt.subject')},
+                    COALESCE(NULLIF(TRIM(dt.unit_name), ''), 'Unknown')
+                ))
+                FROM daily_test dt
+                WHERE dt.student_no = ANY(%s)
             """, (student_nos,))
             total_daily_tests = cursor.fetchone()[0] or 0
 
@@ -1955,9 +1978,20 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
         total_mock_tests = 0
         if student_nos:
             cursor.execute("""
-                SELECT COUNT(DISTINCT test_date)
-                FROM mock_test
-                WHERE student_no = ANY(%s)
+                SELECT COUNT(DISTINCT (
+                    mt.test_date,
+                    COALESCE(mt.maths_unit_names, ARRAY[]::text[]),
+                    COALESCE(mt.physics_unit_names, ARRAY[]::text[]),
+                    COALESCE(mt.chemistry_unit_names, ARRAY[]::text[]),
+                    COALESCE(mt.biology_unit_names, ARRAY[]::text[]),
+                    mt.maths_total_marks,
+                    mt.physics_total_marks,
+                    mt.chemistry_total_marks,
+                    mt.biology_total_marks,
+                    mt.test_total_marks
+                ))
+                FROM mock_test mt
+                WHERE mt.student_no = ANY(%s)
             """, (student_nos,))
             total_mock_tests = cursor.fetchone()[0] or 0
 
@@ -1971,11 +2005,13 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
                 JOIN student s ON s.student_no = dt.student_no
                 WHERE dt.student_no = ANY(%s)
                 ORDER BY
-                    dt.test_date,
                     CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
                     CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
                     s.student_id ASC,
-                    s.student_name ASC
+                    s.student_name ASC,
+                    dt.test_date,
+                    dt.subject,
+                    dt.unit_name
             """, (student_nos,))
             for r in cursor.fetchall():
                 daily_tests.append({
@@ -2002,11 +2038,11 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
                 JOIN student s ON s.student_no = mt.student_no
                 WHERE mt.student_no = ANY(%s)
                 ORDER BY
-                    mt.test_date,
                     CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
                     CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
                     s.student_id ASC,
-                    s.student_name ASC
+                    s.student_name ASC,
+                    mt.test_date
             """, (student_nos,))
             for r in cursor.fetchall():
                 mock_tests.append({
