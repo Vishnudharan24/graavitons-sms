@@ -91,6 +91,51 @@ npm start
 
 The app will open at `http://localhost:3000` and proxy API requests to port 8000.
 
+## Deploy with Docker (Frontend + Backend as Microservices)
+
+This repository supports Docker Compose with:
+- `frontend` service (React app built and served by Nginx)
+- `backend` service (FastAPI + Gunicorn)
+
+### 1. Configure backend environment
+
+Create `backend/.env` (if not already present):
+
+```env
+DB_HOST=<your-db-host>
+DB_PORT=5432
+DB_NAME=<your-db-name>
+DB_USER=<your-db-user>
+DB_PASSWORD=<your-db-password>
+
+SERVER_HOST=0.0.0.0
+SERVER_PORT=8000
+CORS_ORIGINS=http://localhost
+DEBUG=false
+APP_TITLE=GRAAVITONS SMS API
+```
+
+### 2. Build and start containers
+
+```bash
+docker compose up -d --build
+```
+
+### 3. Verify services
+
+- Frontend: `http://localhost`
+- Backend API docs: `http://localhost:8000/docs`
+
+### 4. Stop containers
+
+```bash
+docker compose down
+```
+
+Notes:
+- Frontend calls backend through internal Docker DNS (`backend:8000`) via Nginx reverse proxy.
+- No manual frontend build is required on the host machine.
+
 ## Deploy on Render (without Docker)
 
 This repo now includes [render.yaml](render.yaml) to deploy:

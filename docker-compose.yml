@@ -3,10 +3,12 @@ version: '3.8'
 services:
   backend:
     build: ./backend
-    container_name: fastapi_app
+    container_name: graavitons_backend
     restart: always
     env_file:
       - ./backend/.env
+    ports:
+      - "8000:8000"
     expose:
       - "8000"
     networks:
@@ -17,15 +19,14 @@ services:
       timeout: 5s
       retries: 3
 
-  nginx:
-    image: nginx:latest
-    container_name: nginx_server
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: graavitons_frontend
     restart: always
     ports:
       - "80:80"
-    volumes:
-      - ./frontend/build:/usr/share/nginx/html
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
     depends_on:
       backend:
         condition: service_healthy
