@@ -517,6 +517,26 @@ const StudentProfile = ({
     biology: { label: 'Biology', color: '#ff1744' }
   }), []);
 
+  const formatReportDateShort = useCallback((dateValue, fallback = 'N/A') => {
+    if (!dateValue) return fallback;
+    try {
+      return new Date(dateValue).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+    } catch {
+      return fallback;
+    }
+  }, []);
+
+  const buildDailyAxisLabel = useCallback((dateValue, subjectKey, fallbackLabel) => {
+    const dateLabel = formatReportDateShort(dateValue, null);
+    const subjectLabel = subjectKey ? (reportSubjectMeta[subjectKey]?.label || subjectKey) : null;
+
+    if (dateLabel && subjectLabel) return `${dateLabel} • ${subjectLabel}`;
+    if (dateLabel) return dateLabel;
+    if (subjectLabel) return subjectLabel;
+
+    return fallbackLabel;
+  }, [formatReportDateShort, reportSubjectMeta]);
+
   const reportSubjectKeys = useMemo(() => {
     const normalizedFromBatch = (analysisData?.student?.batch_subjects || [])
       .map(normalizeReportSubjectKey)
@@ -597,12 +617,11 @@ const StudentProfile = ({
           ? Number((point.scores.reduce((sum, value) => sum + value, 0) / point.scores.length).toFixed(2))
           : 0;
         const displayValue = hasScores ? formatChartValue(numericValue) : point.absentLabel;
-        const dateLabel = point.test_date
-          ? new Date(point.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
-          : null;
 
         return {
-          label: isDailyOnlyProgressReport ? (dateLabel || `UT-${idx + 1}`) : `UT-${idx + 1}`,
+          label: isDailyOnlyProgressReport
+            ? buildDailyAxisLabel(point.test_date, point.subjectKey, `UT-${idx + 1}`)
+            : `UT-${idx + 1}`,
           value: numericValue,
           value_display: displayValue,
           hasValue: hasScores || Boolean(point.absentLabel),
@@ -611,7 +630,7 @@ const StudentProfile = ({
           fill: reportSubjectMeta[point.subjectKey]?.color || '#64748b'
         };
       });
-  }, [dailyTests, isDailyOnlyProgressReport, pdfReportSubjectKeys, reportSubjectMeta]);
+  }, [dailyTests, isDailyOnlyProgressReport, pdfReportSubjectKeys, reportSubjectMeta, buildDailyAxisLabel]);
 
   const dailySubjectVsClassReportData = useMemo(() => {
     const roundedOrNull = (value) => {
@@ -641,7 +660,7 @@ const StudentProfile = ({
         const low = toPercentage(test.class_low, total) ?? parseNumericMark(test.class_low);
 
         return {
-          label: `UT-${index + 1}`,
+          label: buildDailyAxisLabel(test.test_date, subjectKey, `UT-${index + 1}`),
           student: roundedOrNull(student),
           high: roundedOrNull(high),
           average: roundedOrNull(average),
@@ -651,7 +670,7 @@ const StudentProfile = ({
     });
 
     return report;
-  }, [dailyTests, pdfReportSubjectKeys]);
+  }, [dailyTests, pdfReportSubjectKeys, buildDailyAxisLabel]);
 
   const dailyTotalComparisonReportData = useMemo(() => {
     const groupedByDate = {};
@@ -665,8 +684,14 @@ const StudentProfile = ({
           student: [],
           high: [],
           average: [],
-          low: []
+          low: [],
+          subjects: new Set()
         };
+      }
+
+      const subjectKey = normalizeReportSubjectKey(test.subject);
+      if (reportSubjectDisplayPriority.includes(subjectKey)) {
+        groupedByDate[groupKey].subjects.add(subjectKey);
       }
 
       const total = test.subject_total_marks ?? test.test_total_marks;
@@ -690,14 +715,22 @@ const StudentProfile = ({
 
     return Object.entries(groupedByDate)
       .sort(([dateA], [dateB]) => new Date(dateA) - new Date(dateB))
-      .map(([, values], index) => ({
-        label: `UT-${index + 1}`,
-        student: averageOrNull(values.student),
-        high: averageOrNull(values.high),
-        average: averageOrNull(values.average),
-        low: averageOrNull(values.low)
-      }));
-  }, [dailyTests]);
+      .map(([date, values], index) => {
+        const orderedSubjects = [...(values.subjects || [])]
+          .sort((a, b) => reportSubjectDisplayPriority.indexOf(a) - reportSubjectDisplayPriority.indexOf(b));
+        const subjectText = orderedSubjects.length > 0
+          ? orderedSubjects.map((key) => reportSubjectMeta[key]?.label || key).join('/')
+          : 'All Subjects';
+
+        return {
+          label: buildDailyAxisLabel(date, subjectText, `UT-${index + 1}`),
+          student: averageOrNull(values.student),
+          high: averageOrNull(values.high),
+          average: averageOrNull(values.average),
+          low: averageOrNull(values.low)
+        };
+      });
+  }, [dailyTests, buildDailyAxisLabel, reportSubjectMeta]);
 
   const totalComparisonReportData = useMemo(() => {
     const roundedOrNull = (value) => {
