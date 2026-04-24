@@ -534,8 +534,7 @@ const StudentProfile = ({
   };
 
   const dailySubjectComparisonReportData = useMemo(() => {
-    const timeline = {};
-    const groupedSubjectScores = {};
+    const groupedPoints = {};
     (dailyTests || []).forEach((test) => {
       if (!test?.test_date || !test?.subject) return;
       const subjectKey = String(test.subject).trim().toLowerCase() === 'mathematics'
@@ -544,46 +543,51 @@ const StudentProfile = ({
 
       if (!reportSubjectKeys.includes(subjectKey)) return;
 
-      if (!timeline[test.test_date]) {
-        timeline[test.test_date] = { label: `DT-${Object.keys(timeline).length + 1}` };
-      }
-
       const groupKey = `${test.test_date}::${subjectKey}`;
-      if (!groupedSubjectScores[groupKey]) {
-        groupedSubjectScores[groupKey] = { scores: [], absentLabel: null };
+      if (!groupedPoints[groupKey]) {
+        groupedPoints[groupKey] = {
+          test_date: test.test_date,
+          subjectKey,
+          scores: [],
+          absentLabel: null
+        };
       }
 
       const numericScore = parseNumericMark(test.marks);
       if (numericScore !== null) {
-        groupedSubjectScores[groupKey].scores.push(numericScore);
+        groupedPoints[groupKey].scores.push(numericScore);
       } else {
         const absentLabel = getAbsentMarkLabel(test.marks);
         if (absentLabel) {
-          groupedSubjectScores[groupKey].absentLabel = absentLabel;
+          groupedPoints[groupKey].absentLabel = absentLabel;
         }
       }
     });
 
-    Object.entries(groupedSubjectScores).forEach(([groupKey, grouped]) => {
-      const [dateKey, subjectKey] = groupKey.split('::');
-      if (!timeline[dateKey]) return;
+    return Object.values(groupedPoints)
+      .sort((a, b) => {
+        const dateCompare = new Date(a.test_date) - new Date(b.test_date);
+        if (dateCompare !== 0) return dateCompare;
+        return a.subjectKey.localeCompare(b.subjectKey);
+      })
+      .map((point, idx) => {
+        const hasScores = point.scores.length > 0;
+        const numericValue = hasScores
+          ? Number((point.scores.reduce((sum, value) => sum + value, 0) / point.scores.length).toFixed(2))
+          : 0;
+        const displayValue = hasScores ? formatChartValue(numericValue) : point.absentLabel;
 
-      if (grouped?.scores?.length > 0) {
-        const avgScore = grouped.scores.reduce((sum, value) => sum + value, 0) / grouped.scores.length;
-        const normalizedScore = Number(avgScore.toFixed(2));
-        timeline[dateKey][subjectKey] = normalizedScore;
-        timeline[dateKey][`${subjectKey}_display`] = formatChartValue(normalizedScore);
-      } else if (grouped?.absentLabel) {
-        // Keep numeric baseline for plotting but show AB/TA text label.
-        timeline[dateKey][subjectKey] = 0;
-        timeline[dateKey][`${subjectKey}_display`] = grouped.absentLabel;
-      }
-    });
-
-    return Object.entries(timeline)
-      .sort((a, b) => new Date(a[0]) - new Date(b[0]))
-      .map(([, row], idx) => ({ ...row, label: `DT-${idx + 1}` }));
-  }, [dailyTests, reportSubjectKeys]);
+        return {
+          label: `DT-${idx + 1}`,
+          value: numericValue,
+          value_display: displayValue,
+          hasValue: hasScores || Boolean(point.absentLabel),
+          subjectKey: point.subjectKey,
+          subjectLabel: reportSubjectMeta[point.subjectKey]?.label || point.subjectKey,
+          fill: reportSubjectMeta[point.subjectKey]?.color || '#64748b'
+        };
+      });
+  }, [dailyTests, reportSubjectKeys, reportSubjectMeta]);
 
   const totalComparisonReportData = useMemo(() => {
     const roundedOrNull = (value) => {
@@ -783,66 +787,37 @@ const StudentProfile = ({
     }
   };
 
-  const renderPdfDotWithValue = (color, yOffset = 0, seriesKeys = []) => ({ cx, cy, payload, dataKey }) => {
-    const rawValue = payload?.[dataKey];
-    const num = Number(rawValue);
-    const isNumeric = rawValue !== null && rawValue !== undefined && rawValue !== '' && !Number.isNaN(num);
-
-    if (!isNumeric || !Number.isFinite(Number(cx)) || !Number.isFinite(Number(cy))) {
-      return null;
-    }
-
-    const nearYAxis = Number(cx) <= 96;
-    const labelX = nearYAxis ? Number(cx) + 24 : Number(cx);
-    const labelAnchor = nearYAxis ? 'start' : 'middle';
-
-    let stackedOffset = 0;
-    if (Array.isArray(seriesKeys) && seriesKeys.length > 0 && payload) {
-      const seriesValues = seriesKeys
-        .map((key) => {
-          const value = Number(payload[key]);
-          return Number.isNaN(value) ? null : { key, value };
-        })
-        .filter(Boolean)
-        .sort((a, b) => {
-          if (b.value !== a.value) return b.value - a.value;
-          return a.key.localeCompare(b.key);
-        });
-
-      const rank = seriesValues.findIndex((entry) => entry.key === dataKey);
-      const rankOffsets = [-20, -8, 8, 20, 32];
-      if (rank >= 0) stackedOffset = rankOffsets[Math.min(rank, rankOffsets.length - 1)];
-    }
-
-    const baseY = Number(cy) + stackedOffset + yOffset;
-    const labelY = baseY < 14 ? Number(cy) + 14 : (baseY > 244 ? Number(cy) - 10 : baseY);
-
-    const customDisplay = payload?.[`${dataKey}_display`];
-    const shown = customDisplay !== null && customDisplay !== undefined && customDisplay !== ''
-      ? String(customDisplay)
-      : (isNumeric ? formatChartValue(num) : '');
-
-    return (
-      <g>
-        <circle cx={cx} cy={cy} r={2.8} fill={color} stroke={color} strokeWidth={1} />
-        {isNumeric && (
-          <text
-            x={labelX}
-            y={labelY}
-            fill={color}
-            fontSize={11}
-            fontWeight={600}
-            textAnchor={labelAnchor}
-            stroke="#ffffff"
-            strokeWidth={2}
-            paintOrder="stroke"
-          >
-            {shown}
-          </text>
-        )}
-      </g>
-    );
-  };
+  const renderDailyPdfLegend = () => (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'center',
+        gap: '18px',
+        flexWrap: 'wrap',
+        paddingTop: '6px',
+        fontSize: '11px',
+        color: '#374151'
+      }}
+    >
+      {reportSubjectKeys.map((subjectKey) => (
+        <div
+          key={`daily-legend-${subjectKey}`}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          <span
+            style={{
+              width: '10px',
+              height: '10px',
+              borderRadius: '999px',
+              backgroundColor: reportSubjectMeta[subjectKey]?.color || '#64748b',
+              display: 'inline-block'
+            }}
+          />
+          <span>{reportSubjectMeta[subjectKey]?.label || subjectKey}</span>
+        </div>
+      ))}
+    </div>
+  );
 
   const renderSmartPdfBarLabel = (insideColor = '#ffffff', outsideColor = '#111827') => ({ x, y, width, height, value }) => {
     const num = Number(value);
@@ -2195,27 +2170,34 @@ const StudentProfile = ({
           <div className="student-pdf-chart-block student-pdf-chart-panel">
             <h3>Subject Comparison - Daily Test</h3>
             <p>Student subject-wise trend across daily tests ({dailySubjectComparisonReportData.length} points)</p>
-            <LineChart width={720} height={250} data={dailySubjectComparisonReportData} margin={pdfChartMargin}>
+            <BarChart
+              width={720}
+              height={250}
+              data={dailySubjectComparisonReportData}
+              margin={pdfChartMargin}
+              barCategoryGap="40%"
+            >
               <CartesianGrid strokeDasharray="0" stroke="#d1d5db" />
               <XAxis dataKey="label" {...pdfXAxisProps} />
               <YAxis {...pdfYAxisProps} />
               <Tooltip />
-              <Legend {...pdfLegendProps} />
-              {reportSubjectKeys.map((subjectKey) => (
-                <Line
-                  key={subjectKey}
-                  type="monotone"
-                  dataKey={subjectKey}
-                  isAnimationActive={false}
-                  stroke={reportSubjectMeta[subjectKey]?.color || '#64748b'}
-                  strokeWidth={2.2}
-                  activeDot={{ r: 4, fill: '#111827', stroke: '#111827', strokeWidth: 1 }}
-                  dot={renderPdfDotWithValue(reportSubjectMeta[subjectKey]?.color || '#64748b', 0, reportSubjectKeys)}
-                  name={reportSubjectMeta[subjectKey]?.label || subjectKey}
-                  connectNulls
-                />
-              ))}
-            </LineChart>
+              <Legend
+                {...pdfLegendProps}
+                content={renderDailyPdfLegend}
+              />
+              <Bar
+                dataKey="value"
+                isAnimationActive={false}
+                barSize={34}
+                maxBarSize={34}
+                radius={[3, 3, 0, 0]}
+              >
+                {dailySubjectComparisonReportData.map((entry, index) => (
+                  <Cell key={`daily-report-cell-${entry.label}-${index}`} fill={entry.fill} />
+                ))}
+                <LabelList dataKey="value" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+              </Bar>
+            </BarChart>
           </div>
 
           <div className="student-pdf-chart-block student-pdf-chart-panel">
