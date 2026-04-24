@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, LabelList
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
@@ -841,6 +841,35 @@ const StudentProfile = ({
           </text>
         )}
       </g>
+    );
+  };
+
+  const renderSmartPdfBarLabel = (insideColor = '#ffffff', outsideColor = '#111827') => ({ x, y, width, height, value }) => {
+    const num = Number(value);
+    if (value === null || value === undefined || value === '' || Number.isNaN(num)) return null;
+
+    const label = formatChartValue(num);
+    const topY = Number(y);
+    const centerX = Number(x) + Number(width) / 2;
+
+    // If there is visible space above the bar, place label outside; otherwise keep it inside.
+    const hasSpaceAbove = Number.isFinite(topY) && topY > 16;
+    const labelY = hasSpaceAbove ? topY - 6 : topY + Math.max(12, Math.min(Number(height) - 4, 14));
+
+    return (
+      <text
+        x={centerX}
+        y={labelY}
+        textAnchor="middle"
+        fontSize={11}
+        fontWeight={700}
+        fill={hasSpaceAbove ? outsideColor : insideColor}
+        stroke={hasSpaceAbove ? '#ffffff' : 'none'}
+        strokeWidth={hasSpaceAbove ? 2 : 0}
+        paintOrder="stroke"
+      >
+        {label}
+      </text>
     );
   };
 
@@ -2192,17 +2221,25 @@ const StudentProfile = ({
           <div className="student-pdf-chart-block student-pdf-chart-panel">
             <h3>Total Score vs Class High / Average / Low - Mock Test</h3>
             <p>Mock total comparison against class band ({reportTests.length} tests)</p>
-            <LineChart width={720} height={250} data={totalComparisonReportData} margin={pdfChartMargin}>
+            <BarChart width={720} height={250} data={totalComparisonReportData} margin={pdfChartMargin}>
               <CartesianGrid strokeDasharray="0" stroke="#d1d5db" />
               <XAxis dataKey="label" {...pdfXAxisProps} />
               <YAxis {...pdfYAxisProps} />
               <Tooltip />
               <Legend {...pdfLegendProps} />
-              <Line type="monotone" dataKey="student" isAnimationActive={false} stroke="#2563eb" strokeWidth={2.8} dot={renderPdfDotWithValue('#2563eb', 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
-              <Line type="monotone" dataKey="high" isAnimationActive={false} stroke="#22c55e" strokeWidth={2.2} dot={renderPdfDotWithValue('#22c55e', 0, ['high', 'student', 'average', 'low'])} name="High" connectNulls />
-              <Line type="monotone" dataKey="average" isAnimationActive={false} stroke="#f1ed08" strokeWidth={2.2} dot={renderPdfDotWithValue('#f1ed08', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
-              <Line type="monotone" dataKey="low" isAnimationActive={false} stroke="#ef4444" strokeWidth={2.2} dot={renderPdfDotWithValue('#ef4444', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
-            </LineChart>
+              <Bar dataKey="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
+                <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+              </Bar>
+              <Bar dataKey="high" isAnimationActive={false} fill="#22c55e" name="High" radius={[3, 3, 0, 0]}>
+                <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+              </Bar>
+              <Bar dataKey="average" isAnimationActive={false} fill="#f1ed08" name="Average" radius={[3, 3, 0, 0]}>
+                <LabelList dataKey="average" content={renderSmartPdfBarLabel('#111827', '#111827')} />
+              </Bar>
+              <Bar dataKey="low" isAnimationActive={false} fill="#ef4444" name="Low" radius={[3, 3, 0, 0]}>
+                <LabelList dataKey="low" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+              </Bar>
+            </BarChart>
           </div>
         </div>
 
@@ -2216,17 +2253,25 @@ const StudentProfile = ({
               <div className="student-pdf-chart-block student-pdf-chart-panel" key={`mock-subject-${subjectKey}`}>
                 <h3>{subjectLabel} - Mock Test: Student vs Class</h3>
                 <p>{subjectLabel} performance vs class High, Average, Low ({reportTests.length} tests)</p>
-                <LineChart width={720} height={250} data={chartData} margin={pdfChartMargin}>
+                <BarChart width={720} height={250} data={chartData} margin={pdfChartMargin}>
                   <CartesianGrid strokeDasharray="0" stroke="#d1d5db" />
                   <XAxis dataKey="label" {...pdfXAxisProps} />
                   <YAxis {...pdfYAxisProps} />
                   <Tooltip />
                   <Legend {...pdfLegendProps} />
-                  <Line type="monotone" dataKey="student" isAnimationActive={false} stroke="#2563eb" strokeWidth={2.6} dot={renderPdfDotWithValue('#2563eb', 0, ['high', 'student', 'average', 'low'])} name="Student" connectNulls />
-                  <Line type="monotone" dataKey="high" isAnimationActive={false} stroke="#22c55e" strokeWidth={2} dot={renderPdfDotWithValue('#22c55e', 0, ['high', 'student', 'average', 'low'])} name="High" connectNulls />
-                  <Line type="monotone" dataKey="average" isAnimationActive={false} stroke="#f1ed08" strokeWidth={2} dot={renderPdfDotWithValue('#f1ed08', 0, ['high', 'student', 'average', 'low'])} name="Average" connectNulls />
-                  <Line type="monotone" dataKey="low" isAnimationActive={false} stroke="#ef4444" strokeWidth={2} dot={renderPdfDotWithValue('#ef4444', 0, ['high', 'student', 'average', 'low'])} name="Low" connectNulls />
-                </LineChart>
+                  <Bar dataKey="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
+                    <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                  </Bar>
+                  <Bar dataKey="high" isAnimationActive={false} fill="#22c55e" name="High" radius={[3, 3, 0, 0]}>
+                    <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                  </Bar>
+                  <Bar dataKey="average" isAnimationActive={false} fill="#f1ed08" name="Average" radius={[3, 3, 0, 0]}>
+                    <LabelList dataKey="average" content={renderSmartPdfBarLabel('#111827', '#111827')} />
+                  </Bar>
+                  <Bar dataKey="low" isAnimationActive={false} fill="#ef4444" name="Low" radius={[3, 3, 0, 0]}>
+                    <LabelList dataKey="low" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                  </Bar>
+                </BarChart>
               </div>
             );
           })}
