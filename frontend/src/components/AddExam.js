@@ -192,7 +192,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
     dailySubjectTotalMarks: '',
     dailyTestTotalMarks: '',
     examType: '',
-    // For mock test
+    // For monthly test
     mathsUnitNames: '',
     physicsUnitNames: '',
     biologyUnitNames: '',
@@ -210,9 +210,9 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
       id: student.id,
       name: student.name,
       rollNo: student.rollNo,
-      // For daily test
+      // For unit test
       marks: '',
-      // For mock test
+      // For monthly test
       mathsMarks: '',
       physicsMarks: '',
       biologyMarks: '',
@@ -258,7 +258,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
       }
     }
 
-    // Keep daily test total in sync by default for single-subject tests
+    // Keep unit test total in sync by default for single-subject tests
     if (name === 'dailySubjectTotalMarks') {
       setExamData(prev => ({
         ...prev,
@@ -480,7 +480,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     const key = `${testNo || 'NA'}||${examDate}||${subject}||${unitName}||${subjectTotal ?? ''}||${testTotal ?? ''}`;
                     if (!groupMap.has(key)) {
                       groupMap.set(key, {
-                        examName: `${examData.examName || 'Daily Test'} - ${examDate} - ${subject}`,
+                        examName: `${examData.examName || 'Unit Test'} - ${examDate} - ${subject}`,
                         examDate,
                         subject,
                         unitName,
@@ -513,11 +513,11 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                   if (exams.length > 0) {
                     setExcelBulkUpload({ examType: 'daily test', exams });
                     setUploadLogs(rowErrors.slice(0, 200));
-                    alert(`Loaded ${exams.length} daily tests from Excel. Skipped rows: ${skippedRows}. Click Save Exam Marks to upload all.`);
+                    alert(`Loaded ${exams.length} unit tests from Excel. Skipped rows: ${skippedRows}. Click Save Exam Marks to upload all.`);
                   } else {
                     setExcelBulkUpload(null);
                     setUploadLogs(rowErrors.slice(0, 200));
-                    alert('No valid daily test rows found. Please ensure Exam Date, Subject, Topic, and Marks are filled.');
+                    alert('No valid unit test rows found. Please ensure Exam Date, Subject, Topic, and Marks are filled.');
                   }
                 } else {
                   const updatedMarks = studentMarks.map(student => {
@@ -618,7 +618,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
 
                     if (!groupMap.has(groupKey)) {
                       groupMap.set(groupKey, {
-                        examName: `${examData.examName || 'Mock Test'} - ${examDate}`,
+                        examName: `${examData.examName || 'Monthly Test'} - ${examDate}`,
                         examDate,
                         examType: 'mock test',
                         mathsUnitNames: unitPayload.mathsUnitNames ?? examData.mathsUnitNames,
@@ -662,11 +662,11 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                   if (exams.length > 0) {
                     setExcelBulkUpload({ examType: 'mock test', exams });
                     setUploadLogs(rowErrors.slice(0, 200));
-                    alert(`Loaded ${exams.length} mock tests from Excel by date. Skipped rows: ${skippedRows}. Click Save Exam Marks to upload all.`);
+                    alert(`Loaded ${exams.length} monthly tests from Excel by date. Skipped rows: ${skippedRows}. Click Save Exam Marks to upload all.`);
                   } else {
                     setExcelBulkUpload(null);
                     setUploadLogs(rowErrors.slice(0, 200));
-                    alert('No valid mock test rows found. Please ensure Exam Date and marks are filled.');
+                    alert('No valid monthly test rows found. Please ensure Exam Date and marks are filled.');
                   }
                 } else {
                   const updatedMarks = studentMarks.map(student => {
@@ -757,7 +757,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
     // Validate based on exam type
     if (examData.examType === 'daily test' && !hasBulkExcelData && examMode !== 'multi-excel') {
       if (!examData.subject || !examData.unitName || !examData.dailySubjectTotalMarks || !examData.dailyTestTotalMarks) {
-        alert('Please fill subject, unit name, and total marks for daily test');
+        alert('Please fill subject, unit name, and total marks for unit test');
         return;
       }
 
@@ -781,7 +781,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
 
       const hasMissingSubjectTotals = activeMockSubjects.some(subject => !examData[subject.totalField]);
       if (hasMissingSubjectTotals || !examData.mockTestTotalMarks) {
-        alert('Please fill subject total marks and overall test total marks for mock test');
+        alert('Please fill subject total marks and overall test total marks for monthly test');
         return;
       }
 
@@ -1010,12 +1010,12 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                 required
               >
                 <option value="">Select Type</option>
-                <option value="daily test">Daily Test</option>
-                <option value="mock test">Mock Test</option>
+                <option value="daily test">Unit Test</option>
+                <option value="mock test">Monthly Test</option>
               </select>
             </div>
 
-            {/* Daily Test Fields */}
+            {/* Unit Test Fields */}
             {examData.examType === 'daily test' && (
               <>
                 <div className="form-group">
@@ -1073,7 +1073,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
               </>
             )}
 
-            {/* Mock Test Fields */}
+            {/* Monthly Test Fields */}
             {examData.examType === 'mock test' && (
               <>
                 {activeMockSubjects.map(subject => (
@@ -1355,8 +1355,8 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     required
                   >
                     <option value="">Select Type</option>
-                    <option value="daily test">Daily Test</option>
-                    <option value="mock test">Mock Test</option>
+                    <option value="daily test">Unit Test</option>
+                    <option value="mock test">Monthly Test</option>
                   </select>
                 </div>
                 <div className="form-group">
@@ -1375,8 +1375,8 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
 
               <p className="instruction">
                 Use this section to upload multiple exams in one file.
-                For Daily Test, fill <strong>Exam Date + Subject + Topic / Unit Name</strong> in each row.
-                For Mock Test, fill <strong>Exam Date</strong> in each row.
+                For Unit Test, fill <strong>Exam Date + Subject + Topic / Unit Name</strong> in each row.
+                For Monthly Test, fill <strong>Exam Date</strong> in each row.
               </p>
 
               <div className="upload-steps">

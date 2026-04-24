@@ -331,14 +331,14 @@ const ManageExamMarks = ({ batchId }) => {
             className={`mode-btn ${examType === 'daily test' ? 'active' : ''}`}
             onClick={() => setExamType('daily test')}
           >
-            Daily Test
+            Unit Test
           </button>
           <button
             type="button"
             className={`mode-btn ${examType === 'mock test' ? 'active' : ''}`}
             onClick={() => setExamType('mock test')}
           >
-            Mock Test
+            Monthly Test
           </button>
         </div>
         <button type="button" className="btn-download" onClick={fetchGroups} disabled={loadingGroups || saving}>

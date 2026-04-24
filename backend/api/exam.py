@@ -89,7 +89,7 @@ app.add_middleware(
 )
 
 
-# Pydantic models for Daily Test
+# Pydantic models for Unit Test
 class DailyTestStudentMark(BaseModel):
     id: str  # student_id
     marks: Optional[str] = None
@@ -108,7 +108,7 @@ class DailyTestCreate(BaseModel):
     studentMarks: List[DailyTestStudentMark]
 
 
-# Pydantic models for Mock Test
+# Pydantic models for Monthly Test
 class MockTestStudentMark(BaseModel):
     id: str  # student_id
     mathsMarks: Optional[str] = None
@@ -153,7 +153,7 @@ class DailyTestBulkCreate(BaseModel):
     @validator('exams')
     def validate_daily_exams_not_empty(cls, value):
         if not value:
-            raise ValueError("At least one daily test is required")
+            raise ValueError("At least one unit test is required")
         return value
 
 
@@ -180,7 +180,7 @@ class MockTestBulkCreate(BaseModel):
     @validator('exams')
     def validate_mock_exams_not_empty(cls, value):
         if not value:
-            raise ValueError("At least one mock test is required")
+            raise ValueError("At least one monthly test is required")
         return value
 
 
@@ -249,7 +249,7 @@ class MockTestGroupUpdate(BaseModel):
 @app.post("/api/exam/daily-test", status_code=status.HTTP_201_CREATED)
 async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Depends(get_current_user)):
     """
-    Create daily test marks for students
+    Create unit test marks for students
     """
     conn = None
     cursor = None
@@ -328,7 +328,7 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
                 # Store marks as-is (supports integers, 'A' for absent, '-' for N/A, negative marks)
                 marks = student_mark.marks.strip() if student_mark.marks and student_mark.marks.strip() else None
                 
-                # Insert daily test record
+                # Insert unit test record
                 cursor.execute("""
                     INSERT INTO daily_test (
                         student_no, grade, branch, test_date, 
@@ -358,7 +358,7 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
         conn.commit()
         
         response = {
-            "message": "Daily test marks added successfully",
+            "message": "Unit test marks added successfully",
             "exam_name": exam_data.examName,
             "exam_date": str(exam_data.examDate),
             "subject": normalized_subject,
@@ -382,7 +382,7 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
             conn.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create daily test: {str(e)}"
+            detail=f"Failed to create unit test: {str(e)}"
         )
     finally:
         if cursor:
@@ -394,7 +394,7 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
 @app.post("/api/exam/mock-test", status_code=status.HTTP_201_CREATED)
 async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depends(get_current_user)):
     """
-    Create mock test marks for students
+    Create monthly test marks for students
     """
     conn = None
     cursor = None
@@ -483,7 +483,7 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
                 valid_marks = [m for m in numeric_marks if m is not None]
                 total_marks = str(sum(valid_marks)) if valid_marks else None
                 
-                # Insert mock test record
+                # Insert monthly test record
                 cursor.execute("""
                     INSERT INTO mock_test (
                         student_no, grade, branch, test_date,
@@ -531,7 +531,7 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
         conn.commit()
         
         response = {
-            "message": "Mock test marks added successfully",
+            "message": "Monthly test marks added successfully",
             "exam_name": exam_data.examName,
             "exam_date": str(exam_data.examDate),
             "active_subjects": list(active_subjects),
@@ -564,7 +564,7 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
             conn.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create mock test: {str(e)}"
+            detail=f"Failed to create monthly test: {str(e)}"
         )
     finally:
         if cursor:
@@ -576,7 +576,7 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
 @app.post("/api/exam/daily-test/bulk", status_code=status.HTTP_201_CREATED)
 async def create_daily_test_bulk(exam_data: DailyTestBulkCreate, current_user: dict = Depends(get_current_user)):
     """
-    Upload multiple daily tests in a single request for one batch.
+    Upload multiple unit tests in a single request for one batch.
     """
     results = []
     failed_exams = []
@@ -619,7 +619,7 @@ async def create_daily_test_bulk(exam_data: DailyTestBulkCreate, current_user: d
             })
 
     return {
-        "message": "Bulk daily test upload completed",
+        "message": "Bulk unit test upload completed",
         "batch_id": exam_data.batch_id,
         "total_exams": len(exam_data.exams),
         "successful_exams": len(results),
@@ -633,7 +633,7 @@ async def create_daily_test_bulk(exam_data: DailyTestBulkCreate, current_user: d
 @app.post("/api/exam/mock-test/bulk", status_code=status.HTTP_201_CREATED)
 async def create_mock_test_bulk(exam_data: MockTestBulkCreate, current_user: dict = Depends(get_current_user)):
     """
-    Upload multiple mock tests in a single request for one batch.
+    Upload multiple monthly tests in a single request for one batch.
     """
     results = []
     failed_exams = []
@@ -680,7 +680,7 @@ async def create_mock_test_bulk(exam_data: MockTestBulkCreate, current_user: dic
             })
 
     return {
-        "message": "Bulk mock test upload completed",
+        "message": "Bulk monthly test upload completed",
         "batch_id": exam_data.batch_id,
         "total_exams": len(exam_data.exams),
         "successful_exams": len(results),
@@ -739,7 +739,7 @@ async def get_daily_test_groups(batch_id: int, current_user: dict = Depends(get_
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch daily test groups: {str(e)}"
+            detail=f"Failed to fetch unit test groups: {str(e)}"
         )
     finally:
         if cursor:
@@ -795,7 +795,7 @@ async def get_daily_test_group_records(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch daily test records: {str(e)}"
+            detail=f"Failed to fetch unit test records: {str(e)}"
         )
     finally:
         if cursor:
@@ -891,7 +891,7 @@ async def update_daily_test_group(
         conn.commit()
 
         return {
-            "message": "Daily test marks updated successfully",
+            "message": "Unit test marks updated successfully",
             "updated_count": updated_count,
             "inserted_count": inserted_count,
             "deleted_count": deleted_count,
@@ -904,7 +904,7 @@ async def update_daily_test_group(
             conn.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update daily test marks: {str(e)}"
+            detail=f"Failed to update unit test marks: {str(e)}"
         )
     finally:
         if cursor:
@@ -939,7 +939,7 @@ async def delete_daily_test_group(
 
         conn.commit()
         return {
-            "message": "Daily test deleted successfully",
+            "message": "Unit test deleted successfully",
             "deleted_count": deleted_count
         }
     except Exception as e:
@@ -947,7 +947,7 @@ async def delete_daily_test_group(
             conn.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete daily test group: {str(e)}"
+            detail=f"Failed to delete unit test group: {str(e)}"
         )
     finally:
         if cursor:
@@ -1027,7 +1027,7 @@ async def get_mock_test_groups(batch_id: int, current_user: dict = Depends(get_c
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch mock test groups: {str(e)}"
+            detail=f"Failed to fetch monthly test groups: {str(e)}"
         )
     finally:
         if cursor:
@@ -1107,7 +1107,7 @@ async def get_mock_test_group_records(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch mock test records: {str(e)}"
+            detail=f"Failed to fetch monthly test records: {str(e)}"
         )
     finally:
         if cursor:
@@ -1275,7 +1275,7 @@ async def update_mock_test_group(
 
         conn.commit()
         return {
-            "message": "Mock test marks updated successfully",
+            "message": "Monthly test marks updated successfully",
             "updated_count": updated_count,
             "inserted_count": inserted_count,
             "deleted_count": deleted_count,
@@ -1288,7 +1288,7 @@ async def update_mock_test_group(
             conn.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update mock test marks: {str(e)}"
+            detail=f"Failed to update monthly test marks: {str(e)}"
         )
     finally:
         if cursor:
@@ -1341,7 +1341,7 @@ async def delete_mock_test_group(
 
         conn.commit()
         return {
-            "message": "Mock test deleted successfully",
+            "message": "Monthly test deleted successfully",
             "deleted_count": deleted_count
         }
     except Exception as e:
@@ -1349,7 +1349,7 @@ async def delete_mock_test_group(
             conn.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete mock test group: {str(e)}"
+            detail=f"Failed to delete monthly test group: {str(e)}"
         )
     finally:
         if cursor:
@@ -1373,7 +1373,7 @@ async def get_daily_test_template(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Generate and download Excel template for daily test marks entry
+    Generate and download Excel template for unit test marks entry
     """
     conn = None
     cursor = None
@@ -1405,7 +1405,7 @@ async def get_daily_test_template(
         # Create Excel workbook
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = "Daily Test Marks"
+        ws.title = "Unit Test Marks"
         
         # Styling
         header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
@@ -1485,7 +1485,7 @@ async def get_daily_test_template(
         # Add instructions in a separate sheet
         instructions_ws = wb.create_sheet("Instructions")
         instructions = [
-            ["Daily Test Marks Template - Instructions"],
+            ["Unit Test Marks Template - Instructions"],
             [""],
             ["1. Fill 'Exam Date', 'Subject', and 'Topic / Unit Name' directly in the sheet." if multi_template else "1. Fill only the Marks column."],
             [f"2. This file was generated for {test_count} test set(s). Use 'Test No' to separate tests." if multi_template else "2. Do not modify the Student Name column."],
@@ -1540,7 +1540,7 @@ async def get_mock_test_template(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Generate and download Excel template for mock test marks entry
+    Generate and download Excel template for monthly test marks entry
     """
     conn = None
     cursor = None
@@ -1569,7 +1569,7 @@ async def get_mock_test_template(
                 detail=f"No students found for batch ID {batch_id}"
             )
 
-        # Determine which mock-test subjects are enabled for this batch
+        # Determine which monthly-test subjects are enabled for this batch
         cursor.execute("SELECT subjects FROM batch WHERE batch_id = %s", (batch_id,))
         batch_row = cursor.fetchone()
         batch_subjects = batch_row[0] if batch_row else None
@@ -1584,7 +1584,7 @@ async def get_mock_test_template(
         # Create Excel workbook
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = "Mock Test Marks"
+        ws.title = "Monthly Test Marks"
         
         # Styling
         header_fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
@@ -1659,11 +1659,11 @@ async def get_mock_test_template(
         # Add instructions in a separate sheet
         instructions_ws = wb.create_sheet("Instructions")
         instructions = [
-            ["Mock Test Marks Template - Instructions"],
+            ["Monthly Test Marks Template - Instructions"],
             [""],
             ["1. Fill Exam Date directly in the sheet." if multi_template else "1. Fill marks in subject columns generated from this batch configuration."],
             [f"2. This file was generated for {test_count} test set(s). Use 'Test No' to separate tests." if multi_template else "2. Do not modify the Student Name column."],
-            ["3. You can enter multiple mock tests in one file by using different dates." if multi_template else "3. Do not modify the Admission Number or Student Name columns."],
+            ["3. You can enter multiple monthly tests in one file by using different dates." if multi_template else "3. Do not modify the Admission Number or Student Name columns."],
             ["4. Do not modify the Admission Number or Student Name columns." if multi_template else "4. Save the file and upload it back to the system."],
             ["5. Subject marks can be left empty if not available." if multi_template else f"5. Subject columns included: {', '.join([s.title() for s in active_subjects])}"],
             ["6. For multi template, fill unit names and subject totals in sheet columns." if multi_template else ""],
@@ -1710,7 +1710,7 @@ async def get_mock_test_template(
 @app.get("/api/exam/daily-test/student/{student_no}")
 async def get_student_daily_tests(student_no: int, current_user: dict = Depends(get_current_user)):
     """
-    Get all daily test marks for a specific student
+    Get all unit test marks for a specific student
     """
     conn = None
     cursor = None
@@ -1719,7 +1719,7 @@ async def get_student_daily_tests(student_no: int, current_user: dict = Depends(
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Fetch all daily tests for the student
+        # Fetch all unit tests for the student
         cursor.execute("""
             SELECT 
                 test_id,
@@ -1764,7 +1764,7 @@ async def get_student_daily_tests(student_no: int, current_user: dict = Depends(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch daily tests: {str(e)}"
+            detail=f"Failed to fetch unit tests: {str(e)}"
         )
     finally:
         if cursor:
@@ -1776,7 +1776,7 @@ async def get_student_daily_tests(student_no: int, current_user: dict = Depends(
 @app.get("/api/exam/mock-test/student/{student_no}")
 async def get_student_mock_tests(student_no: int, current_user: dict = Depends(get_current_user)):
     """
-    Get all mock test marks for a specific student
+    Get all monthly test marks for a specific student
     """
     conn = None
     cursor = None
@@ -1785,7 +1785,7 @@ async def get_student_mock_tests(student_no: int, current_user: dict = Depends(g
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Fetch all mock tests for the student
+        # Fetch all monthly tests for the student
         cursor.execute("""
             SELECT 
                 test_id,
@@ -1848,7 +1848,7 @@ async def get_student_mock_tests(student_no: int, current_user: dict = Depends(g
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch mock tests: {str(e)}"
+            detail=f"Failed to fetch monthly tests: {str(e)}"
         )
     finally:
         if cursor:
@@ -1861,7 +1861,7 @@ async def get_student_mock_tests(student_no: int, current_user: dict = Depends(g
 async def get_batch_report(batch_id: int, current_user: dict = Depends(get_current_user)):
     """
     Get batch report data: all students with basic details,
-    per-student daily/mock test counts, and batch-level totals.
+    per-student unit/monthly test counts, and batch-level totals.
     """
     conn = None
     cursor = None
@@ -1917,7 +1917,7 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
 
         student_nos = [r[0] for r in student_rows]
 
-        # 3. Per-student daily test counts
+        # 3. Per-student unit test counts
         daily_counts = {}
         if student_nos:
             cursor.execute(f"""
@@ -1935,7 +1935,7 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
             for row in cursor.fetchall():
                 daily_counts[row[0]] = row[1]
 
-        # 4. Per-student mock test counts
+        # 4. Per-student monthly test counts
         mock_counts = {}
         if student_nos:
             cursor.execute("""
@@ -1960,7 +1960,7 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
             for row in cursor.fetchall():
                 mock_counts[row[0]] = row[1]
 
-        # 5. Total distinct daily tests conducted for this batch
+        # 5. Total distinct unit tests conducted for this batch
         total_daily_tests = 0
         if student_nos:
             cursor.execute(f"""
@@ -1974,7 +1974,7 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
             """, (student_nos,))
             total_daily_tests = cursor.fetchone()[0] or 0
 
-        # 6. Total distinct mock tests conducted for this batch
+        # 6. Total distinct monthly tests conducted for this batch
         total_mock_tests = 0
         if student_nos:
             cursor.execute("""
@@ -1995,7 +1995,7 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
             """, (student_nos,))
             total_mock_tests = cursor.fetchone()[0] or 0
 
-        # 7. Fetch all daily test records for batch students
+        # 7. Fetch all unit test records for batch students
         daily_tests = []
         if student_nos:
             cursor.execute("""
@@ -2025,7 +2025,7 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
                     "test_total_marks": r[7],
                 })
 
-        # 8. Fetch all mock test records for batch students
+        # 8. Fetch all monthly test records for batch students
         mock_tests = []
         if student_nos:
             cursor.execute("""

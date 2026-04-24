@@ -57,6 +57,13 @@ const formatChartValue = (value) => {
   return num.toFixed(2).replace(/\.00$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
 };
 
+const reportSubjectDisplayPriority = ['physics', 'chemistry', 'maths', 'biology'];
+const normalizeReportSubjectKey = (subject) => {
+  const normalized = String(subject || '').trim().toLowerCase();
+  if (normalized === 'mathematics' || normalized === 'math') return 'maths';
+  return normalized;
+};
+
 const chartAxisStyle = {
   tick: { fontSize: 12, fill: '#2d3748' },
   axisLine: { stroke: '#94a3b8' },
@@ -327,6 +334,8 @@ const StudentProfile = ({
   };
 
   const reportProgram = analysisData?.student?.batch_type || displayData.course;
+  const normalizedReportBatchType = String(analysisData?.student?.batch_type || '').trim().toLowerCase();
+  const isDailyOnlyProgressReport = normalizedReportBatchType === 'other' || normalizedReportBatchType === 'board';
 
   // Apply date filters to tests
   const filteredDailyTests = dailyTests.filter(test => {
@@ -364,7 +373,7 @@ const StudentProfile = ({
     return markFields.some((value) => isAbsentMark(value));
   }, []);
 
-  // Build performance trend from filtered daily tests
+  // Build performance trend from filtered unit tests
   const buildPerformanceTrend = () => {
     if (!filteredDailyTests || filteredDailyTests.length === 0) return [];
     const hasDailyTotals = filteredDailyTests.some(test => parseNumericMark(test.subject_total_marks ?? test.test_total_marks) !== null);
@@ -390,7 +399,7 @@ const StudentProfile = ({
     }));
   };
 
-  // Build mock test chart data from filtered mock tests
+  // Build monthly test chart data from filtered monthly tests
   const buildMockTestChartData = () => {
     if (!chronologicalMockTests || chronologicalMockTests.length === 0) return [];
     const hasMockSubjectTotals = chronologicalMockTests.some(test =>
@@ -408,7 +417,7 @@ const StudentProfile = ({
     return chronologicalMockTests.map((test, idx) => {
       const isAbsent = hasAbsentInMockTestRecord(test);
       return {
-      exam: `Mock ${idx + 1} (${test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''})`,
+      exam: `Monthly ${idx + 1} (${test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''})`,
       physics: isAbsent ? null : getSubjectValue(test.physics_marks, test.physics_total_marks),
       chemistry: isAbsent ? null : getSubjectValue(test.chemistry_marks, test.chemistry_total_marks),
       biology: isAbsent ? null : getSubjectValue(test.biology_marks, test.biology_total_marks),
@@ -425,7 +434,7 @@ const StudentProfile = ({
     return chronologicalMockTests.map((test, idx) => {
       const isAbsent = hasAbsentInMockTestRecord(test);
       return {
-      exam: `Mock ${idx + 1}`,
+      exam: `Monthly ${idx + 1}`,
       date: test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-',
       total: isAbsent
         ? null
@@ -509,24 +518,38 @@ const StudentProfile = ({
   }), []);
 
   const reportSubjectKeys = useMemo(() => {
-    const subjectDisplayPriority = ['physics', 'chemistry', 'maths', 'biology'];
     const normalizedFromBatch = (analysisData?.student?.batch_subjects || [])
-      .map((raw) => String(raw || '').trim().toLowerCase())
-      .map((raw) => (raw === 'mathematics' ? 'maths' : raw))
+      .map(normalizeReportSubjectKey)
       .filter((key) => ['maths', 'physics', 'chemistry', 'biology'].includes(key));
 
     const uniqueFromBatch = [...new Set(normalizedFromBatch)]
-      .sort((a, b) => subjectDisplayPriority.indexOf(a) - subjectDisplayPriority.indexOf(b));
+      .sort((a, b) => reportSubjectDisplayPriority.indexOf(a) - reportSubjectDisplayPriority.indexOf(b));
     const maxSubjectCount = uniqueFromBatch.length >= 4 ? 4 : 3;
     if (uniqueFromBatch.length >= 3) return uniqueFromBatch.slice(0, maxSubjectCount);
 
-    const presentInMock = subjectDisplayPriority.filter((key) =>
+    const presentInMock = reportSubjectDisplayPriority.filter((key) =>
       reportTests.some((test) => parseNumericMark(test[`${key}_marks`]) !== null)
     );
 
-    const merged = [...new Set([...uniqueFromBatch, ...presentInMock, ...subjectDisplayPriority])];
+    const merged = [...new Set([...uniqueFromBatch, ...presentInMock, ...reportSubjectDisplayPriority])];
     return merged.slice(0, maxSubjectCount);
   }, [analysisData, reportTests]);
+
+  const pdfReportSubjectKeys = useMemo(() => {
+    if (isDailyOnlyProgressReport) {
+      const normalizedFromBatch = (analysisData?.student?.batch_subjects || [])
+        .map(normalizeReportSubjectKey)
+        .filter((key) => reportSubjectDisplayPriority.includes(key));
+      const presentInDaily = reportSubjectDisplayPriority.filter((key) =>
+        (dailyTests || []).some((test) => normalizeReportSubjectKey(test?.subject) === key)
+      );
+      const merged = [...new Set([...normalizedFromBatch, ...presentInDaily])]
+        .sort((a, b) => reportSubjectDisplayPriority.indexOf(a) - reportSubjectDisplayPriority.indexOf(b));
+
+      return merged.length > 0 ? merged : ['physics', 'chemistry', 'maths'];
+    }
+    return reportSubjectKeys;
+  }, [analysisData, dailyTests, isDailyOnlyProgressReport, reportSubjectKeys]);
 
   const buildReportPointLabel = (test, index) => {
     if (test?.test_name) return test.test_name;
@@ -537,11 +560,9 @@ const StudentProfile = ({
     const groupedPoints = {};
     (dailyTests || []).forEach((test) => {
       if (!test?.test_date || !test?.subject) return;
-      const subjectKey = String(test.subject).trim().toLowerCase() === 'mathematics'
-        ? 'maths'
-        : String(test.subject).trim().toLowerCase();
+      const subjectKey = normalizeReportSubjectKey(test.subject);
 
-      if (!reportSubjectKeys.includes(subjectKey)) return;
+      if (!pdfReportSubjectKeys.includes(subjectKey)) return;
 
       const groupKey = `${test.test_date}::${subjectKey}`;
       if (!groupedPoints[groupKey]) {
@@ -576,9 +597,12 @@ const StudentProfile = ({
           ? Number((point.scores.reduce((sum, value) => sum + value, 0) / point.scores.length).toFixed(2))
           : 0;
         const displayValue = hasScores ? formatChartValue(numericValue) : point.absentLabel;
+        const dateLabel = point.test_date
+          ? new Date(point.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+          : null;
 
         return {
-          label: `DT-${idx + 1}`,
+          label: isDailyOnlyProgressReport ? (dateLabel || `UT-${idx + 1}`) : `UT-${idx + 1}`,
           value: numericValue,
           value_display: displayValue,
           hasValue: hasScores || Boolean(point.absentLabel),
@@ -587,7 +611,93 @@ const StudentProfile = ({
           fill: reportSubjectMeta[point.subjectKey]?.color || '#64748b'
         };
       });
-  }, [dailyTests, reportSubjectKeys, reportSubjectMeta]);
+  }, [dailyTests, isDailyOnlyProgressReport, pdfReportSubjectKeys, reportSubjectMeta]);
+
+  const dailySubjectVsClassReportData = useMemo(() => {
+    const roundedOrNull = (value) => {
+      if (value === null || value === undefined || value === '') return null;
+      const num = Number(value);
+      return Number.isNaN(num) ? null : Math.round(num);
+    };
+
+    const report = {};
+    pdfReportSubjectKeys.forEach((subjectKey) => {
+      const subjectTests = (dailyTests || [])
+        .filter((test) => {
+          const testSubjectKey = normalizeReportSubjectKey(test?.subject);
+          return testSubjectKey === subjectKey && test?.test_date;
+        })
+        .sort((a, b) => {
+          const dateCompare = new Date(a.test_date) - new Date(b.test_date);
+          if (dateCompare !== 0) return dateCompare;
+          return String(a.unit_name || '').localeCompare(String(b.unit_name || ''));
+        });
+
+      report[subjectKey] = subjectTests.map((test, index) => {
+        const total = test.subject_total_marks ?? test.test_total_marks;
+        const student = toPercentage(test.marks, total) ?? parseNumericMark(test.marks);
+        const high = toPercentage(test.top_score, total) ?? parseNumericMark(test.top_score);
+        const average = toPercentage(test.class_avg, total) ?? parseNumericMark(test.class_avg);
+        const low = toPercentage(test.class_low, total) ?? parseNumericMark(test.class_low);
+
+        return {
+          label: `UT-${index + 1}`,
+          student: roundedOrNull(student),
+          high: roundedOrNull(high),
+          average: roundedOrNull(average),
+          low: roundedOrNull(low)
+        };
+      });
+    });
+
+    return report;
+  }, [dailyTests, pdfReportSubjectKeys]);
+
+  const dailyTotalComparisonReportData = useMemo(() => {
+    const groupedByDate = {};
+
+    (dailyTests || []).forEach((test) => {
+      if (!test?.test_date) return;
+
+      const groupKey = test.test_date;
+      if (!groupedByDate[groupKey]) {
+        groupedByDate[groupKey] = {
+          student: [],
+          high: [],
+          average: [],
+          low: []
+        };
+      }
+
+      const total = test.subject_total_marks ?? test.test_total_marks;
+
+      const student = toPercentage(test.marks, total) ?? parseNumericMark(test.marks);
+      const high = toPercentage(test.top_score, total) ?? parseNumericMark(test.top_score);
+      const average = toPercentage(test.class_avg, total) ?? parseNumericMark(test.class_avg);
+      const low = toPercentage(test.class_low, total) ?? parseNumericMark(test.class_low);
+
+      if (student !== null) groupedByDate[groupKey].student.push(student);
+      if (high !== null) groupedByDate[groupKey].high.push(high);
+      if (average !== null) groupedByDate[groupKey].average.push(average);
+      if (low !== null) groupedByDate[groupKey].low.push(low);
+    });
+
+    const averageOrNull = (values) => {
+      if (!values || values.length === 0) return null;
+      const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+      return Math.round(avg);
+    };
+
+    return Object.entries(groupedByDate)
+      .sort(([dateA], [dateB]) => new Date(dateA) - new Date(dateB))
+      .map(([, values], index) => ({
+        label: `UT-${index + 1}`,
+        student: averageOrNull(values.student),
+        high: averageOrNull(values.high),
+        average: averageOrNull(values.average),
+        low: averageOrNull(values.low)
+      }));
+  }, [dailyTests]);
 
   const totalComparisonReportData = useMemo(() => {
     const roundedOrNull = (value) => {
@@ -739,21 +849,27 @@ const StudentProfile = ({
     const mockConducted = Number(studentMetrics?.mock_tests_conducted ?? mockConductedCount);
     const mockAttended = Number(studentMetrics?.mock_tests_attended ?? mockAttemptedCount);
 
-    return [
+    const rows = [
       {
-        testType: 'Daily Test',
+        testType: 'Unit Test',
         conducted: weeklyConducted,
         attended: weeklyAttended,
         summary: `${weeklyAttended}/${weeklyConducted || 0}`
-      },
+      }
+    ];
+
+    if (isDailyOnlyProgressReport) return rows;
+
+    return [
+      ...rows,
       {
-        testType: 'Mock Test',
+        testType: 'Monthly Test',
         conducted: mockConducted,
         attended: mockAttended,
         summary: `${mockAttended}/${mockConducted || 0}`
       }
     ];
-  }, [studentMetrics, dailyAttemptedCount, dailyConductedCount, mockAttemptedCount, mockConductedCount]);
+  }, [studentMetrics, dailyAttemptedCount, dailyConductedCount, mockAttemptedCount, mockConductedCount, isDailyOnlyProgressReport]);
 
   const activeInsightRows = useMemo(() => {
     if (insightTab === 'daily') return studentTestInsights?.daily || [];
@@ -799,7 +915,7 @@ const StudentProfile = ({
         color: '#374151'
       }}
     >
-      {reportSubjectKeys.map((subjectKey) => (
+      {pdfReportSubjectKeys.map((subjectKey) => (
         <div
           key={`daily-legend-${subjectKey}`}
           style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -1160,7 +1276,7 @@ const StudentProfile = ({
     wsAcademic['!cols'] = [{ wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }];
     XLSX.utils.book_append_sheet(wb, wsAcademic, 'Academic Marks');
 
-    // ===== Sheet 3: Daily Test Performance =====
+    // ===== Sheet 3: Unit Test Performance =====
     if (dailyTests.length > 0) {
       const dailyHeader = ['Date', 'Subject', 'Unit Name', 'Marks (Obtained/Total)', 'Class Avg', 'Top Score'];
       const dailyRows = dailyTests.map(test => [
@@ -1171,12 +1287,12 @@ const StudentProfile = ({
         displayMarkWithTotal(test.class_avg, test.subject_total_marks ?? test.test_total_marks, 0),
         displayMarkWithTotal(test.top_score, test.subject_total_marks ?? test.test_total_marks, 0)
       ]);
-      const wsDaily = XLSX.utils.aoa_to_sheet([['DAILY TEST PERFORMANCE'], [], dailyHeader, ...dailyRows]);
+      const wsDaily = XLSX.utils.aoa_to_sheet([['UNIT TEST PERFORMANCE'], [], dailyHeader, ...dailyRows]);
       wsDaily['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 28 }, { wch: 10 }, { wch: 12 }, { wch: 12 }];
-      XLSX.utils.book_append_sheet(wb, wsDaily, 'Daily Tests');
+      XLSX.utils.book_append_sheet(wb, wsDaily, 'Unit Tests');
     }
 
-    // ===== Sheet 4: Mock Test Performance =====
+    // ===== Sheet 4: Monthly Test Performance =====
     if (mockTests.length > 0) {
       const mockHeader = ['Date', 'Maths (Obtained/Total)', 'Physics (Obtained/Total)', 'Chemistry (Obtained/Total)', 'Biology (Obtained/Total)', 'Total (Obtained/Total)', 'Class Avg', 'Top Score'];
       const mockRows = mockTests.map(test => [
@@ -1189,9 +1305,9 @@ const StudentProfile = ({
         displayMarkWithTotal(test.class_avg_total, test.test_total_marks, 0),
         displayMarkWithTotal(test.top_score_total, test.test_total_marks, 0)
       ]);
-      const wsMock = XLSX.utils.aoa_to_sheet([['MOCK TEST PERFORMANCE'], [], mockHeader, ...mockRows]);
+      const wsMock = XLSX.utils.aoa_to_sheet([['MONTHLY TEST PERFORMANCE'], [], mockHeader, ...mockRows]);
       wsMock['!cols'] = [{ wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 }];
-      XLSX.utils.book_append_sheet(wb, wsMock, 'Mock Tests');
+      XLSX.utils.book_append_sheet(wb, wsMock, 'Monthly Tests');
     }
 
     // ===== Sheet 5: Feedback History =====
@@ -1639,10 +1755,10 @@ const StudentProfile = ({
             <h3>🧩 Per-Test Remediation Insights</h3>
             <div className="insight-tab-row">
               <button className={`insight-tab-btn ${insightTab === 'mock' ? 'active' : ''}`} onClick={() => setInsightTab('mock')}>
-                Mock Test Insights
+                Monthly Test Insights
               </button>
               <button className={`insight-tab-btn ${insightTab === 'daily' ? 'active' : ''}`} onClick={() => setInsightTab('daily')}>
-                Daily Test Insights
+                Unit Test Insights
               </button>
             </div>
 
@@ -1693,9 +1809,9 @@ const StudentProfile = ({
             )}
           </div>
 
-          {/* Daily Test Performance */}
+          {/* Unit Test Performance */}
           <div className="profile-section">
-            <h3>📚 Daily Test Performance</h3>
+            <h3>📚 Unit Test Performance</h3>
             <div className="date-filter-row">
               <div className="date-filter-field">
                 <label>From</label>
@@ -1814,14 +1930,14 @@ const StudentProfile = ({
               </>
             ) : (
               <p style={{ color: '#666', fontStyle: 'italic', padding: '20px', textAlign: 'center' }}>
-                No daily test data available
+                No unit test data available
               </p>
             )}
           </div>
 
-          {/* Mock Test Performance */}
+          {/* Monthly Test Performance */}
           <div className="profile-section">
-            <h3>🎯 Mock Test Performance</h3>
+            <h3>🎯 Monthly Test Performance</h3>
             <div className="date-filter-row">
               <div className="date-filter-field">
                 <label>From</label>
@@ -1838,14 +1954,14 @@ const StudentProfile = ({
             {filteredMockTests.length > 0 ? (
               <>
                 <div className="chart-control-row" style={{ marginBottom: '12px' }}>
-                  <h4 style={{ margin: 0 }}>Mock Test Chart</h4>
+                  <h4 style={{ margin: 0 }}>Monthly Test Chart</h4>
                   <div className="date-filter-field">
                     <label>Chart Type</label>
                     <select className="date-filter-input" value={mockChartType} onChange={(e) => setMockChartType(e.target.value)}>
                       <option value="grouped">Grouped Bar (Subject-wise)</option>
                       <option value="trend">Line Trend (Total vs Class)</option>
-                      <option value="radar">Radar (Latest Mock Subject Profile)</option>
-                      <option value="pie">Pie (Latest Mock Subject Share)</option>
+                      <option value="radar">Radar (Latest Monthly Subject Profile)</option>
+                      <option value="pie">Pie (Latest Monthly Subject Share)</option>
                     </select>
                   </div>
                 </div>
@@ -1929,11 +2045,11 @@ const StudentProfile = ({
 
                 {(mockChartType === 'radar' || mockChartType === 'pie') && latestMockSubjectShare.length === 0 && (
                   <p style={{ color: '#666', fontStyle: 'italic', padding: '12px 0', textAlign: 'center' }}>
-                    Not enough numeric marks in the latest mock test for this chart.
+                    Not enough numeric marks in the latest monthly test for this chart.
                   </p>
                 )}
 
-                {/* Mock Test Details Table */}
+                {/* Monthly Test Details Table */}
                 <div className="marks-table" style={{ marginTop: '20px' }}>
                   <table>
                     <thead>
@@ -1969,7 +2085,7 @@ const StudentProfile = ({
               </>
             ) : (
               <p style={{ color: '#666', fontStyle: 'italic', padding: '20px', textAlign: 'center' }}>
-                No mock test data available
+                No monthly test data available
               </p>
             )}
           </div>
@@ -2126,7 +2242,9 @@ const StudentProfile = ({
         <div className="student-pdf-page">
           <div className="student-pdf-header">Progress Charts - {displayData.name} | Graavitons</div>
           <h1>Student Progress Charts</h1>
-          <p style={{ margin: '0 0 10px', color: '#64748b', fontSize: '14px' }}>Daily test and mock test performance report</p>
+          <p style={{ margin: '0 0 10px', color: '#64748b', fontSize: '14px' }}>
+            {isDailyOnlyProgressReport ? 'Unit test performance report' : 'Unit test and monthly test performance report'}
+          </p>
           <div className="student-pdf-info-grid">
             <div>
               <p><strong>School:</strong> {displayData.schoolName}</p>
@@ -2142,7 +2260,7 @@ const StudentProfile = ({
 
           <div className="student-pdf-chart-block">
             <h3>Attendance Summary</h3>
-            <p>Weekly and mock test attendance (Attended/Conducted)</p>
+            <p>{isDailyOnlyProgressReport ? 'Unit test attendance (Attended/Conducted)' : 'Weekly and monthly test attendance (Attended/Conducted)'}</p>
             <div className="student-pdf-table-wrap">
               <table className="student-pdf-table attendance-table">
                 <thead>
@@ -2168,8 +2286,8 @@ const StudentProfile = ({
           </div>
 
           <div className="student-pdf-chart-block student-pdf-chart-panel">
-            <h3>Subject Comparison - Daily Test</h3>
-            <p>Student subject-wise trend across daily tests ({dailySubjectComparisonReportData.length} points)</p>
+            <h3>Subject Comparison - Unit Test</h3>
+            <p>Student subject-wise trend across unit tests ({dailySubjectComparisonReportData.length} points)</p>
             <BarChart
               width={720}
               height={250}
@@ -2200,31 +2318,95 @@ const StudentProfile = ({
             </BarChart>
           </div>
 
-          <div className="student-pdf-chart-block student-pdf-chart-panel">
-            <h3>Total Score vs Class High / Average / Low - Mock Test</h3>
-            <p>Mock total comparison against class band ({reportTests.length} tests)</p>
-            <BarChart width={720} height={250} data={totalComparisonReportData} margin={pdfChartMargin}>
-              <CartesianGrid strokeDasharray="0" stroke="#d1d5db" />
-              <XAxis dataKey="label" {...pdfXAxisProps} />
-              <YAxis {...pdfYAxisProps} />
-              <Tooltip />
-              <Legend {...pdfLegendProps} />
-              <Bar dataKey="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
-                <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
-              </Bar>
-              <Bar dataKey="high" isAnimationActive={false} fill="#22c55e" name="High" radius={[3, 3, 0, 0]}>
-                <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
-              </Bar>
-              <Bar dataKey="average" isAnimationActive={false} fill="#f1ed08" name="Average" radius={[3, 3, 0, 0]}>
-                <LabelList dataKey="average" content={renderSmartPdfBarLabel('#111827', '#111827')} />
-              </Bar>
-              <Bar dataKey="low" isAnimationActive={false} fill="#ef4444" name="Low" radius={[3, 3, 0, 0]}>
-                <LabelList dataKey="low" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
-              </Bar>
-            </BarChart>
-          </div>
+          {isDailyOnlyProgressReport && (
+            <div className="student-pdf-chart-block student-pdf-chart-panel">
+              <h3>Total Score vs Class High / Average / Low - Unit Test</h3>
+              <p>Unit-test total comparison against class band ({dailyTotalComparisonReportData.length} tests)</p>
+              <BarChart width={720} height={250} data={dailyTotalComparisonReportData} margin={pdfChartMargin}>
+                <CartesianGrid strokeDasharray="0" stroke="#d1d5db" />
+                <XAxis dataKey="label" {...pdfXAxisProps} />
+                <YAxis {...pdfYAxisProps} />
+                <Tooltip />
+                <Legend {...pdfLegendProps} />
+                <Bar dataKey="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
+                  <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                </Bar>
+                <Bar dataKey="high" isAnimationActive={false} fill="#22c55e" name="High" radius={[3, 3, 0, 0]}>
+                  <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                </Bar>
+                <Bar dataKey="average" isAnimationActive={false} fill="#f1ed08" name="Average" radius={[3, 3, 0, 0]}>
+                  <LabelList dataKey="average" content={renderSmartPdfBarLabel('#111827', '#111827')} />
+                </Bar>
+                <Bar dataKey="low" isAnimationActive={false} fill="#ef4444" name="Low" radius={[3, 3, 0, 0]}>
+                  <LabelList dataKey="low" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                </Bar>
+              </BarChart>
+            </div>
+          )}
+
+          {!isDailyOnlyProgressReport && (
+            <div className="student-pdf-chart-block student-pdf-chart-panel">
+              <h3>Total Score vs Class High / Average / Low - Monthly Test</h3>
+              <p>Monthly total comparison against class band ({reportTests.length} tests)</p>
+              <BarChart width={720} height={250} data={totalComparisonReportData} margin={pdfChartMargin}>
+                <CartesianGrid strokeDasharray="0" stroke="#d1d5db" />
+                <XAxis dataKey="label" {...pdfXAxisProps} />
+                <YAxis {...pdfYAxisProps} />
+                <Tooltip />
+                <Legend {...pdfLegendProps} />
+                <Bar dataKey="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
+                  <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                </Bar>
+                <Bar dataKey="high" isAnimationActive={false} fill="#22c55e" name="High" radius={[3, 3, 0, 0]}>
+                  <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                </Bar>
+                <Bar dataKey="average" isAnimationActive={false} fill="#f1ed08" name="Average" radius={[3, 3, 0, 0]}>
+                  <LabelList dataKey="average" content={renderSmartPdfBarLabel('#111827', '#111827')} />
+                </Bar>
+                <Bar dataKey="low" isAnimationActive={false} fill="#ef4444" name="Low" radius={[3, 3, 0, 0]}>
+                  <LabelList dataKey="low" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                </Bar>
+              </BarChart>
+            </div>
+          )}
         </div>
 
+        {isDailyOnlyProgressReport ? (
+          <div className="student-pdf-page">
+            <div className="student-pdf-header">Progress Charts - {displayData.name} | Graavitons</div>
+            {pdfReportSubjectKeys.map((subjectKey) => {
+              const subjectLabel = reportSubjectMeta[subjectKey]?.label || subjectKey;
+              const chartData = dailySubjectVsClassReportData[subjectKey] || [];
+
+              return (
+                <div className="student-pdf-chart-block student-pdf-chart-panel" key={`daily-subject-${subjectKey}`}>
+                  <h3>{subjectLabel} Score: Student vs Class</h3>
+                  <p>{subjectLabel} unit-test performance vs class High, Average, Low ({chartData.length} tests)</p>
+                  <BarChart width={720} height={250} data={chartData} margin={pdfChartMargin}>
+                    <CartesianGrid strokeDasharray="0" stroke="#d1d5db" />
+                    <XAxis dataKey="label" {...pdfXAxisProps} />
+                    <YAxis {...pdfYAxisProps} />
+                    <Tooltip />
+                    <Legend {...pdfLegendProps} />
+                    <Bar dataKey="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
+                      <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                    </Bar>
+                    <Bar dataKey="high" isAnimationActive={false} fill="#22c55e" name="High" radius={[3, 3, 0, 0]}>
+                      <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                    </Bar>
+                    <Bar dataKey="average" isAnimationActive={false} fill="#f1ed08" name="Average" radius={[3, 3, 0, 0]}>
+                      <LabelList dataKey="average" content={renderSmartPdfBarLabel('#111827', '#111827')} />
+                    </Bar>
+                    <Bar dataKey="low" isAnimationActive={false} fill="#ef4444" name="Low" radius={[3, 3, 0, 0]}>
+                      <LabelList dataKey="low" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                    </Bar>
+                  </BarChart>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+        <>
         <div className="student-pdf-page">
           <div className="student-pdf-header">Progress Charts - {displayData.name} | Graavitons</div>
           {reportSubjectKeys.map((subjectKey) => {
@@ -2233,7 +2415,7 @@ const StudentProfile = ({
 
             return (
               <div className="student-pdf-chart-block student-pdf-chart-panel" key={`mock-subject-${subjectKey}`}>
-                <h3>{subjectLabel} - Mock Test: Student vs Class</h3>
+                <h3>{subjectLabel} - Monthly Test: Student vs Class</h3>
                 <p>{subjectLabel} performance vs class High, Average, Low ({reportTests.length} tests)</p>
                 <BarChart width={720} height={250} data={chartData} margin={pdfChartMargin}>
                   <CartesianGrid strokeDasharray="0" stroke="#d1d5db" />
@@ -2315,6 +2497,8 @@ const StudentProfile = ({
           </div>
 
         </div>
+        </>
+        )}
       </div>
     </div>
   );

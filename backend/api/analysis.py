@@ -302,7 +302,7 @@ async def get_subjectwise_analysis(
 ):
     """
     Get subjectwise analysis data with filters.
-    Returns daily test performance grouped by subject for each student.
+    Returns unit test performance grouped by subject for each student.
     """
     conn = None
     cursor = None
@@ -310,7 +310,7 @@ async def get_subjectwise_analysis(
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Build the query for daily test data with student info
+        # Build the query for unit test data with student info
         query = """
             SELECT
                 s.student_id,
@@ -365,7 +365,7 @@ async def get_subjectwise_analysis(
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
-        # Also get mock test data for subject-level marks
+        # Also get monthly test data for subject-level marks
         mock_query = """
             SELECT
                 s.student_id,
@@ -421,7 +421,7 @@ async def get_subjectwise_analysis(
         cursor.execute(mock_query, mock_params)
         mock_rows = cursor.fetchall()
 
-        # Aggregate daily test data per student per subject
+        # Aggregate unit test data per student per subject
         student_daily = {}
         for row in rows:
             sid = row[0]
@@ -450,7 +450,7 @@ async def get_subjectwise_analysis(
                 student_daily[sid]["subjects"][subj]["total_marks"] += numeric_mark
                 student_daily[sid]["subjects"][subj]["count"] += 1
 
-        # Aggregate mock test data per student
+        # Aggregate monthly test data per student
         student_mock = {}
         for row in mock_rows:
             sid = row[0]
@@ -512,7 +512,7 @@ async def get_subjectwise_analysis(
                 "daily_tests": daily.get("subjects", {}),
             }
 
-            # Add mock test averages
+            # Add monthly test averages
             if mock:
                 student_result["mock_averages"] = {
                     "maths": round(mock["maths_total"] / mock["maths_count"], 1) if mock.get("maths_count", 0) > 0 else None,
@@ -590,7 +590,7 @@ async def get_branchwise_analysis(
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Get daily test data grouped by branch
+        # Get unit test data grouped by branch
         daily_query = """
             SELECT
                 s.branch,
@@ -636,7 +636,7 @@ async def get_branchwise_analysis(
         cursor.execute(daily_query, params)
         daily_rows = cursor.fetchall()
 
-        # Get mock test data grouped by branch
+        # Get monthly test data grouped by branch
         mock_maths_expr = """
             CASE
                 WHEN mt.maths_total_marks IS NOT NULL AND mt.maths_total_marks > 0 AND safe_numeric(mt.maths_marks) IS NOT NULL
@@ -723,7 +723,7 @@ async def get_branchwise_analysis(
         cursor.execute(mock_query, mock_params)
         mock_rows = cursor.fetchall()
 
-        # Build branch-wise data from daily tests
+        # Build branch-wise data from unit tests
         branches_daily = {}
         for row in daily_rows:
             branch = row[0]
@@ -740,7 +740,7 @@ async def get_branchwise_analysis(
                 branches_daily[branch]["student_count"], row[6]
             )
 
-        # Build branch-wise data from mock tests
+        # Build branch-wise data from monthly tests
         branches_mock = {}
         for row in mock_rows:
             branch = row[0]
@@ -961,8 +961,8 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
     """
     Get complete individual analysis for a student:
     - Student info (name, photo, course, branch, batch)
-    - Daily test performance
-    - Mock test performance
+    - Unit test performance
+    - Monthly test performance
     - Class averages & top scores for comparison
     - Feedback history
     """
@@ -1017,7 +1017,7 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
                     break
         report_subject_keys = report_subject_keys[:4]
 
-        # 2. Get daily test performance
+        # 2. Get unit test performance
         cursor.execute("""
             SELECT
                 dt.test_id, dt.subject, dt.unit_name, dt.total_marks, dt.test_date,
@@ -1095,7 +1095,7 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
                 "class_low": stats_row["class_low"]
             })
 
-        # 3. Get mock test performance
+        # 3. Get monthly test performance
         cursor.execute("""
             SELECT
                 mt.test_id, mt.test_date, mt.maths_marks, mt.physics_marks,
@@ -1136,7 +1136,7 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
             return sum(values)
 
         # Fetch all required mock class stats in one query (avoids N+1)
-        # Group by full mock-test identity to avoid mixing different mocks on the same date.
+        # Group by full monthly-test identity to avoid mixing different tests on the same date.
         cursor.execute("""
             WITH student_mock_groups AS (
                 SELECT DISTINCT
@@ -1591,9 +1591,9 @@ async def get_batch_performance(
     """
     Get comprehensive batch performance analytics:
     - Overall stats (avg, top, lowest, total tests, participation)
-    - Daily test score trend over time
-    - Mock test score trend over time
-    - Subject-wise breakdown (daily + mock)
+    - Unit test score trend over time
+    - Monthly test score trend over time
+    - Subject-wise breakdown (unit + monthly)
     - Top 5 and bottom 5 students
     - Score distribution histogram
     """
@@ -1702,7 +1702,7 @@ async def get_batch_performance(
             END
         """
 
-        # ==================== DAILY TEST STATS ====================
+        # ==================== UNIT TEST STATS ====================
         daily_stats = {
             "avg_score": None, "top_score": None, "lowest_score": None,
             "total_tests": 0, "students_tested": 0
@@ -1733,7 +1733,7 @@ async def get_batch_performance(
                 "students_tested": row[4]
             }
 
-            # Daily trend (avg score per date)
+            # Unit trend (avg score per date)
             cursor.execute(f"""
                 SELECT
                     dt.test_date,
@@ -1800,7 +1800,7 @@ async def get_batch_performance(
                 if r[2] is not None
             ]
 
-        # ==================== MOCK TEST STATS ====================
+        # ==================== MONTHLY TEST STATS ====================
         mock_stats = {
             "avg_score": None, "top_score": None, "lowest_score": None,
             "total_tests": 0, "students_tested": 0
@@ -1831,7 +1831,7 @@ async def get_batch_performance(
                 "students_tested": row[4]
             }
 
-            # Mock trend (avg total per date)
+            # Monthly trend (avg total per date)
             cursor.execute(f"""
                 SELECT
                     mt.test_date,
@@ -1854,7 +1854,7 @@ async def get_batch_performance(
                     "students": r[4]
                 })
 
-            # Mock subject breakdown (per-subject averages)
+            # Monthly subject breakdown (per-subject averages)
             cursor.execute(f"""
                 SELECT
                     ROUND(AVG({mock_maths_score_expr})::numeric, 1),
@@ -1900,7 +1900,7 @@ async def get_batch_performance(
             ]
 
         # ==================== COMBINED RANKINGS ====================
-        # Merge daily + mock student averages for overall ranking
+        # Merge unit + monthly student averages for overall ranking
         student_scores = {}
         for s in daily_student_avgs:
             sid = s["student_id"]
@@ -2895,10 +2895,10 @@ async def get_student_test_insights(
                 if student_total is None:
                     red_flags.append({
                         "type": "least_attempted",
-                        "title": "Missed This Mock Test",
-                        "detail": "Mock test marked absent (A/AB).",
+                        "title": "Missed This Monthly Test",
+                        "detail": "Monthly test marked absent (A/AB).",
                         "metric": {"mark": str(total_marks) if total_marks is not None else "A"},
-                        "remediation_action": "Schedule full mock re-attempt under timed conditions."
+                        "remediation_action": "Schedule full monthly-test re-attempt under timed conditions."
                     })
                 else:
                     if prev_total_score is not None:

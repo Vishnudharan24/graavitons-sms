@@ -254,8 +254,8 @@ const BatchDetail = ({ batch, onBack }) => {
         ['Boys', sortedStudents.filter(s => s.gender === 'Male').length],
         ['Girls', sortedStudents.filter(s => s.gender === 'Female').length],
         [''],
-        ['Total Daily Tests Conducted', data.total_daily_tests_conducted],
-        ['Total Mock Tests Conducted', data.total_mock_tests_conducted],
+        ['Total Unit Tests Conducted', data.total_daily_tests_conducted],
+        ['Total Monthly Tests Conducted', data.total_mock_tests_conducted],
         [''],
         ['Report Generated On', new Date().toLocaleString()],
       ];
@@ -267,7 +267,7 @@ const BatchDetail = ({ batch, onBack }) => {
       const studentHeaders = [
         'S.No', 'Admission No', 'Student Name', 'Gender', 'Date of Birth',
         'Community', 'Grade', 'Enrollment Year', 'Course', 'Branch',
-        'Mobile', 'Email', 'Daily Tests Attended', 'Mock Tests Attended'
+        'Mobile', 'Email', 'Unit Tests Attended', 'Monthly Tests Attended'
       ];
       const studentRows = sortedStudents.map((s, i) => [
         i + 1,
@@ -289,7 +289,7 @@ const BatchDetail = ({ batch, onBack }) => {
       wsStudents['!cols'] = studentHeaders.map(() => ({ wch: 18 }));
       XLSX.utils.book_append_sheet(wb, wsStudents, 'Student Details');
 
-      // ── Sheet 3: Daily Tests ──
+      // ── Sheet 3: Unit Tests ──
       const dailyHeaders = [
         'S.No', 'Admission No', 'Student Name', 'Test Date',
         'Subject', 'Unit Name', 'Marks (Obtained/Total)'
@@ -305,9 +305,9 @@ const BatchDetail = ({ batch, onBack }) => {
       ]);
       const wsDaily = XLSX.utils.aoa_to_sheet([dailyHeaders, ...dailyRows]);
       wsDaily['!cols'] = dailyHeaders.map(() => ({ wch: 18 }));
-      XLSX.utils.book_append_sheet(wb, wsDaily, 'Daily Tests');
+      XLSX.utils.book_append_sheet(wb, wsDaily, 'Unit Tests');
 
-      // ── Sheet 4: Mock Tests ──
+      // ── Sheet 4: Monthly Tests ──
       const mockHeaders = [
         'S.No', 'Admission No', 'Student Name', 'Test Date',
         'Maths (Obtained/Total)', 'Physics (Obtained/Total)',
@@ -327,7 +327,7 @@ const BatchDetail = ({ batch, onBack }) => {
       ]);
       const wsMock = XLSX.utils.aoa_to_sheet([mockHeaders, ...mockRows]);
       wsMock['!cols'] = mockHeaders.map(() => ({ wch: 16 }));
-      XLSX.utils.book_append_sheet(wb, wsMock, 'Mock Tests');
+      XLSX.utils.book_append_sheet(wb, wsMock, 'Monthly Tests');
 
       // ── Download ──
       const dateStr = new Date().toISOString().split('T')[0];

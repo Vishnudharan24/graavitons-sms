@@ -7,7 +7,7 @@ A full-stack Student Management System built for coaching institutes / colleges 
 - **Authentication** — Role-based login & registration (Admin / Teacher)
 - **Batch Management** — Create and list academic batches with year range & type
 - **Student Management** — Add students individually or bulk-upload via Excel; detailed student profiles with parent info, 10th/12th marks, entrance exams & counselling details
-- **Exam Management** — Record Daily Tests and Mock Tests with Excel template upload support
+- **Exam Management** — Record Unit Tests and Monthly Tests with Excel template upload support
 - **Performance Analysis** — Subject-wise, branch-wise, and individual student analysis with interactive charts
 - **Student Feedback** — Add and view per-student feedback notes
 - **Achiever Showcase** — CRUD operations for student achievements displayed on the dashboard
@@ -203,14 +203,14 @@ If frontend cannot call backend, confirm `CORS_ORIGINS` and redeploy backend.
 ### Exams
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/exam/daily-test` | Create daily test records |
-| POST | `/api/exam/daily-test/bulk` | Create multiple daily tests in one request |
-| POST | `/api/exam/mock-test` | Create mock test records |
-| POST | `/api/exam/mock-test/bulk` | Create multiple mock tests in one request |
-| GET | `/api/exam/template/daily-test/{batch_id}` | Download daily test template |
-| GET | `/api/exam/template/mock-test/{batch_id}` | Download mock test template |
-| GET | `/api/exam/daily-test/student/{student_id}` | Get student's daily tests |
-| GET | `/api/exam/mock-test/student/{student_id}` | Get student's mock tests |
+| POST | `/api/exam/daily-test` | Create unit test records |
+| POST | `/api/exam/daily-test/bulk` | Create multiple unit tests in one request |
+| POST | `/api/exam/mock-test` | Create monthly test records |
+| POST | `/api/exam/mock-test/bulk` | Create multiple monthly tests in one request |
+| GET | `/api/exam/template/daily-test/{batch_id}` | Download unit test template |
+| GET | `/api/exam/template/mock-test/{batch_id}` | Download monthly test template |
+| GET | `/api/exam/daily-test/student/{student_id}` | Get student's unit tests |
+| GET | `/api/exam/mock-test/student/{student_id}` | Get student's monthly tests |
 | GET | `/api/exam/batch-report/{batch_id}` | Get batch-level report |
 
 ### Analysis
@@ -245,7 +245,7 @@ GRAAVITONS/
 │       ├── auth.py            # Authentication routes
 │       ├── batch.py           # Batch CRUD
 │       ├── student.py         # Student CRUD & bulk upload
-│       ├── exam.py            # Daily & mock test routes
+│       ├── exam.py            # Unit & monthly test routes
 │       ├── analysis.py        # Analysis & feedback routes
 │       └── achiever.py        # Achiever CRUD
 ├── database/
@@ -298,8 +298,8 @@ The PostgreSQL schema includes the following tables:
 | `twelfth_mark` | 12th standard marks |
 | `entrance_exams` | Entrance exam scores & ranks |
 | `counselling_detail` | College counselling rounds |
-| `daily_test` | Daily test scores |
-| `mock_test` | Mock test scores (multi-subject) |
+| `daily_test` | Unit test scores |
+| `mock_test` | Monthly test scores (multi-subject) |
 | `achievers` | Student achievements |
 
 ## License

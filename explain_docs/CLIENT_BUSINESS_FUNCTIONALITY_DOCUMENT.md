@@ -51,7 +51,7 @@ This allows leadership and faculty teams to move from manual administration to *
 **Business value:** Speeds up admissions-cycle data entry and minimizes manual errors.
 
 ## 2.5 Exam & Marks Management
-- Daily test entry and mock test entry
+- Unit test entry and monthly test entry
 - Flexible support for numeric and non-numeric mark entries (e.g., absences)
 - Subject-level and total-level marks normalization logic
 - Date-based and batch-based exam organization
@@ -96,7 +96,7 @@ The analytics layer is designed to support **academic quality improvement** and 
 
 ## 3.3 Individual Student Analysis
 - Consolidated student-level performance view
-- Daily and mock progression visibility
+- Unit and monthly progression visibility
 - Integrated feedback history
 
 **What this tells faculty/counselors:**
@@ -105,7 +105,7 @@ The analytics layer is designed to support **academic quality improvement** and 
 
 ## 3.4 Batch Performance Dashboard
 - Trend analytics (date-wise progression)
-- Subject breakdown (daily + mock)
+- Subject breakdown (unit + monthly)
 - Top and bottom performer lists
 - Score distribution views and participation indicators
 

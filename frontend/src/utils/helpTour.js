@@ -217,7 +217,7 @@ const tours = {
       element: '.add-exam-header',
       popover: {
         title: 'Add Exam Marks',
-        description: 'Use this page to enter daily-test or mock-test marks for the current batch.'
+        description: 'Use this page to enter unit-test or monthly-test marks for the current batch.'
       }
     },
     {
@@ -231,7 +231,7 @@ const tours = {
       element: '.marks-entry-table',
       popover: {
         title: 'Marks Grid',
-        description: 'Enter each student’s marks here. For daily tests, one subject column is used. For mock tests, subject-wise columns are shown.'
+        description: 'Enter each student’s marks here. For unit tests, one subject column is used. For monthly tests, subject-wise columns are shown.'
       }
     },
     {

@@ -4,7 +4,7 @@ This directory contains sample Excel templates for uploading exam marks to the G
 
 ## Available Templates
 
-### 1. Daily Test Template
+### 1. Unit Test Template
 **File:** `daily_test_template_sample.xlsx`
 
 **Structure:**
@@ -13,7 +13,7 @@ This directory contains sample Excel templates for uploading exam marks to the G
 - Column C: Marks (out of specified total)
 
 **Usage:**
-1. When adding a daily test in the system, click "Download Excel Format" to get a template with your actual students
+1. When adding a unit test in the system, click "Download Excel Format" to get a template with your actual students
 2. The template will be auto-generated with:
    - All students in the selected batch
    - Correct admission numbers
@@ -26,7 +26,7 @@ This directory contains sample Excel templates for uploading exam marks to the G
 - Enter only numeric values
 - Do not modify Admission Number or Student Name columns
 
-### 2. Mock Test Template
+### 2. Monthly Test Template
 **File:** `mock_test_template_sample.xlsx`
 
 **Structure:**
@@ -38,7 +38,7 @@ This directory contains sample Excel templates for uploading exam marks to the G
 - Column F: Chemistry Marks
 
 **Usage:**
-1. When adding a mock test in the system, click "Download Excel Format" to get a template with your actual students
+1. When adding a monthly test in the system, click "Download Excel Format" to get a template with your actual students
 2. The template will be auto-generated with all students in the selected batch
 3. Fill in marks for all four subjects for each student
 4. Upload the completed file
@@ -56,12 +56,12 @@ The system provides two ways to get templates:
 ### Method 1: Backend API (Recommended)
 Download templates directly from the backend API with actual student data:
 
-**Daily Test Template:**
+**Unit Test Template:**
 ```
 GET http://localhost:8000/api/exam/template/daily-test/{batch_id}?total_marks=100
 ```
 
-**Mock Test Template:**
+**Monthly Test Template:**
 ```
 GET http://localhost:8000/api/exam/template/mock-test/{batch_id}
 ```
@@ -92,7 +92,7 @@ Simply click the "📥 Download Excel Format" button in the Add Exam form. This 
 - ✅ Manual data entry in Excel
 - ✅ Copy-paste from other sources
 - ✅ Formula calculations (will be converted to values on upload)
-- ✅ Partial marks entry (for daily test)
+- ✅ Partial marks entry (for unit test)
 
 ## Troubleshooting
 
@@ -134,7 +134,7 @@ Replace this sample data with your actual students when using the templates.
 
 For developers integrating with the exam API:
 
-### Upload Endpoint (Daily Test):
+### Upload Endpoint (Unit Test):
 ```
 POST http://localhost:8000/api/exam/daily-test
 Content-Type: application/json
@@ -153,14 +153,14 @@ Content-Type: application/json
 }
 ```
 
-### Upload Endpoint (Mock Test):
+### Upload Endpoint (Monthly Test):
 ```
 POST http://localhost:8000/api/exam/mock-test
 Content-Type: application/json
 
 {
   "batch_id": 1,
-  "examName": "NEET Mock Test 1",
+  "examName": "NEET Monthly Test 1",
   "examDate": "2026-02-15",
   "examType": "mock test",
   "mathsUnitNames": "Unit 1, Unit 2",

@@ -44,11 +44,11 @@ const formatTooltipMetric = (value, name) => {
 };
 
 const INFO_TEXT = {
-  dailyTrendChart: 'Shows test-date wise class performance for daily tests. Average % is the mean normalized score of all student attempts on that date. Top Score % is the highest normalized score. Lowest % is the minimum normalized score.',
-  mockTrendChart: 'Shows test-date wise class performance for mock tests. Average %, top %, and lowest % are computed from normalized total scores for that date.',
-  subjectWiseChart: 'Compares subject performance. Daily/Mock Avg % is the average normalized score in that subject. This helps identify stronger and weaker subjects.',
-  dailyDistributionChart: 'Groups daily-test scores into score ranges and shows how many students fall in each range.',
-  mockDistributionChart: 'Groups mock-test scores into score ranges and shows how many students fall in each range.',
+  dailyTrendChart: 'Shows test-date wise class performance for unit tests. Average % is the mean normalized score of all student attempts on that date. Top Score % is the highest normalized score. Lowest % is the minimum normalized score.',
+  mockTrendChart: 'Shows test-date wise class performance for monthly tests. Average %, top %, and lowest % are computed from normalized total scores for that date.',
+  subjectWiseChart: 'Compares subject performance. Unit/Monthly Avg % is the average normalized score in that subject. This helps identify stronger and weaker subjects.',
+  dailyDistributionChart: 'Groups unit-test scores into score ranges and shows how many students fall in each range.',
+  mockDistributionChart: 'Groups monthly-test scores into score ranges and shows how many students fall in each range.',
   riskDashboard: 'Risk is computed from student average score, trend slope, participation rate, and non-numeric/absent mark rate. Higher score means higher concern.',
   subjectDiagnostics: 'Unit-level summary for the selected subject or all subjects. Difficulty is computed as 100 - unit average %.',
   topStudents: 'Top 5 students by overall average %. Overall % is derived from available daily and mock normalized scores.',
@@ -57,12 +57,12 @@ const INFO_TEXT = {
   riskCol: 'Risk level and score from the risk model (avg score + trend + participation + non-numeric rate).',
   avgPctCol: 'Average normalized percentage for the selected filter window.',
   participationCol: 'Attempted tests / conducted tests × 100 for the selected period.',
-  unitCol: 'Chapter/topic unit name used while entering daily-test marks.',
+  unitCol: 'Chapter/topic unit name used while entering unit-test marks.',
   difficultyCol: 'Difficulty index = 100 - average %. Higher value means more difficult unit for students.',
   rankCol: 'Display position within the shown top/bottom list.',
-  dailyAvgCol: 'Student average percentage from daily tests only.',
-  mockAvgCol: 'Student average percentage from mock tests only.',
-  overallPctCol: 'Combined average percentage across available daily + mock tests.'
+  dailyAvgCol: 'Student average percentage from unit tests only.',
+  mockAvgCol: 'Student average percentage from monthly tests only.',
+  overallPctCol: 'Combined average percentage across available unit + monthly tests.'
 };
 
 const renderInfoLabel = (label, key) => (
@@ -230,17 +230,17 @@ const BatchPerformance = ({ batch }) => {
   const subjectChartData = [];
   if (showDaily && daily_subject_breakdown.length > 0) {
     daily_subject_breakdown.forEach(s => {
-      subjectChartData.push({ subject: s.subject, 'Daily Avg': s.avg, 'Daily Top': s.top });
+      subjectChartData.push({ subject: s.subject, 'Unit Avg': s.avg, 'Unit Top': s.top });
     });
   }
   if (showMock && mock_subject_breakdown.length > 0) {
     mock_subject_breakdown.forEach(s => {
       const existing = subjectChartData.find(d => d.subject === s.subject);
       if (existing) {
-        existing['Mock Avg'] = s.avg;
-        existing['Mock Top'] = s.top;
+        existing['Monthly Avg'] = s.avg;
+        existing['Monthly Top'] = s.top;
       } else {
-        subjectChartData.push({ subject: s.subject, 'Mock Avg': s.avg, 'Mock Top': s.top });
+        subjectChartData.push({ subject: s.subject, 'Monthly Avg': s.avg, 'Monthly Top': s.top });
       }
     });
   }
@@ -255,8 +255,8 @@ const BatchPerformance = ({ batch }) => {
           <label>Test Type</label>
           <select value={testType} onChange={e => setTestType(e.target.value)}>
             <option value="both">All Tests</option>
-            <option value="daily">Daily Tests</option>
-            <option value="mock">Mock Tests</option>
+            <option value="daily">Unit Tests</option>
+            <option value="mock">Monthly Tests</option>
           </select>
         </div>
         <div className="filter-group">
@@ -331,15 +331,15 @@ const BatchPerformance = ({ batch }) => {
         {showDaily && (
           <>
             <div className="perf-stat-card accent-blue">
-              <h4>Daily Test Avg %</h4>
+              <h4>Unit Test Avg %</h4>
               <p className="stat-value">{formatPercentMetric(daily_stats.avg_score)}</p>
             </div>
             {/* <div className="perf-stat-card accent-green">
-              <h4>Daily Top Score</h4>
+              <h4>Unit Top Score</h4>
               <p className="stat-value">{daily_stats.top_score}</p>
             </div> */}
             <div className="perf-stat-card accent-orange">
-              <h4>Daily Tests</h4>
+              <h4>Unit Tests</h4>
               <p className="stat-value">{daily_stats.total_tests}</p>
             </div>
           </>
@@ -347,15 +347,15 @@ const BatchPerformance = ({ batch }) => {
         {showMock && (
           <>
             <div className="perf-stat-card accent-purple">
-              <h4>Mock Test Avg %</h4>
+              <h4>Monthly Test Avg %</h4>
               <p className="stat-value">{formatPercentMetric(mock_stats.avg_score)}</p>
             </div>
             <div className="perf-stat-card accent-teal">
-              <h4>Mock Top Score %</h4>
+              <h4>Monthly Top Score %</h4>
               <p className="stat-value">{formatPercentMetric(mock_stats.top_score)}</p>
             </div>
             <div className="perf-stat-card accent-yellow">
-              <h4>Mock Tests</h4>
+              <h4>Monthly Tests</h4>
               <p className="stat-value">{mock_stats.total_tests}</p>
             </div>
           </>
@@ -464,11 +464,11 @@ const BatchPerformance = ({ batch }) => {
 
       {/* ── Charts Grid ── */}
       <div className="perf-charts-grid">
-        {/* Daily Trend Line Chart */}
+        {/* Unit Trend Line Chart */}
         {showTrendSection && showDaily && daily_trend.length > 0 && (
           <div className={`chart-card ${expandedChart === 'dailyTrend' ? 'chart-card-expanded' : ''}`}>
             <div className="chart-card-header">
-              <h4>{renderInfoLabel('📈 Daily Test Trend', 'dailyTrendChart')}</h4>
+              <h4>{renderInfoLabel('📈 Unit Test Trend', 'dailyTrendChart')}</h4>
               <button className="chart-expand-btn" onClick={() => toggleChartExpand('dailyTrend')}>
                 {expandedChart === 'dailyTrend' ? 'Exit Full Screen' : 'Full Screen'}
               </button>
@@ -508,11 +508,11 @@ const BatchPerformance = ({ batch }) => {
           </div>
         )}
 
-        {/* Mock Trend Line Chart */}
+        {/* Monthly Trend Line Chart */}
         {showTrendSection && showMock && mock_trend.length > 0 && (
           <div className={`chart-card ${expandedChart === 'mockTrend' ? 'chart-card-expanded' : ''}`}>
             <div className="chart-card-header">
-              <h4>{renderInfoLabel('📈 Mock Test Trend', 'mockTrendChart')}</h4>
+              <h4>{renderInfoLabel('📈 Monthly Test Trend', 'mockTrendChart')}</h4>
               <button className="chart-expand-btn" onClick={() => toggleChartExpand('mockTrend')}>
                 {expandedChart === 'mockTrend' ? 'Exit Full Screen' : 'Full Screen'}
               </button>
@@ -571,8 +571,8 @@ const BatchPerformance = ({ batch }) => {
                       <YAxis {...AXIS_STYLE} />
                       <Tooltip {...TOOLTIP_STYLE} formatter={formatTooltipMetric} />
                       <Legend />
-                      {showDaily && <Bar dataKey="Daily Avg" name="Daily Avg %" fill="#5b5fc7" radius={[4, 4, 0, 0]} />}
-                      {showMock && <Bar dataKey="Mock Avg" name="Mock Avg %" fill="#48bb78" radius={[4, 4, 0, 0]} />}
+                      {showDaily && <Bar dataKey="Unit Avg" name="Unit Avg %" fill="#5b5fc7" radius={[4, 4, 0, 0]} />}
+                      {showMock && <Bar dataKey="Monthly Avg" name="Monthly Avg %" fill="#48bb78" radius={[4, 4, 0, 0]} />}
                       {filteredSubjectChartData.length > 8 && <Brush dataKey="subject" height={20} stroke="#5b5fc7" />}
                     </BarChart>
                   </ResponsiveContainer>
@@ -584,8 +584,8 @@ const BatchPerformance = ({ batch }) => {
                       <PolarRadiusAxis />
                       <Tooltip {...TOOLTIP_STYLE} formatter={formatTooltipMetric} />
                       <Legend />
-                      {showDaily && <Radar dataKey="Daily Avg" name="Daily Avg %" stroke="#5b5fc7" fill="#5b5fc7" fillOpacity={0.35} />}
-                      {showMock && <Radar dataKey="Mock Avg" name="Mock Avg %" stroke="#48bb78" fill="#48bb78" fillOpacity={0.25} />}
+                      {showDaily && <Radar dataKey="Unit Avg" name="Unit Avg %" stroke="#5b5fc7" fill="#5b5fc7" fillOpacity={0.35} />}
+                      {showMock && <Radar dataKey="Monthly Avg" name="Monthly Avg %" stroke="#48bb78" fill="#48bb78" fillOpacity={0.25} />}
                     </RadarChart>
                   </ResponsiveContainer>
                 )}
@@ -598,7 +598,7 @@ const BatchPerformance = ({ batch }) => {
         {showDistributionSection && (showDaily && daily_distribution.length > 0) && (
           <div className={`chart-card ${expandedChart === 'dailyDistribution' ? 'chart-card-expanded' : ''}`}>
             <div className="chart-card-header">
-              <h4>{renderInfoLabel('📉 Daily Score Distribution', 'dailyDistributionChart')}</h4>
+              <h4>{renderInfoLabel('📉 Unit Score Distribution', 'dailyDistributionChart')}</h4>
               <button className="chart-expand-btn" onClick={() => toggleChartExpand('dailyDistribution')}>
                 {expandedChart === 'dailyDistribution' ? 'Exit Full Screen' : 'Full Screen'}
               </button>
@@ -640,7 +640,7 @@ const BatchPerformance = ({ batch }) => {
         {showDistributionSection && (showMock && mock_distribution.length > 0) && (
           <div className={`chart-card ${expandedChart === 'mockDistribution' ? 'chart-card-expanded' : ''}`}>
             <div className="chart-card-header">
-              <h4>{renderInfoLabel('📉 Mock Score Distribution', 'mockDistributionChart')}</h4>
+              <h4>{renderInfoLabel('📉 Monthly Score Distribution', 'mockDistributionChart')}</h4>
               <button className="chart-expand-btn" onClick={() => toggleChartExpand('mockDistribution')}>
                 {expandedChart === 'mockDistribution' ? 'Exit Full Screen' : 'Full Screen'}
               </button>
@@ -692,8 +692,8 @@ const BatchPerformance = ({ batch }) => {
                 <tr>
                   <th>{renderInfoLabel('#', 'rankCol')}</th>
                   <th>{renderInfoLabel('Student', 'studentCol')}</th>
-                  <th>{renderInfoLabel('Daily Avg', 'dailyAvgCol')}</th>
-                  <th>{renderInfoLabel('Mock Avg', 'mockAvgCol')}</th>
+                  <th>{renderInfoLabel('Unit Avg', 'dailyAvgCol')}</th>
+                  <th>{renderInfoLabel('Monthly Avg', 'mockAvgCol')}</th>
                   <th>{renderInfoLabel('Overall %', 'overallPctCol')}</th>
                 </tr>
               </thead>
@@ -723,8 +723,8 @@ const BatchPerformance = ({ batch }) => {
                 <tr>
                   <th>{renderInfoLabel('#', 'rankCol')}</th>
                   <th>{renderInfoLabel('Student', 'studentCol')}</th>
-                  <th>{renderInfoLabel('Daily Avg', 'dailyAvgCol')}</th>
-                  <th>{renderInfoLabel('Mock Avg', 'mockAvgCol')}</th>
+                  <th>{renderInfoLabel('Unit Avg', 'dailyAvgCol')}</th>
+                  <th>{renderInfoLabel('Monthly Avg', 'mockAvgCol')}</th>
                   <th>{renderInfoLabel('Overall %', 'overallPctCol')}</th>
                 </tr>
               </thead>

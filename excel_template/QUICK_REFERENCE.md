@@ -5,21 +5,21 @@
 ### Step 1: Download Template
 **Frontend:**
 - Open Add Exam form
-- Select exam type (daily test/mock test)
+- Select exam type (unit test/monthly test)
 - Fill exam details
 - Click "📥 Download Excel Format"
 
 **Direct API:**
 ```bash
-# Daily Test Template
+# Unit Test Template
 curl -O http://localhost:8000/api/exam/template/daily-test/1?total_marks=100
 
-# Mock Test Template
+# Monthly Test Template
 curl -O http://localhost:8000/api/exam/template/mock-test/1
 ```
 
 ### Step 2: Fill Marks in Excel
-**Daily Test:**
+**Unit Test:**
 ```
 | Admission Number | Student Name  | Marks (out of 100) |
 |------------------|---------------|---------------------|
@@ -27,7 +27,7 @@ curl -O http://localhost:8000/api/exam/template/mock-test/1
 | STU002          | Jane Smith    | 92                  |
 ```
 
-**Mock Test:**
+**Monthly Test:**
 ```
 | Admission Number | Student Name | Maths | Physics | Biology | Chemistry |
 |------------------|--------------|-------|---------|---------|-----------|
@@ -44,12 +44,12 @@ curl -O http://localhost:8000/api/exam/template/mock-test/1
 
 ## 📋 Template Format
 
-### Daily Test Columns
+### Unit Test Columns
 1. **Admission Number** - Don't modify
 2. **Student Name** - Don't modify  
 3. **Marks** - Enter numeric value
 
-### Mock Test Columns
+### Monthly Test Columns
 1. **Admission Number** - Don't modify
 2. **Student Name** - Don't modify
 3. **Maths Marks** - Enter value
@@ -62,8 +62,8 @@ curl -O http://localhost:8000/api/exam/template/mock-test/1
 1. **Always download fresh template** for each exam
 2. **Don't rename columns** or change structure
 3. **Use numeric values only** for marks
-4. **Leave blank** for absent students (daily test)
-5. **Fill all subjects** for mock test
+4. **Leave blank** for absent students (unit test)
+5. **Fill all subjects** for monthly test
 6. **Save as .xlsx** format
 7. **Keep backup** of filled file
 
