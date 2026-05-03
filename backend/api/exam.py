@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status, Depends, Query
+from fastapi import FastAPI, HTTPException, status, Depends, Query, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, validator, Field
@@ -8,6 +8,8 @@ from psycopg2 import sql
 from datetime import datetime, date
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+import io
 from io import BytesIO
 from config import CORS_ORIGINS, APP_TITLE
 from api.middleware import get_current_user
@@ -1364,6 +1366,33 @@ async def health_check(current_user: dict = Depends(get_current_user)):
     return {"status": "healthy", "service": "exam-api"}
 
 
+# ── Shared style helpers ─────────────────────────────────────────────────────
+
+def _daily_styles():
+    thin  = Side(style='thin',   color="BFBFBF")
+    thick = Side(style='medium', color="1F3864")
+    return {
+        "col_header_fill":  PatternFill(start_color="1F3864", end_color="1F3864", fill_type="solid"),
+        "meta_label_fill":  PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid"),
+        "meta_edit_fill":   PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid"),
+        "student_fill":     PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid"),
+        "alt_student_fill": PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid"),
+        "marks_fill":       PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid"),
+        "col_header_font":  Font(bold=True, color="FFFFFF",  size=11, name="Calibri"),
+        "meta_label_font":  Font(bold=True, color="1F3864",  size=10, name="Calibri"),
+        "meta_hint_font":   Font(color="9E9E9E", size=9, name="Calibri", italic=True),
+        "student_font":     Font(size=10, name="Calibri"),
+        "id_font":          Font(size=10, name="Calibri", color="595959"),
+        "border":           Border(left=thin, right=thin, top=thin, bottom=thin),
+        "top_border":       Border(left=thin, right=thin, top=thick, bottom=thin),
+        "bot_border":       Border(left=thin, right=thin, top=thin,  bottom=thick),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. TEMPLATE GENERATOR  (replaces existing get_daily_test_template)
+# ─────────────────────────────────────────────────────────────────────────────
+
 @app.get("/api/exam/template/daily-test/{batch_id}")
 async def get_daily_test_template(
     batch_id: int,
@@ -1373,151 +1402,234 @@ async def get_daily_test_template(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Generate and download Excel template for unit test marks entry
+    Generate and download Excel template for unit test marks entry.
+
+    multi_template=false  →  simple 3-col sheet (Admission No, Name, Marks)
+    multi_template=true   →  clean multi-test sheet with coloured META rows
+                              (fill Date/Subject/Unit once per test block,
+                               then just Marks per student)
     """
     conn = None
     cursor = None
-    
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        # Get students from the batch
+
         cursor.execute("""
-            SELECT student_id, student_name 
-            FROM student 
-            WHERE batch_id = %s 
+            SELECT student_id, student_name
+            FROM student
+            WHERE batch_id = %s
             ORDER BY
                 CASE WHEN student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
                 CASE WHEN student_id ~ '^[0-9]+$' THEN student_id::BIGINT END,
-                student_id ASC,
-                student_name ASC
+                student_id ASC, student_name ASC
         """, (batch_id,))
-        
         students = cursor.fetchall()
-        
+
         if not students:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No students found for batch ID {batch_id}"
             )
-        
-        # Create Excel workbook
+
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Unit Test Marks"
-        
-        # Styling
-        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-        header_font = Font(bold=True, color="FFFFFF", size=12)
-        border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
-        )
-        
-        # Headers
-        if multi_template:
-            headers = [
-                'Test No',
-                'Admission Number',
-                'Student Name',
-                'Exam Date (YYYY-MM-DD)',
-                'Subject',
-                'Topic / Unit Name',
-                'Marks',
-                'Subject Total Marks',
-                'Test Total Marks'
-            ]
-        else:
-            headers = [
-                'Admission Number',
-                'Student Name',
-                'Marks'
-            ]
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = Alignment(horizontal='center', vertical='center')
-            cell.border = border
-        
-        # Add student data
-        if multi_template:
-            row = 2
-            for test_no in range(1, test_count + 1):
-                for student_id, student_name in students:
-                    ws.cell(row=row, column=1, value=test_no).border = border
-                    ws.cell(row=row, column=2, value=student_id).border = border
-                    ws.cell(row=row, column=3, value=student_name).border = border
-                    ws.cell(row=row, column=4, value="").border = border
-                    ws.cell(row=row, column=5, value="").border = border
-                    ws.cell(row=row, column=6, value="").border = border
-                    ws.cell(row=row, column=7, value="").border = border
-                    ws.cell(row=row, column=8, value=total_marks).border = border
-                    ws.cell(row=row, column=9, value=total_marks).border = border
-                    row += 1
-                if test_no < test_count:
-                    row += 1
-        else:
-            for row, (student_id, student_name) in enumerate(students, 2):
-                ws.cell(row=row, column=1, value=student_id).border = border
-                ws.cell(row=row, column=2, value=student_name).border = border
-                ws.cell(row=row, column=3, value="").border = border
-        
-        # Adjust column widths
-        if multi_template:
-            ws.column_dimensions['A'].width = 12
-            ws.column_dimensions['B'].width = 20
-            ws.column_dimensions['C'].width = 35
-            ws.column_dimensions['D'].width = 20
-            ws.column_dimensions['E'].width = 20
-            ws.column_dimensions['F'].width = 28
-            ws.column_dimensions['G'].width = 16
-            ws.column_dimensions['H'].width = 20
-            ws.column_dimensions['I'].width = 18
-        else:
+
+        if not multi_template:
+            # ── Simple single-test template (unchanged) ──────────────────────
+            hfill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+            hfont = Font(bold=True, color="FFFFFF", size=12)
+            thin  = Side(style='thin')
+            bdr   = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+            for c, h in enumerate(['Admission Number', 'Student Name', 'Marks'], 1):
+                cell = ws.cell(row=1, column=c, value=h)
+                cell.fill = hfill; cell.font = hfont
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                cell.border = bdr
+
+            for row, (sid, sname) in enumerate(students, 2):
+                ws.cell(row=row, column=1, value=sid).border = bdr
+                ws.cell(row=row, column=2, value=sname).border = bdr
+                ws.cell(row=row, column=3, value="").border = bdr
+
             ws.column_dimensions['A'].width = 20
             ws.column_dimensions['B'].width = 35
             ws.column_dimensions['C'].width = 16
-        
-        # Add instructions in a separate sheet
-        instructions_ws = wb.create_sheet("Instructions")
-        instructions = [
-            ["Unit Test Marks Template - Instructions"],
-            [""],
-            ["1. Fill 'Exam Date', 'Subject', and 'Topic / Unit Name' directly in the sheet." if multi_template else "1. Fill only the Marks column."],
-            [f"2. This file was generated for {test_count} test set(s). Use 'Test No' to separate tests." if multi_template else "2. Do not modify the Student Name column."],
-            ["3. Do not modify the Admission Number or Student Name columns." if multi_template else "3. Do not modify the Admission Number or Student Name columns."],
-            ["4. Fill Marks only for students who attended; empty marks are skipped." if multi_template else "4. Save the file and upload it back to the system."],
-            ["5. Subject/Test totals are optional; defaults are used if left empty." if multi_template else ""],
-            ["6. Save the file and upload it back to the system." if multi_template else ""],
-            [""],
-            ["Note: This template is specifically generated for your batch."]
-        ]
-        
-        for row, instruction in enumerate(instructions, 1):
-            cell = instructions_ws.cell(row=row, column=1, value=instruction[0])
-            if row == 1:
-                cell.font = Font(bold=True, size=14)
-        
-        instructions_ws.column_dimensions['A'].width = 70
-        
-        # Save to BytesIO
+
+        else:
+            # ── Clean multi-test template ────────────────────────────────────
+            s = _daily_styles()
+
+            COL_WIDTHS   = [10, 20, 32, 22, 20, 32, 14]
+            COL_HEADERS  = [
+                "Test No",
+                "Admission No",
+                "Student Name",
+                "Exam Date\n(YYYY-MM-DD)",
+                "Subject",
+                "Topic / Unit Name",
+                "Marks",
+            ]
+            TOTAL_COLS = len(COL_HEADERS)
+
+            # Row 1: column headers
+            ws.row_dimensions[1].height = 32
+            for c, (header, width) in enumerate(zip(COL_HEADERS, COL_WIDTHS), 1):
+                cell = ws.cell(row=1, column=c, value=header)
+                cell.fill      = s["col_header_fill"]
+                cell.font      = s["col_header_font"]
+                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                cell.border    = s["border"]
+                ws.column_dimensions[get_column_letter(c)].width = width
+
+            ws.freeze_panes = "A2"
+
+            current_row = 2
+            for test_no in range(1, test_count + 1):
+
+                # ── META row ─────────────────────────────────────────────────
+                ws.row_dimensions[current_row].height = 24
+
+                # Col A: "TEST N" label
+                c = ws.cell(row=current_row, column=1, value=f"TEST {test_no}")
+                c.fill      = s["meta_label_fill"]
+                c.font      = s["meta_label_font"]
+                c.alignment = Alignment(horizontal='center', vertical='center')
+                c.border    = s["top_border"]
+
+                # Col B, C: empty label cells
+                for col in (2, 3):
+                    c = ws.cell(row=current_row, column=col, value="")
+                    c.fill   = s["meta_label_fill"]
+                    c.border = s["top_border"]
+
+                # Cols D, E, F: yellow editable cells with placeholder hints
+                hints = {4: "e.g. 2026-03-02", 5: "e.g. Maths", 6: "e.g. Continuity & Diff."}
+                for col, hint in hints.items():
+                    c = ws.cell(row=current_row, column=col, value="")
+                    c.fill      = s["meta_edit_fill"]
+                    c.font      = Font(color="BFBFBF", size=9, name="Calibri", italic=True)
+                    c.alignment = Alignment(horizontal='center', vertical='center')
+                    c.border    = s["top_border"]
+                    # Write hint as comment-style placeholder via number_format trick
+                    # (actual hint shown via the value — user overwrites it)
+                    c.value = hint
+
+                # Col G: hint
+                c = ws.cell(row=current_row, column=7, value="↓ Marks per student")
+                c.fill      = s["meta_label_fill"]
+                c.font      = s["meta_hint_font"]
+                c.alignment = Alignment(horizontal='center', vertical='center')
+                c.border    = s["top_border"]
+
+                current_row += 1
+
+                # ── Student rows ──────────────────────────────────────────────
+                for s_idx, (student_id, student_name) in enumerate(students):
+                    ws.row_dimensions[current_row].height = 18
+                    is_last  = (s_idx == len(students) - 1)
+                    row_bdr  = s["bot_border"] if is_last else s["border"]
+                    base_fill = s["student_fill"] if s_idx % 2 == 0 else s["alt_student_fill"]
+
+                    # A: test no
+                    c = ws.cell(row=current_row, column=1, value=test_no)
+                    c.fill = base_fill; c.font = s["id_font"]
+                    c.alignment = Alignment(horizontal='center', vertical='center')
+                    c.border = row_bdr
+
+                    # B: admission no
+                    c = ws.cell(row=current_row, column=2, value=student_id)
+                    c.fill = base_fill; c.font = s["id_font"]
+                    c.alignment = Alignment(horizontal='center', vertical='center')
+                    c.border = row_bdr
+
+                    # C: student name
+                    c = ws.cell(row=current_row, column=3, value=student_name)
+                    c.fill = base_fill; c.font = s["student_font"]
+                    c.alignment = Alignment(horizontal='left', vertical='center')
+                    c.border = row_bdr
+
+                    # D, E, F: locked (parser reads from META row)
+                    for col in (4, 5, 6):
+                        c = ws.cell(row=current_row, column=col, value="")
+                        c.fill = base_fill; c.border = row_bdr
+
+                    # G: Marks — green, editable
+                    c = ws.cell(row=current_row, column=7, value="")
+                    c.fill      = s["marks_fill"]
+                    c.alignment = Alignment(horizontal='center', vertical='center')
+                    c.border    = row_bdr
+
+                    current_row += 1
+
+                # Blank gap row between tests
+                current_row += 1
+
+        # ── Instructions sheet ───────────────────────────────────────────────
+        iws = wb.create_sheet("Instructions")
+        iws.column_dimensions['A'].width = 72
+
+        if multi_template:
+            lines = [
+                ("Unit Test Bulk Template — How to Fill", True, 14),
+                ("", False, 11),
+                ("COLOUR GUIDE", True, 11),
+                ("  • Dark blue row (TEST N)  →  One per test. Fill Date, Subject, Unit Name here ONLY.", False, 10),
+                ("  • Yellow cells (D, E, F)  →  Type date (YYYY-MM-DD), subject and topic for that test.", False, 10),
+                ("  • Green cells (G / Marks) →  Type each student's marks. Leave blank if absent.", False, 10),
+                ("  • Grey/white rows         →  Student rows — do NOT edit columns A, B, C, D, E, F.", False, 10),
+                ("", False, 11),
+                ("STEP-BY-STEP", True, 11),
+                ("  1. For each TEST N block, click the yellow Date cell → type the exam date.", False, 10),
+                ("  2. Click yellow Subject cell → type subject (Maths / Physics / Chemistry).", False, 10),
+                ("  3. Click yellow Unit Name cell → type the topic tested.", False, 10),
+                ("  4. Fill the green Marks cell for every student in that block.", False, 10),
+                ("     Leave blank for absent students — they will be skipped.", False, 10),
+                ("  5. Repeat for all TEST blocks.", False, 10),
+                ("  6. Save the file and upload it.", False, 10),
+                ("", False, 11),
+                ("ACCEPTED MARK VALUES", True, 11),
+                ("  Numbers (including negatives for negative marking), 'a' or 'A' for absent.", False, 10),
+                ("", False, 11),
+                ("DO NOT", True, 11),
+                ("  ✗  Edit or delete the TEST N rows.", False, 10),
+                ("  ✗  Edit columns A, B, C in student rows.", False, 10),
+                ("  ✗  Change the sheet name.", False, 10),
+                ("", False, 11),
+                ("This template was generated specifically for your batch.", False, 10),
+            ]
+        else:
+            lines = [
+                ("Unit Test Template — Instructions", True, 14),
+                ("", False, 11),
+                ("  1. Fill only the Marks column (col C).", False, 10),
+                ("  2. Leave Marks blank for absent students.", False, 10),
+                ("  3. Do not edit Admission Number or Student Name columns.", False, 10),
+                ("  4. Save and upload the file.", False, 10),
+            ]
+
+        for r, (text, bold, size) in enumerate(lines, 1):
+            cell = iws.cell(row=r, column=1, value=text)
+            cell.font = Font(bold=bold, size=size, name="Calibri")
+            iws.row_dimensions[r].height = 16
+
         excel_file = BytesIO()
         wb.save(excel_file)
         excel_file.seek(0)
-        
-        # Return as downloadable file
+
+        filename = (
+            f"unit_test_bulk_template_batch_{batch_id}.xlsx"
+            if multi_template else
+            f"unit_test_template_batch_{batch_id}.xlsx"
+        )
         return StreamingResponse(
             excel_file,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                "Content-Disposition": f"attachment; filename={'daily_test_multi_template' if multi_template else 'daily_test_template'}_batch_{batch_id}.xlsx"
-            }
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1526,11 +1638,79 @@ async def get_daily_test_template(
             detail=f"Failed to generate template: {str(e)}"
         )
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        if cursor: cursor.close()
+        if conn:   conn.close()
 
+
+# ── Shared style factory ─────────────────────────────────────────────────────
+
+def _mock_styles():
+    thin  = Side(style='thin',   color="BFBFBF")
+    thick = Side(style='medium', color="1F4E79")
+    return {
+        "col_hdr_fill":    PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid"),
+        "meta_label_fill": PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid"),
+        "meta_date_fill":  PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid"),
+        "white_fill":      PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid"),
+        "alt_fill":        PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid"),
+        # Per-subject edit fills (META row unit+total cells)
+        "meta_edit": {
+            "maths":     PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),
+            "physics":   PatternFill(start_color="F4CCCC", end_color="F4CCCC", fill_type="solid"),
+            "chemistry": PatternFill(start_color="EAD1DC", end_color="EAD1DC", fill_type="solid"),
+            "biology":   PatternFill(start_color="B6D7A8", end_color="B6D7A8", fill_type="solid"),
+        },
+        # Per-subject marks fills (student rows)
+        "marks_fill": {
+            "maths":     PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid"),
+            "physics":   PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid"),
+            "chemistry": PatternFill(start_color="F4CCCC", end_color="F4CCCC", fill_type="solid"),
+            "biology":   PatternFill(start_color="D9EAD3", end_color="D9EAD3", fill_type="solid"),
+        },
+        # Per-subject text colours
+        "subj_color": {
+            "maths":     "375623",
+            "physics":   "783F04",
+            "chemistry": "4A1942",
+            "biology":   "274E13",
+        },
+        "col_hdr_font":    Font(bold=True, color="FFFFFF", size=10, name="Calibri"),
+        "meta_label_font": Font(bold=True, color="1F4E79", size=10, name="Calibri"),
+        "meta_hint_font":  Font(color="9E9E9E", size=9,  name="Calibri", italic=True),
+        "meta_val_font":   Font(color="7F4F00", size=10, name="Calibri", bold=True),
+        "stu_font":        Font(size=10, name="Calibri"),
+        "id_font":         Font(size=10, name="Calibri", color="595959"),
+        "border":          Border(left=thin, right=thin, top=thin,  bottom=thin),
+        "top_border":      Border(left=thin, right=thin, top=thick, bottom=thin),
+        "bot_border":      Border(left=thin, right=thin, top=thin,  bottom=thick),
+    }
+
+
+SUBJ_LABELS = {"maths": "Maths", "physics": "Physics", "chemistry": "Chemistry", "biology": "Biology"}
+SUBJ_ORDER  = ["maths", "physics", "chemistry", "biology"]
+FIXED_COLS_MOCK  = 4  # A=TestNo, B=AdmNo, C=Name, D=Date
+
+
+def _build_col_layout(active_subjects):
+    """Returns (col_headers, col_widths, subject_col_map, total_col) all 1-indexed."""
+    headers = ["Test No", "Admission No", "Student Name", "Exam Date\n(YYYY-MM-DD)"]
+    widths  = [9, 18, 28, 20]
+    subj_col_map = {}   # subj -> {"unit": col, "total": col, "marks": col}
+    for i, subj in enumerate(active_subjects):
+        label = SUBJ_LABELS[subj]
+        base  = FIXED_COLS_MOCK + i * 3 + 1   # 1-indexed
+        subj_col_map[subj] = {"unit": base, "total": base + 1, "marks": base + 2}
+        headers += [f"{label}\nUnit Names", f"{label}\nTotal Marks", f"{label}\nMarks"]
+        widths  += [28, 14, 12]
+    total_col = FIXED_COLS_MOCK + len(active_subjects) * 3 + 1
+    headers.append("Test\nTotal Marks")
+    widths.append(14)
+    return headers, widths, subj_col_map, total_col
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. TEMPLATE GENERATOR
+# ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/api/exam/template/mock-test/{batch_id}")
 async def get_mock_test_template(
@@ -1540,171 +1720,255 @@ async def get_mock_test_template(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Generate and download Excel template for monthly test marks entry
+    Generate and download Excel template for mock/monthly test marks entry.
+
+    multi_template=false  →  simple sheet per batch subjects
+    multi_template=true   →  clean multi-test sheet with META rows
+                              (fill Date/Units/Totals once per test block,
+                               then just per-subject Marks per student)
     """
     conn = None
     cursor = None
-    
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        # Get students from the batch
+
         cursor.execute("""
-            SELECT student_id, student_name 
-            FROM student 
-            WHERE batch_id = %s 
+            SELECT student_id, student_name
+            FROM student WHERE batch_id = %s
             ORDER BY
                 CASE WHEN student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
                 CASE WHEN student_id ~ '^[0-9]+$' THEN student_id::BIGINT END,
-                student_id ASC,
-                student_name ASC
+                student_id ASC, student_name ASC
         """, (batch_id,))
-        
         students = cursor.fetchall()
-        
+
         if not students:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No students found for batch ID {batch_id}"
             )
 
-        # Determine which monthly-test subjects are enabled for this batch
         cursor.execute("SELECT subjects FROM batch WHERE batch_id = %s", (batch_id,))
         batch_row = cursor.fetchone()
-        batch_subjects = batch_row[0] if batch_row else None
-        active_subjects = get_batch_mock_subjects(batch_subjects)
-        subject_headers = {
-            "maths": "Maths Marks",
-            "physics": "Physics Marks",
-            "chemistry": "Chemistry Marks",
-            "biology": "Biology Marks",
-        }
-        
-        # Create Excel workbook
+        batch_subjects   = batch_row[0] if batch_row else None
+        active_subjects  = get_batch_mock_subjects(batch_subjects)   # ordered list
+
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = "Monthly Test Marks"
-        
-        # Styling
-        header_fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
-        header_font = Font(bold=True, color="FFFFFF", size=12)
-        border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
-        )
-        
-        # Headers
-        if multi_template:
-            headers = ['Test No', 'Admission Number', 'Student Name', 'Exam Date (YYYY-MM-DD)']
-            for subject_key in active_subjects:
-                subject_name = subject_headers[subject_key].replace(' Marks', '')
-                headers.extend([
-                    f'{subject_name} Unit Names',
-                    f'{subject_name} Total Marks',
-                    f'{subject_name} Marks'
-                ])
-            headers.append('Test Total Marks')
-        else:
-            headers = ['Admission Number', 'Student Name'] + [subject_headers[s] for s in active_subjects]
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = Alignment(horizontal='center', vertical='center')
-            cell.border = border
-        
-        # Add student data
-        if multi_template:
-            row = 2
-            for test_no in range(1, test_count + 1):
-                for student_id, student_name in students:
-                    ws.cell(row=row, column=1, value=test_no).border = border
-                    ws.cell(row=row, column=2, value=student_id).border = border
-                    ws.cell(row=row, column=3, value=student_name).border = border
-                    ws.cell(row=row, column=4, value="").border = border
-                    col = 5
-                    for _ in active_subjects:
-                        ws.cell(row=row, column=col, value="").border = border
-                        ws.cell(row=row, column=col + 1, value="").border = border
-                        ws.cell(row=row, column=col + 2, value="").border = border
-                        col += 3
-                    ws.cell(row=row, column=col, value="").border = border
-                    row += 1
-                if test_no < test_count:
-                    row += 1
-        else:
-            for row, (student_id, student_name) in enumerate(students, 2):
-                ws.cell(row=row, column=1, value=student_id).border = border
-                ws.cell(row=row, column=2, value=student_name).border = border
-                for index, _ in enumerate(active_subjects, 3):
-                    ws.cell(row=row, column=index, value="").border = border
-        
-        # Adjust column widths
-        if multi_template:
-            ws.column_dimensions['A'].width = 12
-            ws.column_dimensions['B'].width = 20
-            ws.column_dimensions['C'].width = 35
-            ws.column_dimensions['D'].width = 20
-            for index in range(5, len(headers) + 1):
-                ws.column_dimensions[openpyxl.utils.get_column_letter(index)].width = 20
-        else:
+        ws.title = "Mock Test Marks"
+
+        if not multi_template:
+            # ── Simple single-test template (unchanged behaviour) ─────────────
+            hfill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
+            hfont = Font(bold=True, color="FFFFFF", size=12)
+            thin  = Side(style='thin')
+            bdr   = Border(left=thin, right=thin, top=thin, bottom=thin)
+            subj_hdrs = {"maths": "Maths Marks", "physics": "Physics Marks",
+                         "chemistry": "Chemistry Marks", "biology": "Biology Marks"}
+            headers = ['Admission Number', 'Student Name'] + [subj_hdrs[s] for s in active_subjects]
+            for c, h in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=c, value=h)
+                cell.fill = hfill; cell.font = hfont
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                cell.border = bdr
+            for row, (sid, sname) in enumerate(students, 2):
+                ws.cell(row=row, column=1, value=sid).border = bdr
+                ws.cell(row=row, column=2, value=sname).border = bdr
+                for idx in range(3, len(headers) + 1):
+                    ws.cell(row=row, column=idx, value="").border = bdr
             ws.column_dimensions['A'].width = 20
             ws.column_dimensions['B'].width = 35
-            for index in range(3, len(headers) + 1):
-                ws.column_dimensions[openpyxl.utils.get_column_letter(index)].width = 18
-        
-        # Add instructions in a separate sheet
-        instructions_ws = wb.create_sheet("Instructions")
-        instructions = [
-            ["Monthly Test Marks Template - Instructions"],
-            [""],
-            ["1. Fill Exam Date directly in the sheet." if multi_template else "1. Fill marks in subject columns generated from this batch configuration."],
-            [f"2. This file was generated for {test_count} test set(s). Use 'Test No' to separate tests." if multi_template else "2. Do not modify the Student Name column."],
-            ["3. You can enter multiple monthly tests in one file by using different dates." if multi_template else "3. Do not modify the Admission Number or Student Name columns."],
-            ["4. Do not modify the Admission Number or Student Name columns." if multi_template else "4. Save the file and upload it back to the system."],
-            ["5. Subject marks can be left empty if not available." if multi_template else f"5. Subject columns included: {', '.join([s.title() for s in active_subjects])}"],
-            ["6. For multi template, fill unit names and subject totals in sheet columns." if multi_template else ""],
-            ["7. Empty marks are skipped during upload." if multi_template else ""],
-            [""],
-            ["Note: This template is specifically generated for your batch."]
-        ]
-        
-        for row, instruction in enumerate(instructions, 1):
-            cell = instructions_ws.cell(row=row, column=1, value=instruction[0])
-            if row == 1:
-                cell.font = Font(bold=True, size=14)
-        
-        instructions_ws.column_dimensions['A'].width = 70
-        
-        # Save to BytesIO
+            for idx in range(3, len(headers) + 1):
+                ws.column_dimensions[get_column_letter(idx)].width = 18
+
+        else:
+            # ── Clean multi-test template ─────────────────────────────────────
+            s = _mock_styles()
+            col_headers, col_widths, subj_col_map, total_col = _build_col_layout(active_subjects)
+
+            # Row 1: column headers
+            ws.row_dimensions[1].height = 34
+            for c, (header, width) in enumerate(zip(col_headers, col_widths), 1):
+                cell = ws.cell(row=1, column=c, value=header)
+                cell.fill      = s["col_hdr_fill"]
+                cell.font      = s["col_hdr_font"]
+                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                cell.border    = s["border"]
+                ws.column_dimensions[get_column_letter(c)].width = width
+
+            ws.freeze_panes = "A2"
+
+            current_row = 2
+            for test_no in range(1, test_count + 1):
+
+                # ── META row ──────────────────────────────────────────────────
+                ws.row_dimensions[current_row].height = 26
+
+                # A: TEST N label
+                c = ws.cell(row=current_row, column=1, value=f"TEST {test_no}")
+                c.fill = s["meta_label_fill"]; c.font = s["meta_label_font"]
+                c.alignment = Alignment(horizontal='center', vertical='center')
+                c.border = s["top_border"]
+
+                # B, C: blank blue
+                for col in (2, 3):
+                    c = ws.cell(row=current_row, column=col, value="")
+                    c.fill = s["meta_label_fill"]; c.border = s["top_border"]
+
+                # D: yellow date
+                c = ws.cell(row=current_row, column=4, value="e.g. 2026-03-07")
+                c.fill = s["meta_date_fill"]
+                c.font = Font(color="BFBFBF", size=9, name="Calibri", italic=True)
+                c.alignment = Alignment(horizontal='center', vertical='center')
+                c.border = s["top_border"]
+
+                # Per subject
+                for subj in active_subjects:
+                    cols = subj_col_map[subj]
+                    color    = s["subj_color"][subj]
+                    edit_fill= s["meta_edit"][subj]
+
+                    # Unit names (editable)
+                    c = ws.cell(row=current_row, column=cols["unit"], value="")
+                    c.fill = edit_fill
+                    c.font = Font(size=9, name="Calibri", bold=True, color=color)
+                    c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                    c.border = s["top_border"]
+
+                    # Total marks (editable)
+                    c = ws.cell(row=current_row, column=cols["total"], value=100)
+                    c.fill = edit_fill
+                    c.font = Font(size=10, name="Calibri", bold=True, color=color)
+                    c.alignment = Alignment(horizontal='center', vertical='center')
+                    c.border = s["top_border"]
+
+                    # Marks hint
+                    c = ws.cell(row=current_row, column=cols["marks"], value="↓")
+                    c.fill = s["meta_label_fill"]; c.font = s["meta_hint_font"]
+                    c.alignment = Alignment(horizontal='center', vertical='center')
+                    c.border = s["top_border"]
+
+                # Test total hint
+                c = ws.cell(row=current_row, column=total_col, value="↓")
+                c.fill = s["meta_label_fill"]; c.font = s["meta_hint_font"]
+                c.alignment = Alignment(horizontal='center', vertical='center')
+                c.border = s["top_border"]
+
+                current_row += 1
+
+                # ── Student rows ──────────────────────────────────────────────
+                for s_idx, (student_id, student_name) in enumerate(students):
+                    ws.row_dimensions[current_row].height = 18
+                    is_last   = (s_idx == len(students) - 1)
+                    row_bdr   = s["bot_border"] if is_last else s["border"]
+                    base_fill = s["white_fill"] if s_idx % 2 == 0 else s["alt_fill"]
+
+                    for col, val, font, align in [
+                        (1, test_no,      s["id_font"],  "center"),
+                        (2, student_id,   s["id_font"],  "center"),
+                        (3, student_name, s["stu_font"], "left"),
+                        (4, "",           s["stu_font"], "center"),   # date locked
+                    ]:
+                        c = ws.cell(row=current_row, column=col, value=val)
+                        c.fill = base_fill; c.font = font
+                        c.alignment = Alignment(horizontal=align, vertical='center')
+                        c.border = row_bdr
+
+                    for subj in active_subjects:
+                        cols  = subj_col_map[subj]
+                        color = s["subj_color"][subj]
+
+                        # Unit and total: locked (from META)
+                        for col in (cols["unit"], cols["total"]):
+                            c = ws.cell(row=current_row, column=col, value="")
+                            c.fill = base_fill; c.border = row_bdr
+
+                        # Marks: coloured, editable
+                        c = ws.cell(row=current_row, column=cols["marks"], value="")
+                        c.fill = s["marks_fill"][subj]
+                        c.font = Font(size=10, name="Calibri", bold=True, color=color)
+                        c.alignment = Alignment(horizontal='center', vertical='center')
+                        c.border = row_bdr
+
+                    # Test total: empty
+                    c = ws.cell(row=current_row, column=total_col, value="")
+                    c.fill = base_fill; c.border = row_bdr
+
+                    current_row += 1
+
+                current_row += 1  # blank gap
+
+        # ── Instructions sheet ────────────────────────────────────────────────
+        iws = wb.create_sheet("Instructions")
+        iws.column_dimensions['A'].width = 75
+        if multi_template:
+            lines = [
+                ("Mock Test Bulk Template — How to Fill", True, 14),
+                ("", False, 11),
+                ("COLOUR GUIDE", True, 11),
+                ("  • Blue row (TEST N)           → One per test. Fill metadata here ONLY.", False, 10),
+                ("  • Yellow cell (Exam Date)     → Type date once per block: YYYY-MM-DD", False, 10),
+                ("  • 🟢 Green cells  (Maths)     → Unit name, total marks, then marks per student.", False, 10),
+                ("  • 🟠 Orange cells (Physics)   → Unit name, total marks, then marks per student.", False, 10),
+                ("  • 🩷 Pink cells   (Chemistry) → Unit name, total marks, then marks per student.", False, 10),
+                ("  • White/grey rows             → Student rows — do NOT edit A, B, C, D.", False, 10),
+                ("", False, 11),
+                ("STEP-BY-STEP", True, 11),
+                ("  1. In each TEST N row, fill the yellow date cell (YYYY-MM-DD).", False, 10),
+                ("  2. Fill the coloured Unit Name cell for each subject (once per block).", False, 10),
+                ("  3. Fill the coloured Total Marks cell for each subject (e.g. 100).", False, 10),
+                ("  4. In student rows, fill the coloured Marks cells for each subject.", False, 10),
+                ("     Leave blank for absent students — they are skipped.", False, 10),
+                ("  5. Repeat for all TEST blocks, then save and upload.", False, 10),
+                ("", False, 11),
+                ("ACCEPTED MARK VALUES", True, 11),
+                ("  Numbers (including negatives for negative marking), blank = absent.", False, 10),
+                ("", False, 11),
+                ("DO NOT", True, 11),
+                ("  ✗  Edit or delete the TEST N rows.", False, 10),
+                ("  ✗  Edit columns A, B, C, D in student rows.", False, 10),
+                ("  ✗  Change the sheet name.", False, 10),
+            ]
+        else:
+            lines = [
+                ("Mock Test Template — Instructions", True, 14),
+                ("", False, 11),
+                ("  1. Fill marks in the subject columns for each student.", False, 10),
+                ("  2. Leave blank for absent students.", False, 10),
+                ("  3. Do not edit Admission Number or Student Name columns.", False, 10),
+                ("  4. Save and upload the file.", False, 10),
+            ]
+        for r, (text, bold, size) in enumerate(lines, 1):
+            c = iws.cell(row=r, column=1, value=text)
+            c.font = Font(bold=bold, size=size, name="Calibri")
+            iws.row_dimensions[r].height = 16
+
         excel_file = BytesIO()
         wb.save(excel_file)
         excel_file.seek(0)
-        
-        # Return as downloadable file
+
+        filename = (
+            f"mock_test_bulk_template_batch_{batch_id}.xlsx"
+            if multi_template else
+            f"mock_test_template_batch_{batch_id}.xlsx"
+        )
         return StreamingResponse(
             excel_file,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                "Content-Disposition": f"attachment; filename={'mock_test_multi_template' if multi_template else 'mock_test_template'}_batch_{batch_id}.xlsx"
-            }
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate template: {str(e)}"
+            detail=f"Failed to generate mock test template: {str(e)}"
         )
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        if cursor: cursor.close()
+        if conn:   conn.close()
 
 
 @app.get("/api/exam/daily-test/student/{student_no}")
@@ -2105,3 +2369,344 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
             cursor.close()
         if conn:
             conn.close()
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BULK EXCEL UPLOAD — UNIT TESTS
+# POST /api/exam/daily-test/batch/{batch_id}/upload-excel
+#
+# Reads the existing multi_template Excel format:
+#   Col A: Test No  | Col B: Admission Number | Col C: Student Name
+#   Col D: Exam Date (YYYY-MM-DD) | Col E: Subject | Col F: Topic/Unit Name
+#   Col G: Marks | Col H: Subject Total Marks | Col I: Test Total Marks
+#
+# Groups rows by (Test No, Date, Subject, Unit Name) and calls the existing
+# create_daily_test_bulk() handler — no DB logic duplicated.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/exam/daily-test/batch/{batch_id}/upload-excel", status_code=status.HTTP_201_CREATED)
+async def upload_daily_test_excel(
+    batch_id: int,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Upload a filled bulk unit-test Excel template and insert all tests at once.
+
+    Reads the clean template format generated by GET /api/exam/template/daily-test/{batch_id}?multi_template=true:
+      • META row  (col A = "TEST N"):  Date in D, Subject in E, Unit Name in F
+      • Student rows:                  Marks in G  (blank = absent/skip)
+    """
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only Excel files (.xlsx, .xls) are accepted."
+        )
+
+    contents = await file.read()
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not read the Excel file. Make sure it is a valid .xlsx file."
+        )
+
+    ws = wb.active
+    rows = list(ws.iter_rows(min_row=2, values_only=True))  # skip header row 1
+
+    exam_groups = []        # list of DailyTestBulkItem dicts, in order
+    parse_errors = []
+    current_meta = None     # holds the current META row's parsed info
+
+    def _safe_int(v):
+        try:
+            return int(v) if v is not None and str(v).strip() not in ("", "-") else None
+        except (ValueError, TypeError):
+            return None
+
+    def _parse_date(raw, row_idx):
+        if raw is None:
+            return None, f"Row {row_idx}: Missing Exam Date in TEST block."
+        try:
+            if isinstance(raw, (datetime, date)):
+                return (raw.date() if isinstance(raw, datetime) else raw), None
+            return datetime.strptime(str(raw).strip(), "%Y-%m-%d").date(), None
+        except ValueError:
+            return None, f"Row {row_idx}: Invalid date '{raw}' — expected YYYY-MM-DD."
+
+    for row_idx, row in enumerate(rows, start=2):
+        # Skip completely blank rows
+        if not any(cell is not None and str(cell).strip() not in ("", "↓ Marks per student") for cell in row):
+            continue
+
+        col_a = str(row[0]).strip() if row[0] is not None else ""
+
+        # ── META row detection ────────────────────────────────────────────────
+        if col_a.upper().startswith("TEST"):
+            date_raw    = row[3]  # col D
+            subject_raw = row[4]  # col E
+            unit_raw    = row[5]  # col F
+
+            exam_date, date_err = _parse_date(date_raw, row_idx)
+            if date_err:
+                parse_errors.append(date_err)
+                current_meta = None
+                continue
+
+            subject = str(subject_raw).strip() if subject_raw else ""
+            unit    = str(unit_raw).strip()    if unit_raw    else ""
+
+            if not subject:
+                parse_errors.append(f"Row {row_idx} ({col_a}): Missing Subject — block skipped.")
+                current_meta = None
+                continue
+
+            current_meta = {
+                "examName":         col_a,
+                "examDate":         exam_date,
+                "subject":          subject,
+                "unitName":         unit,
+                "totalMarks":       100,      # default; override via Subject Total Marks if you add col
+                "subjectTotalMarks": None,
+                "testTotalMarks":   None,
+                "examType":         "daily test",
+                "studentMarks":     [],
+            }
+            exam_groups.append(current_meta)
+            continue
+
+        # ── Student row ───────────────────────────────────────────────────────
+        if current_meta is None:
+            # Row before any META row — skip
+            continue
+
+        student_id = str(row[1]).strip() if row[1] is not None else ""
+        if not student_id:
+            parse_errors.append(f"Row {row_idx}: Missing Admission Number — skipped.")
+            continue
+
+        marks_raw = row[6]  # col G
+        marks_str = str(marks_raw).strip() if marks_raw is not None else ""
+        # Treat placeholder hint text as empty
+        if marks_str.lower() in ("", "↓ marks per student"):
+            marks_str = ""
+
+        current_meta["studentMarks"].append(
+            DailyTestStudentMark(id=student_id, marks=marks_str if marks_str else None)
+        )
+
+    # Remove blocks with no student marks at all
+    valid_exams = [g for g in exam_groups if g["studentMarks"]]
+    skipped_empty = len(exam_groups) - len(valid_exams)
+    if skipped_empty:
+        parse_errors.append(f"{skipped_empty} test block(s) had no student marks and were skipped.")
+
+    if not valid_exams:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "message": "No valid unit test data found in the Excel file.",
+                "parse_errors": parse_errors,
+            }
+        )
+
+    bulk_payload = DailyTestBulkCreate(
+        batch_id=batch_id,
+        exams=[DailyTestBulkItem(**g) for g in valid_exams]
+    )
+    result = await create_daily_test_bulk(bulk_payload, current_user)
+    result["total_tests_parsed"] = len(valid_exams)
+    result["parse_errors"]       = parse_errors
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BULK EXCEL UPLOAD — MOCK TESTS
+# POST /api/exam/mock-test/batch/{batch_id}/upload-excel
+#
+# Reads the existing multi_template Excel format:
+#   Col A: Test No | Col B: Admission Number | Col C: Student Name
+#   Col D: Exam Date (YYYY-MM-DD)
+#   Then for each active subject (Maths, Physics, Chemistry, Biology):
+#       <Subject> Unit Names | <Subject> Total Marks | <Subject> Marks
+#   Last col: Test Total Marks
+#
+# Groups rows by (Test No, Date) and calls create_mock_test_bulk().
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/exam/mock-test/batch/{batch_id}/upload-excel", status_code=status.HTTP_201_CREATED)
+async def upload_mock_test_excel(
+    batch_id: int,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Upload a filled bulk mock-test Excel template and insert all tests at once.
+
+    Reads the clean template format:
+      • META row  (col A = "TEST N"):  Date in D, per-subject Unit+Total in their columns
+      • Student rows:                  per-subject Marks in their columns
+    """
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only Excel files (.xlsx, .xls) are accepted."
+        )
+
+    contents = await file.read()
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not read the Excel file. Make sure it is a valid .xlsx file."
+        )
+
+    # Determine active subjects from batch
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT subjects FROM batch WHERE batch_id = %s", (batch_id,))
+        batch_row = cursor.fetchone()
+        if not batch_row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Batch {batch_id} not found")
+        active_subjects = get_batch_mock_subjects(batch_row[0])
+    finally:
+        if cursor: cursor.close()
+        if conn:   conn.close()
+
+    _, _, subj_col_map, total_col = _build_col_layout(active_subjects)
+    # Convert to 0-indexed for row tuple access
+    subj_col_map_0 = {
+        subj: {k: v - 1 for k, v in cols.items()}
+        for subj, cols in subj_col_map.items()
+    }
+    total_col_0 = total_col - 1
+
+    ws = wb.active
+    rows = list(ws.iter_rows(min_row=2, values_only=True))  # skip header
+
+    exam_groups  = []
+    parse_errors = []
+    current_meta = None
+
+    SKIP_VALS = {"", "↓", "↓ marks per student", "none"}
+
+    def _str(v):
+        return str(v).strip() if v is not None else ""
+
+    def _safe_int(v):
+        try:
+            return int(v) if v is not None and _str(v) not in ("", "-") else None
+        except (ValueError, TypeError):
+            return None
+
+    def _parse_date(raw, row_idx):
+        if raw is None:
+            return None, f"Row {row_idx}: Missing Exam Date."
+        try:
+            if isinstance(raw, (datetime, date)):
+                return (raw.date() if isinstance(raw, datetime) else raw), None
+            return datetime.strptime(_str(raw), "%Y-%m-%d").date(), None
+        except ValueError:
+            return None, f"Row {row_idx}: Invalid date '{raw}' — expected YYYY-MM-DD."
+
+    for row_idx, row in enumerate(rows, start=2):
+        # Skip blank separator rows
+        if not any(
+            v is not None and _str(v).lower() not in SKIP_VALS
+            for v in row
+        ):
+            continue
+
+        col_a = _str(row[0]).upper()
+
+        # ── META row ──────────────────────────────────────────────────────────
+        if col_a.startswith("TEST"):
+            exam_date, date_err = _parse_date(row[3], row_idx)   # col D (0-indexed = 3)
+            if date_err:
+                parse_errors.append(date_err)
+                current_meta = None
+                continue
+
+            meta = {
+                "examName":          col_a.title(),   # "Test 1" etc.
+                "examDate":          exam_date,
+                "examType":          "mock test",
+                "mathsUnitNames":    "",
+                "physicsUnitNames":  "",
+                "chemistryUnitNames":"",
+                "biologyUnitNames":  "",
+                "mathsTotalMarks":   None,
+                "physicsTotalMarks": None,
+                "chemistryTotalMarks": None,
+                "biologyTotalMarks": None,
+                "testTotalMarks":    None,
+                "studentMarks":      [],
+            }
+
+            # Read unit names and totals from META row
+            for subj in active_subjects:
+                cols    = subj_col_map_0[subj]
+                unit_v  = _str(row[cols["unit"]])  if cols["unit"]  < len(row) else ""
+                total_v = _safe_int(row[cols["total"]]) if cols["total"] < len(row) else None
+
+                # Ignore hint/placeholder values
+                if unit_v.lower() in SKIP_VALS or unit_v.lower().startswith("e.g"):
+                    unit_v = ""
+
+                meta[f"{subj}UnitNames"]   = unit_v
+                meta[f"{subj}TotalMarks"]  = total_v
+
+            # Test total
+            if total_col_0 < len(row):
+                meta["testTotalMarks"] = _safe_int(row[total_col_0])
+
+            current_meta = meta
+            exam_groups.append(meta)
+            continue
+
+        # ── Student row ───────────────────────────────────────────────────────
+        if current_meta is None:
+            continue
+
+        student_id = _str(row[1])   # col B (0-indexed = 1)
+        if not student_id:
+            parse_errors.append(f"Row {row_idx}: Missing Admission Number — skipped.")
+            continue
+
+        mark_kwargs = {"id": student_id}
+        for subj in active_subjects:
+            cols     = subj_col_map_0[subj]
+            marks_v  = _str(row[cols["marks"]]) if cols["marks"] < len(row) else ""
+            if marks_v.lower() in SKIP_VALS:
+                marks_v = ""
+            # Map to Pydantic field names: mathsMarks, physicsMarks, etc.
+            mark_kwargs[f"{subj}Marks"] = marks_v if marks_v else None
+
+        current_meta["studentMarks"].append(MockTestStudentMark(**mark_kwargs))
+
+    # Drop blocks with no student marks
+    valid_exams    = [g for g in exam_groups if g["studentMarks"]]
+    skipped_empty  = len(exam_groups) - len(valid_exams)
+    if skipped_empty:
+        parse_errors.append(f"{skipped_empty} test block(s) had no student marks and were skipped.")
+
+    if not valid_exams:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "No valid mock test data found.", "parse_errors": parse_errors}
+        )
+
+    bulk_payload = MockTestBulkCreate(
+        batch_id=batch_id,
+        exams=[MockTestBulkItem(**g) for g in valid_exams]
+    )
+    result = await create_mock_test_bulk(bulk_payload, current_user)
+    result["total_tests_parsed"] = len(valid_exams)
+    result["parse_errors"]       = parse_errors
+    return result

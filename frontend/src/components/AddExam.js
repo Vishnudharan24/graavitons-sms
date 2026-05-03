@@ -204,6 +204,8 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
     mockTestTotalMarks: ''
   });
 
+  const [selectedFile, setSelectedFile] = useState(null);
+
   // Initialize marks for all students
   const [studentMarks, setStudentMarks] = useState(
     students.map(student => ({
@@ -335,6 +337,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
+      setSelectedFile(file);
       setUploadLogs([]);
       const reader = new FileReader();
 
@@ -808,6 +811,53 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
       let apiUrl = '';
       let requestData = {};
 
+      // Handle Multiple Upload (Backend Excel Parsing)
+      if (examMode === 'multi-excel' && selectedFile) {
+        apiUrl = examData.examType === 'daily test'
+          ? `${API_BASE}/api/exam/daily-test/batch/${batch.batch_id}/upload-excel`
+          : `${API_BASE}/api/exam/mock-test/batch/${batch.batch_id}/upload-excel`;
+
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        const response = await authFetch(apiUrl, {
+          method: 'POST',
+          body: formData
+          // Note: authFetch should handle not setting Content-Type for FormData
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          setUploadLogs([errorData.detail || 'Failed to upload Excel file']);
+          throw new Error(errorData.detail || 'Failed to upload Excel file');
+        }
+
+        const result = await response.json();
+        const serverLogs = [];
+        (result.parse_errors || []).forEach(err => serverLogs.push(`Parse error: ${err}`));
+        (result.failed_exams || []).forEach((entry) => {
+          serverLogs.push(`Exam ${entry.index || '-'} (${entry.exam_date || '-'}) failed: ${entry.reason || 'Unknown reason'}`);
+        });
+        (result.results || []).forEach((entry) => {
+          (entry.failed_students || []).forEach((s) => {
+            serverLogs.push(`Exam ${entry.index || '-'} student ${s.student_id || '-'}: ${s.reason || 'Unknown reason'}`);
+          });
+        });
+        setUploadLogs(serverLogs.slice(0, 300));
+
+        alert(
+          `${result.message}\n\n` +
+          `Total Exams Parsed: ${result.total_tests_parsed}\n` +
+          `Successful: ${result.successful_exams}\n` +
+          `Failed: ${result.failed_exams_count}\n` +
+          `Inserted Records: ${result.total_inserted_records}`
+        );
+
+        onSave({ ...examData, bulk: true });
+        onBack();
+        return;
+      }
+
       if (hasBulkExcelData) {
         apiUrl = examData.examType === 'daily test'
           ? `${API_BASE}/api/exam/daily-test/bulk`
@@ -950,10 +1000,10 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
   const isMultiExcelMode = examMode === 'multi-excel';
 
   const hasBulkExcelData = (examMode === 'excel' || examMode === 'multi-excel')
-    && excelBulkUpload
-    && excelBulkUpload.examType === examData.examType
-    && Array.isArray(excelBulkUpload.exams)
-    && excelBulkUpload.exams.length > 0;
+    && (
+      (excelBulkUpload && excelBulkUpload.examType === examData.examType && Array.isArray(excelBulkUpload.exams) && excelBulkUpload.exams.length > 0)
+      || (examMode === 'multi-excel' && selectedFile)
+    );
 
   return (
     <div className="add-exam">

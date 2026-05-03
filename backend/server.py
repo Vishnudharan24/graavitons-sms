@@ -83,6 +83,8 @@ async def root():
             "mock_test_delete": "DELETE /api/exam/mock-test/batch/{batch_id}",
             "daily_test_template": "GET /api/exam/template/daily-test/{batch_id}",
             "mock_test_template": "GET /api/exam/template/mock-test/{batch_id}",
+            "daily_test_excel_upload": "POST /api/exam/daily-test/batch/{batch_id}/upload-excel",
+            "mock_test_excel_upload": "POST /api/exam/mock-test/batch/{batch_id}/upload-excel",
             "student_daily_tests": "GET /api/exam/daily-test/student/{student_no}",
             "student_mock_tests": "GET /api/exam/mock-test/student/{student_no}",
             "batch_report": "GET /api/exam/batch-report/{batch_id}",
