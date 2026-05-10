@@ -1332,7 +1332,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
               {/* Preview uploaded data */}
               <div className="preview-section">
                 <h4>Preview Data</h4>
-                {hasBulkExcelData ? (
+                {hasBulkExcelData && excelBulkUpload && excelBulkUpload.exams ? (
                   <div className="instruction" style={{ marginBottom: '10px' }}>
                     Loaded <strong>{excelBulkUpload.exams.length}</strong> {examData.examType} entries from Excel.
                     Dates{examData.examType === 'daily test' ? ', subjects, and topics' : ''} are taken directly from the sheet.
@@ -1467,10 +1467,15 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
 
               <div className="preview-section">
                 <h4>Multiple Upload Preview</h4>
-                {hasBulkExcelData ? (
+                {hasBulkExcelData && excelBulkUpload && excelBulkUpload.exams ? (
                   <div className="instruction" style={{ marginBottom: '10px' }}>
                     Loaded <strong>{excelBulkUpload.exams.length}</strong> {examData.examType} entries.
                     Click <strong>Save Exam Marks</strong> to upload all entries in one request.
+                  </div>
+                ) : hasBulkExcelData && selectedFile ? (
+                  <div className="instruction" style={{ marginBottom: '10px' }}>
+                    File <strong>{selectedFile.name}</strong> selected.
+                    Click <strong>Upload Multiple Exams</strong> to process and save.
                   </div>
                 ) : (
                   <div className="instruction" style={{ marginBottom: '10px' }}>
