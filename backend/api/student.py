@@ -605,11 +605,18 @@ async def upload_students_excel(
         cursor.close()
         conn.close()
         
+        if success_count > 0 and error_count == 0:
+            message = "All students uploaded successfully"
+        elif success_count > 0:
+            message = f"Upload partially completed — {error_count} student(s) failed"
+        else:
+            message = "Upload failed — no students were added to the database"
+        
         return {
-            "message": f"Upload completed",
+            "message": message,
             "success_count": success_count,
             "error_count": error_count,
-            "errors": errors[:10] if errors else []  # Return first 10 errors
+            "errors": errors[:50] if errors else []
         }
         
     except HTTPException:

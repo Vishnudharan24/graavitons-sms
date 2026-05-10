@@ -359,8 +359,9 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
         
         conn.commit()
         
+        message = "Unit test marks added successfully" if inserted_count > 0 else "No unit test marks were added — all students failed or were not found"
         response = {
-            "message": "Unit test marks added successfully",
+            "message": message,
             "exam_name": exam_data.examName,
             "exam_date": str(exam_data.examDate),
             "subject": normalized_subject,
@@ -532,8 +533,9 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
         
         conn.commit()
         
+        message = "Monthly test marks added successfully" if inserted_count > 0 else "No monthly test marks were added — all students failed or were not found"
         response = {
-            "message": "Monthly test marks added successfully",
+            "message": message,
             "exam_name": exam_data.examName,
             "exam_date": str(exam_data.examDate),
             "active_subjects": list(active_subjects),

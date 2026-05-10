@@ -344,6 +344,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
       reader.onload = (event) => {
         try {
           let data;
+          let fileAlertShown = false;
           const fileName = file.name.toLowerCase();
 
           if (fileName.endsWith('.csv')) {
@@ -516,10 +517,12 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                   if (exams.length > 0) {
                     setExcelBulkUpload({ examType: 'daily test', exams });
                     setUploadLogs(rowErrors.slice(0, 200));
-                    alert(`Loaded ${exams.length} unit tests from Excel. Skipped rows: ${skippedRows}. Click Save Exam Marks to upload all.`);
+                    fileAlertShown = true;
+                    alert(`Loaded ${exams.length} unit tests from Excel. Skipped rows: ${skippedRows}. Click "Save Exam Marks" to save to database.`);
                   } else {
                     setExcelBulkUpload(null);
                     setUploadLogs(rowErrors.slice(0, 200));
+                    fileAlertShown = true;
                     alert('No valid unit test rows found. Please ensure Exam Date, Subject, Topic, and Marks are filled.');
                   }
                 } else {
@@ -665,10 +668,12 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                   if (exams.length > 0) {
                     setExcelBulkUpload({ examType: 'mock test', exams });
                     setUploadLogs(rowErrors.slice(0, 200));
-                    alert(`Loaded ${exams.length} monthly tests from Excel by date. Skipped rows: ${skippedRows}. Click Save Exam Marks to upload all.`);
+                    fileAlertShown = true;
+                    alert(`Loaded ${exams.length} monthly tests from Excel by date. Skipped rows: ${skippedRows}. Click "Save Exam Marks" to save to database.`);
                   } else {
                     setExcelBulkUpload(null);
                     setUploadLogs(rowErrors.slice(0, 200));
+                    fileAlertShown = true;
                     alert('No valid monthly test rows found. Please ensure Exam Date and marks are filled.');
                   }
                 } else {
@@ -712,7 +717,9 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
             }
           }
 
-          alert('Marks uploaded successfully!');
+          if (!fileAlertShown) {
+            alert('Marks loaded from file! Review the data below, then click "Save Exam Marks" to save to database.');
+          }
         } catch (error) {
           setUploadLogs([error.message || 'Error reading file. Please check the format and try again.']);
           alert('Error reading file. Please check the format and try again.');

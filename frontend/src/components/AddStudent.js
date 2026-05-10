@@ -276,6 +276,10 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
           onSave(result);
           setTimeout(() => onBack(), 2000);
         }
+      } else if (result.error_count > 0) {
+        alert(`Upload failed!\nNo students were added to the database.\nErrors: ${result.error_count}\n\nThis usually happens when students already exist in the database or required fields are missing.\nCheck the error details below.`);
+      } else {
+        alert('No data rows found in the uploaded file. Please check the file and try again.');
       }
       
     } catch (err) {
