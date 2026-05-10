@@ -88,6 +88,20 @@ const parseExcelDateToIso = (value) => {
 
   const raw = String(value).trim();
 
+  // DD-MM-YYYY or DD/MM/YYYY (primary expected format)
+  const dashParts = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if (dashParts) {
+    const day = parseInt(dashParts[1], 10);
+    const month = parseInt(dashParts[2], 10);
+    const year = parseInt(dashParts[3], 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      const y = String(year).padStart(4, '0');
+      const m = String(month).padStart(2, '0');
+      const d = String(day).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+  }
+
   // DD.MM.YYYY or DD.MM.YY
   const dotParts = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
   if (dotParts) {
@@ -101,21 +115,27 @@ const parseExcelDateToIso = (value) => {
     return `${y}-${m}-${d}`;
   }
 
-  const direct = new Date(raw);
-  if (!Number.isNaN(direct.getTime())) {
-    return direct.toISOString().slice(0, 10);
+  // YYYY-MM-DD (ISO format fallback)
+  const isoParts = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoParts) {
+    return `${isoParts[1]}-${isoParts[2].padStart(2, '0')}-${isoParts[3].padStart(2, '0')}`;
   }
 
-  const parts = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
-  if (parts) {
-    const day = parseInt(parts[1], 10);
-    const month = parseInt(parts[2], 10);
-    let year = parseInt(parts[3], 10);
-    if (year < 100) year += 2000;
+  // DD/MM/YY or DD-MM-YY (2-digit year)
+  const shortYearParts = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2})$/);
+  if (shortYearParts) {
+    const day = parseInt(shortYearParts[1], 10);
+    const month = parseInt(shortYearParts[2], 10);
+    const year = parseInt(shortYearParts[3], 10) + 2000;
     const y = String(year).padStart(4, '0');
     const m = String(month).padStart(2, '0');
     const d = String(day).padStart(2, '0');
     return `${y}-${m}-${d}`;
+  }
+
+  const direct = new Date(raw);
+  if (!Number.isNaN(direct.getTime())) {
+    return direct.toISOString().slice(0, 10);
   }
 
   return '';
@@ -437,7 +457,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
               }
 
             if (examData.examType === 'daily test') {
-                const dateIndex = findIndex('exam date (yyyy-mm-dd)', 'exam date', 'date');
+                const dateIndex = findIndex('exam date (dd-mm-yyyy)', 'exam date (yyyy-mm-dd)', 'exam date', 'date');
                 const subjectIndex = findIndex('subject');
                 const topicIndex = findIndex('topic / unit name', 'topic/unit', 'topic', 'unit name', 'unit');
                 const marksIndex = findIndex('marks', 'marks (out of 100)', 'score');
@@ -544,7 +564,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                   setUploadLogs([]);
                 }
             } else if (examData.examType === 'mock test') {
-                const dateIndex = findIndex('exam date (yyyy-mm-dd)', 'exam date', 'date');
+                const dateIndex = findIndex('exam date (dd-mm-yyyy)', 'exam date (yyyy-mm-dd)', 'exam date', 'date');
                 const testTotalIndex = findIndex('test total marks', 'test total');
               const simpleMarksIndex = findIndex('marks', 'score');
                 const subjectIndexes = activeMockSubjects.reduce((acc, subject) => {

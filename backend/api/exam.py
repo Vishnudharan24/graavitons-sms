@@ -1469,7 +1469,7 @@ async def get_daily_test_template(
                 "Test No",
                 "Admission No",
                 "Student Name",
-                "Exam Date\n(YYYY-MM-DD)",
+                "Exam Date\n(DD-MM-YYYY)",
                 "Subject",
                 "Topic / Unit Name",
                 "Marks",
@@ -1508,7 +1508,7 @@ async def get_daily_test_template(
                     c.border = s["top_border"]
 
                 # Cols D, E, F: yellow editable cells with placeholder hints
-                hints = {4: "e.g. 2026-03-02", 5: "e.g. Maths", 6: "e.g. Continuity & Diff."}
+                hints = {4: "e.g. 02-03-2026", 5: "e.g. Maths", 6: "e.g. Continuity & Diff."}
                 for col, hint in hints.items():
                     c = ws.cell(row=current_row, column=col, value="")
                     c.fill      = s["meta_edit_fill"]
@@ -1579,12 +1579,12 @@ async def get_daily_test_template(
                 ("", False, 11),
                 ("COLOUR GUIDE", True, 11),
                 ("  • Dark blue row (TEST N)  →  One per test. Fill Date, Subject, Unit Name here ONLY.", False, 10),
-                ("  • Yellow cells (D, E, F)  →  Type date (YYYY-MM-DD), subject and topic for that test.", False, 10),
+                ("  • Yellow cells (D, E, F)  →  Type date (DD-MM-YYYY), subject and topic for that test.", False, 10),
                 ("  • Green cells (G / Marks) →  Type each student's marks. Leave blank if absent.", False, 10),
                 ("  • Grey/white rows         →  Student rows — do NOT edit columns A, B, C, D, E, F.", False, 10),
                 ("", False, 11),
                 ("STEP-BY-STEP", True, 11),
-                ("  1. For each TEST N block, click the yellow Date cell → type the exam date.", False, 10),
+                ("  1. For each TEST N block, click the yellow Date cell → type the exam date (DD-MM-YYYY).", False, 10),
                 ("  2. Click yellow Subject cell → type subject (Maths / Physics / Chemistry).", False, 10),
                 ("  3. Click yellow Unit Name cell → type the topic tested.", False, 10),
                 ("  4. Fill the green Marks cell for every student in that block.", False, 10),
@@ -1819,7 +1819,7 @@ async def get_mock_test_template(
                     c.fill = s["meta_label_fill"]; c.border = s["top_border"]
 
                 # D: yellow date
-                c = ws.cell(row=current_row, column=4, value="e.g. 2026-03-07")
+                c = ws.cell(row=current_row, column=4, value="e.g. 07-03-2026")
                 c.fill = s["meta_date_fill"]
                 c.font = Font(color="BFBFBF", size=9, name="Calibri", italic=True)
                 c.alignment = Alignment(horizontal='center', vertical='center')
@@ -1910,14 +1910,14 @@ async def get_mock_test_template(
                 ("", False, 11),
                 ("COLOUR GUIDE", True, 11),
                 ("  • Blue row (TEST N)           → One per test. Fill metadata here ONLY.", False, 10),
-                ("  • Yellow cell (Exam Date)     → Type date once per block: YYYY-MM-DD", False, 10),
+                ("  • Yellow cell (Exam Date)     → Type date once per block: DD-MM-YYYY", False, 10),
                 ("  • 🟢 Green cells  (Maths)     → Unit name, total marks, then marks per student.", False, 10),
                 ("  • 🟠 Orange cells (Physics)   → Unit name, total marks, then marks per student.", False, 10),
                 ("  • 🩷 Pink cells   (Chemistry) → Unit name, total marks, then marks per student.", False, 10),
                 ("  • White/grey rows             → Student rows — do NOT edit A, B, C, D.", False, 10),
                 ("", False, 11),
                 ("STEP-BY-STEP", True, 11),
-                ("  1. In each TEST N row, fill the yellow date cell (YYYY-MM-DD).", False, 10),
+                ("  1. In each TEST N row, fill the yellow date cell (DD-MM-YYYY).", False, 10),
                 ("  2. Fill the coloured Unit Name cell for each subject (once per block).", False, 10),
                 ("  3. Fill the coloured Total Marks cell for each subject (e.g. 100).", False, 10),
                 ("  4. In student rows, fill the coloured Marks cells for each subject.", False, 10),
@@ -2380,7 +2380,7 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
 #
 # Reads the existing multi_template Excel format:
 #   Col A: Test No  | Col B: Admission Number | Col C: Student Name
-#   Col D: Exam Date (YYYY-MM-DD) | Col E: Subject | Col F: Topic/Unit Name
+#   Col D: Exam Date (DD-MM-YYYY) | Col E: Subject | Col F: Topic/Unit Name
 #   Col G: Marks | Col H: Subject Total Marks | Col I: Test Total Marks
 #
 # Groups rows by (Test No, Date, Subject, Unit Name) and calls the existing
@@ -2434,9 +2434,16 @@ async def upload_daily_test_excel(
         try:
             if isinstance(raw, (datetime, date)):
                 return (raw.date() if isinstance(raw, datetime) else raw), None
-            return datetime.strptime(str(raw).strip(), "%Y-%m-%d").date(), None
-        except ValueError:
-            return None, f"Row {row_idx}: Invalid date '{raw}' — expected YYYY-MM-DD."
+            raw_str = str(raw).strip()
+            # Try DD-MM-YYYY first (primary format)
+            for fmt in ("%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y"):
+                try:
+                    return datetime.strptime(raw_str, fmt).date(), None
+                except ValueError:
+                    continue
+            return None, f"Row {row_idx}: Invalid date '{raw}' — expected DD-MM-YYYY."
+        except Exception:
+            return None, f"Row {row_idx}: Invalid date '{raw}' — expected DD-MM-YYYY."
 
     for row_idx, row in enumerate(rows, start=2):
         # Skip completely blank rows
@@ -2613,9 +2620,16 @@ async def upload_mock_test_excel(
         try:
             if isinstance(raw, (datetime, date)):
                 return (raw.date() if isinstance(raw, datetime) else raw), None
-            return datetime.strptime(_str(raw), "%Y-%m-%d").date(), None
-        except ValueError:
-            return None, f"Row {row_idx}: Invalid date '{raw}' — expected YYYY-MM-DD."
+            raw_str = _str(raw)
+            # Try DD-MM-YYYY first (primary format)
+            for fmt in ("%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y"):
+                try:
+                    return datetime.strptime(raw_str, fmt).date(), None
+                except ValueError:
+                    continue
+            return None, f"Row {row_idx}: Invalid date '{raw}' — expected DD-MM-YYYY."
+        except Exception:
+            return None, f"Row {row_idx}: Invalid date '{raw}' — expected DD-MM-YYYY."
 
     for row_idx, row in enumerate(rows, start=2):
         # Skip blank separator rows
