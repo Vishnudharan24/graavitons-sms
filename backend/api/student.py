@@ -14,6 +14,8 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from api.middleware import get_current_user
 from db_pool import get_db_connection
+import os
+import shutil
 
 app = FastAPI(title=APP_TITLE)
 
@@ -734,7 +736,7 @@ async def get_student_details(student_no: int, current_user: dict = Depends(get_
         cursor.execute("""
             SELECT student_no, student_id, batch_id, student_name, dob, grade, community, 
                    enrollment_year, course, branch, gender, student_mobile, 
-                   aadhar_no, apaar_id, email, school_name, created_at
+                   aadhar_no, apaar_id, email, school_name, created_at, photo_url
             FROM student WHERE student_no = %s
         """, (student_no,))
         
@@ -764,7 +766,8 @@ async def get_student_details(student_no: int, current_user: dict = Depends(get_
             "apaar_id": student_row[13],
             "email": student_row[14],
             "school_name": student_row[15],
-            "created_at": student_row[16].isoformat() if student_row[16] else None
+            "created_at": student_row[16].isoformat() if student_row[16] else None,
+            "photo_url": student_row[17]
         }
         
         # Fetch parent info

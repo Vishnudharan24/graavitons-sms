@@ -110,6 +110,7 @@ const StudentProfile = ({
   const [dailyChartType, setDailyChartType] = useState('line');
   const [mockChartType, setMockChartType] = useState('grouped');
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [currentFeedback, setCurrentFeedback] = useState({
     date: new Date().toISOString().split('T')[0],
     teacherFeedback: '',
@@ -240,6 +241,43 @@ const StudentProfile = ({
       }
     } catch (err) {
       console.error('Error fetching feedback:', err);
+    }
+  };
+
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+      alert('Please select a valid image file (JPG, PNG, GIF, WEBP).');
+      return;
+    }
+
+    setUploadingPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await authFetch(`${API_BASE}/api/student/${studentNo}/photo`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to upload photo');
+      }
+
+      // Refresh student data to get the new photo URL
+      await fetchStudentData();
+      alert('Photo uploaded successfully!');
+    } catch (err) {
+      console.error('Error uploading photo:', err);
+      alert(err.message || 'Error uploading photo');
+    } finally {
+      setUploadingPhoto(false);
+      // Clear the input
+      e.target.value = null;
     }
   };
 
@@ -1411,8 +1449,32 @@ const StudentProfile = ({
         </div>
         <div className="profile-title-section">
           <h2>Student Profile - {displayData.name}</h2>
-          <div className="student-photo">
-            <img src={DEFAULT_AVATAR} alt={studentData.name} />
+          <div className="student-photo" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+            <img 
+              src={studentData?.photo_url ? `${API_BASE}${studentData.photo_url}` : DEFAULT_AVATAR} 
+              alt={studentData?.student_name} 
+              style={{ objectFit: 'cover', width: '150px', height: '150px', borderRadius: '50%' }}
+            />
+            <div className="photo-upload-container">
+              <label className={`btn-upload-photo ${uploadingPhoto ? 'disabled' : ''}`} style={{ 
+                cursor: 'pointer', 
+                padding: '6px 12px', 
+                backgroundColor: '#f1f5f9', 
+                border: '1px solid #cbd5e1', 
+                borderRadius: '6px',
+                fontSize: '13px',
+                display: 'inline-block'
+              }}>
+                {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
+                <input 
+                  type="file" 
+                  accept=".jpg,.jpeg,.png,.gif,.webp" 
+                  style={{ display: 'none' }} 
+                  onChange={handlePhotoUpload}
+                  disabled={uploadingPhoto}
+                />
+              </label>
+            </div>
           </div>
         </div>
       </div>

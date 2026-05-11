@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 from config import APP_TITLE, CORS_ORIGINS, SERVER_HOST, SERVER_PORT, DEBUG
 from db_pool import close_pool
@@ -31,6 +32,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Ensure uploads directory exists
+os.makedirs(os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads", "avatars"), exist_ok=True)
+
+# Mount static files for uploads
+app.mount("/uploads", StaticFiles(directory=os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")), name="uploads")
 
 # Import and include the sub-apps directly
 # This preserves their internal route paths (/api/batch, /api/student, /api/exam)
