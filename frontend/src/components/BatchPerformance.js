@@ -30,12 +30,14 @@ const TOOLTIP_STYLE = {
 
 const formatPercentMetric = (value) => {
   if (value === null || value === undefined || value === '') return '—';
-  return `${value}%`;
+  const num = Number(value);
+  return `${Number.isFinite(num) ? num.toFixed(2) : value}%`;
 };
 
 const formatPlainMetric = (value) => {
   if (value === null || value === undefined || value === '') return '—';
-  return value;
+  const num = Number(value);
+  return Number.isFinite(num) ? parseFloat(num.toFixed(2)) : value;
 };
 
 const formatTooltipMetric = (value, name) => {
@@ -62,7 +64,11 @@ const INFO_TEXT = {
   rankCol: 'Display position within the shown top/bottom list.',
   dailyAvgCol: 'Student average percentage from unit tests only.',
   mockAvgCol: 'Student average percentage from monthly tests only.',
-  overallPctCol: 'Combined average percentage across available unit + monthly tests.'
+  overallPctCol: 'Combined average percentage across available unit + monthly tests.',
+  medianPct: 'The middle value when all student scores are sorted. Unlike the average, the median is not affected by extremely high or low scores.',
+  stddevPct: 'Standard Deviation measures how spread out student scores are from the average. A low value means scores are clustered together; a high value means wider variation.',
+  iqrPct: 'Interquartile Range (IQR) is the range between the 25th and 75th percentile scores. It shows where the middle 50% of students scored.',
+  p90Pct: 'The 90th percentile score — 90% of students scored at or below this value. Useful for identifying the threshold of top performers.'
 };
 
 const renderInfoLabel = (label, key) => (
@@ -373,19 +379,19 @@ const BatchPerformance = ({ batch }) => {
       {advancedStats && (
         <div className="perf-stat-cards" style={{ marginTop: '-6px' }}>
           <div className="perf-stat-card accent-blue">
-            <h4>Median %</h4>
+            <h4>{renderInfoLabel('Median %', 'medianPct')}</h4>
             <p className="stat-value">{formatPlainMetric(advancedStats.median_pct)}</p>
           </div>
           <div className="perf-stat-card accent-purple">
-            <h4>Std Dev</h4>
+            <h4>{renderInfoLabel('Std Dev', 'stddevPct')}</h4>
             <p className="stat-value">{formatPlainMetric(advancedStats.stddev_pct)}</p>
           </div>
           <div className="perf-stat-card accent-teal">
-            <h4>IQR</h4>
+            <h4>{renderInfoLabel('IQR', 'iqrPct')}</h4>
             <p className="stat-value">{formatPlainMetric(advancedStats.iqr_pct)}</p>
           </div>
           <div className="perf-stat-card accent-green">
-            <h4>P90 %</h4>
+            <h4>{renderInfoLabel('P90 %', 'p90Pct')}</h4>
             <p className="stat-value">{formatPlainMetric(advancedStats?.percentile_bands?.p90)}</p>
           </div>
           <div className="perf-stat-card accent-orange">
