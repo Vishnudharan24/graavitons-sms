@@ -8,6 +8,7 @@ import BatchPerformance from './BatchPerformance';
 import './BatchDetail.css';
 import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
+import { useToast } from './Toast';
 
 const formatObtainedWithTotal = (obtained, total) => {
   if (obtained === null || obtained === undefined || obtained === '') return 'N/A';
@@ -18,6 +19,7 @@ const formatObtainedWithTotal = (obtained, total) => {
 const compareStudentId = (a, b) => String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' });
 
 const BatchDetail = ({ batch, onBack }) => {
+  const toast = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [selectedCommunity, setSelectedCommunity] = useState('all');
@@ -100,11 +102,11 @@ const BatchDetail = ({ batch, onBack }) => {
   });
 
   const handleDownloadFormat = () => {
-    alert('Downloading exam format template...');
+    toast.info('Downloading exam format template...');
   };
 
   const handleUploadMarks = () => {
-    alert('Upload exam marks feature');
+    toast.info('Upload exam marks feature');
   };
 
   const handleViewStudent = (student) => {
@@ -151,7 +153,7 @@ const BatchDetail = ({ batch, onBack }) => {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Download template error:', err);
-      alert('Failed to download edit template. Please try again.');
+      toast.error('Failed to download edit template. Please try again.');
     }
   };
 
@@ -160,7 +162,7 @@ const BatchDetail = ({ batch, onBack }) => {
     if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
       setBulkEditFile(file);
     } else if (file) {
-      alert('Please upload an Excel file (.xlsx or .xls)');
+      toast.warning('Please upload an Excel file (.xlsx or .xls)');
       e.target.value = '';
     }
   };
@@ -336,7 +338,7 @@ const BatchDetail = ({ batch, onBack }) => {
 
     } catch (err) {
       console.error('Report generation failed:', err);
-      alert('Failed to generate report. Please try again.');
+      toast.error('Failed to generate report. Please try again.');
     } finally {
       setReportLoading(false);
     }
@@ -377,13 +379,13 @@ const BatchDetail = ({ batch, onBack }) => {
 
       const failed = bulkErrorsRef.current.length;
       if (failed > 0) {
-        alert(`ZIP generated with ${failed} issue(s). Check bulk_export_errors.txt inside ZIP.`);
+        toast.warning(`ZIP generated with ${failed} issue(s). Check bulk_export_errors.txt inside ZIP.`);
       } else {
-        alert('All student progress reports were downloaded as ZIP successfully.');
+        toast.success('All student progress reports were downloaded as ZIP successfully.');
       }
     } catch (err) {
       console.error('Failed to generate progress report ZIP:', err);
-      alert('Failed to generate progress report ZIP. Please try again.');
+      toast.error('Failed to generate progress report ZIP. Please try again.');
     } finally {
       setBulkPdfLoading(false);
       setBulkPdfCurrent(null);
@@ -461,7 +463,7 @@ const BatchDetail = ({ batch, onBack }) => {
 
   const handleDownloadAllProgressReports = async () => {
     if (!students || students.length === 0) {
-      alert('No students available in this batch to generate reports.');
+      toast.warning('No students available in this batch to generate reports.');
       return;
     }
     if (bulkPdfLoading) return;

@@ -108,10 +108,17 @@ class StudentCreate(BaseModel):
     tenth_social_science: Optional[int] = None
     tenth_total_marks: Optional[int] = None
     
-    # entrance exams
-    "entrance_exam_1", "entrance_exam_1_percentile", "entrance_exam_1_mark",
-    "entrance_exam_2", "entrance_exam_2_percentile", "entrance_exam_2_mark",
-    "entrance_exam_3", "entrance_exam_3_percentile", "entrance_exam_3_mark",
+    # Entrance exams
+    entrance_exam_1: Optional[str] = None
+    entrance_exam_1_percentile: Optional[float] = None
+    entrance_exam_1_mark: Optional[int] = None
+    entrance_exam_2: Optional[str] = None
+    entrance_exam_2_percentile: Optional[float] = None
+    entrance_exam_2_mark: Optional[int] = None
+    entrance_exam_3: Optional[str] = None
+    entrance_exam_3_percentile: Optional[float] = None
+    entrance_exam_3_mark: Optional[int] = None
+    
     # 12th marks
     twelfth_school_name: Optional[str] = None
     twelfth_year_of_passing: Optional[int] = None
@@ -124,28 +131,6 @@ class StudentCreate(BaseModel):
     twelfth_biology: Optional[int] = None
     twelfth_computer_science: Optional[int] = None
     twelfth_total_marks: Optional[int] = None
-    
-    # Entrance exams
-    entrance_exam_1: Optional[str] = None
-    entrance_exam_1_percentile: Optional[float] = None
-    entrance_exam_1_mark: Optional[int] = None
-    entrance_exam_2: Optional[str] = None
-    entrance_exam_2_percentile: Optional[float] = None
-    entrance_exam_2_mark: Optional[int] = None
-    entrance_exam_3: Optional[str] = None
-    entrance_exam_3_percentile: Optional[float] = None
-    entrance_exam_3_mark: Optional[int] = None
-    
-    # Entrance exams
-    entrance_exam_1: Optional[str] = None
-    entrance_exam_1_percentile: Optional[float] = None
-    entrance_exam_1_mark: Optional[int] = None
-    entrance_exam_2: Optional[str] = None
-    entrance_exam_2_percentile: Optional[float] = None
-    entrance_exam_2_mark: Optional[int] = None
-    entrance_exam_3: Optional[str] = None
-    entrance_exam_3_percentile: Optional[float] = None
-    entrance_exam_3_mark: Optional[int] = None
     
     # Counselling details
     counselling_forum_1: Optional[str] = None
@@ -222,10 +207,17 @@ class StudentUpdate(BaseModel):
     tenth_social_science: Optional[int] = None
     tenth_total_marks: Optional[int] = None
     
-    # entrance exams
-    "entrance_exam_1", "entrance_exam_1_percentile", "entrance_exam_1_mark",
-    "entrance_exam_2", "entrance_exam_2_percentile", "entrance_exam_2_mark",
-    "entrance_exam_3", "entrance_exam_3_percentile", "entrance_exam_3_mark",
+    # Entrance exams
+    entrance_exam_1: Optional[str] = None
+    entrance_exam_1_percentile: Optional[float] = None
+    entrance_exam_1_mark: Optional[int] = None
+    entrance_exam_2: Optional[str] = None
+    entrance_exam_2_percentile: Optional[float] = None
+    entrance_exam_2_mark: Optional[int] = None
+    entrance_exam_3: Optional[str] = None
+    entrance_exam_3_percentile: Optional[float] = None
+    entrance_exam_3_mark: Optional[int] = None
+    
     # 12th marks
     twelfth_school_name: Optional[str] = None
     twelfth_year_of_passing: Optional[int] = None
@@ -1154,10 +1146,21 @@ async def update_student(student_no: int, updates: StudentUpdate, current_user: 
                 
         # Update counselling_detail table (UPSERT logic)
         counselling_fields = {
-            'forum': updates.counselling_forum,
-            'round': updates.counselling_round,
-            'college_alloted': updates.counselling_college_alloted,
-            'year_of_completion': updates.counselling_year_of_completion
+            'counselling_forum_1': updates.counselling_forum_1,
+            'counselling_round_1': updates.counselling_round_1,
+            'all_india_rank_1': updates.all_india_rank_1,
+            'community_rank_1': updates.community_rank_1,
+            'counselling_college_1': updates.counselling_college_1,
+            'counselling_forum_2': updates.counselling_forum_2,
+            'counselling_round_2': updates.counselling_round_2,
+            'all_india_rank_2': updates.all_india_rank_2,
+            'community_rank_2': updates.community_rank_2,
+            'counselling_college_2': updates.counselling_college_2,
+            'counselling_forum_3': updates.counselling_forum_3,
+            'counselling_round_3': updates.counselling_round_3,
+            'all_india_rank_3': updates.all_india_rank_3,
+            'community_rank_3': updates.community_rank_3,
+            'counselling_college_3': updates.counselling_college_3
         }
         
         counselling_updates = {k: v for k, v in counselling_fields.items() if v is not None}
@@ -1360,7 +1363,7 @@ async def download_edit_template(batch_id: int, current_user: dict = Depends(get
             # student table
             cursor.execute("""
                 SELECT student_id, student_name, dob, grade, community,
-                       enrollment_year, course, branch, gender, student_mobile,
+                       enrollment_year, course, board, gender, student_mobile,
                        aadhar_no, apaar_id, email, school_name
                 FROM student WHERE student_no = %s
             """, (student_no,))

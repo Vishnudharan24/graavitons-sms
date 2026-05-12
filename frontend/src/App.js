@@ -4,6 +4,7 @@ import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import Login from './components/Login';
 import { clearAuthStorage } from './utils/api';
+import { ToastProvider } from './components/Toast';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -31,16 +32,22 @@ function App() {
 
   // Show login page if not authenticated
   if (!user) {
-    return <Login onLogin={handleLogin} />;
+    return (
+      <ToastProvider>
+        <Login onLogin={handleLogin} />
+      </ToastProvider>
+    );
   }
 
   return (
-    <div className="app">
-      <div className="main-content">
-        <Header user={user} onLogout={handleLogout} />
-        <Dashboard />
+    <ToastProvider>
+      <div className="app">
+        <div className="main-content">
+          <Header user={user} onLogout={handleLogout} />
+          <Dashboard />
+        </div>
       </div>
-    </div>
+    </ToastProvider>
   );
 }
 

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
+import { useToast } from './Toast';
 
 const subjectLabel = {
   maths: 'Maths',
@@ -15,6 +16,7 @@ const sortByStudentId = (rows) => [...(rows || [])].sort((a, b) => (
 ));
 
 const ManageExamMarks = ({ batchId }) => {
+  const toast = useToast();
   const [examType, setExamType] = useState('daily test');
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
@@ -72,7 +74,7 @@ const ManageExamMarks = ({ batchId }) => {
         setActiveMockSubjects(data.active_subjects);
       }
     } catch (error) {
-      alert(error.message || 'Failed to fetch exam groups');
+      toast.error(error.message || 'Failed to fetch exam groups');
     } finally {
       setLoadingGroups(false);
     }
@@ -122,7 +124,7 @@ const ManageExamMarks = ({ batchId }) => {
       const data = await response.json();
       setRecords(sortByStudentId(data.records || []));
     } catch (error) {
-      alert(error.message || 'Failed to load selected exam marks');
+      toast.error(error.message || 'Failed to load selected exam marks');
     } finally {
       setLoadingRecords(false);
     }
@@ -190,10 +192,10 @@ const ManageExamMarks = ({ batchId }) => {
       }
 
       const result = await response.json();
-      alert(`${result.message}\nUpdated: ${result.updated_count}, Inserted: ${result.inserted_count}, Deleted: ${result.deleted_count}`);
+      toast.success(`${result.message}\nUpdated: ${result.updated_count}, Inserted: ${result.inserted_count}, Deleted: ${result.deleted_count}`);
       await fetchGroups();
     } catch (error) {
-      alert(error.message || 'Failed to update marks');
+      toast.error(error.message || 'Failed to update marks');
     } finally {
       setSaving(false);
     }
@@ -221,10 +223,10 @@ const ManageExamMarks = ({ batchId }) => {
       }
 
       const result = await response.json();
-      alert(`${result.message}\nDeleted records: ${result.deleted_count}`);
+      toast.success(`${result.message}\nDeleted records: ${result.deleted_count}`);
       await fetchGroups();
     } catch (error) {
-      alert(error.message || 'Failed to delete exam');
+      toast.error(error.message || 'Failed to delete exam');
     } finally {
       setSaving(false);
     }
@@ -232,7 +234,7 @@ const ManageExamMarks = ({ batchId }) => {
 
   const handleDownloadCurrentExcel = () => {
     if (!selectedGroup || records.length === 0) {
-      alert('Please select an exam with marks before downloading.');
+      toast.warning('Please select an exam with marks before downloading.');
       return;
     }
 
@@ -274,7 +276,7 @@ const ManageExamMarks = ({ batchId }) => {
         const rows = getUploadRows(sheetRows);
 
         if (rows.length === 0) {
-          alert('No data rows found in the uploaded file.');
+          toast.warning('No data rows found in the uploaded file.');
           return;
         }
 
@@ -310,10 +312,10 @@ const ManageExamMarks = ({ batchId }) => {
           return updatedRecord;
         }));
 
-        alert(`Excel uploaded successfully. Matched students: ${matchedCount}, Updated fields: ${changedCount}. Click Save Changes to persist.`);
+        toast.success(`Excel uploaded successfully. Matched students: ${matchedCount}, Updated fields: ${changedCount}. Click Save Changes to persist.`);
       } catch (error) {
         console.error('Excel upload for modify failed:', error);
-        alert('Error reading uploaded file. Please use the downloaded format and try again.');
+        toast.error('Error reading uploaded file. Please use the downloaded format and try again.');
       } finally {
         event.target.value = '';
       }

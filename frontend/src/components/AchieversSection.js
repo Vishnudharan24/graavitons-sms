@@ -5,8 +5,10 @@ import AddAchiever from './AddAchiever';
 import './AchieversSection.css';
 import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
+import { useToast } from './Toast';
 
 const AchieversSection = ({ onBack }) => {
+    const toast = useToast();
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [showAddForm, setShowAddForm] = useState(false);
     const [achieversList, setAchieversList] = useState([]);
@@ -67,7 +69,7 @@ const AchieversSection = ({ onBack }) => {
             fetchAchievers();
         } catch (err) {
             console.error('Error deleting achiever:', err);
-            alert('Failed to delete achiever. Please try again.');
+            toast.error('Failed to delete achiever. Please try again.');
         }
     };
 

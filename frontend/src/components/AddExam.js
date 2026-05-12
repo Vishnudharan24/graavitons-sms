@@ -4,6 +4,7 @@ import './AddExam.css';
 import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
 import ManageExamMarks from './ManageExamMarks';
+import { useToast } from './Toast';
 
 const MOCK_SUBJECTS = [
   { key: 'maths', label: 'Maths', aliases: ['maths', 'mathematics', 'math'], marksField: 'mathsMarks', unitField: 'mathsUnitNames', totalField: 'mathsTotalMarks' },
@@ -196,6 +197,7 @@ const getAllSheetRows = (worksheet) => {
 };
 
 const AddExam = ({ batch, students, onBack, onSave }) => {
+  const toast = useToast();
   const activeMockSubjects = getActiveMockSubjects(batch?.subjects);
   const dailySubjectOptions = getDailySubjectOptions(batch?.subjects);
   const [isSaving, setIsSaving] = useState(false);
@@ -319,7 +321,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
           apiUrl = `${API_BASE}/api/exam/template/mock-test/${batch.batch_id}`;
         }
       } else {
-        alert('Please select exam type first');
+        toast.warning('Please select exam type first');
         return;
       }
 
@@ -350,7 +352,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
       
     } catch (error) {
       console.error('Error downloading template:', error);
-      alert(`Failed to download template: ${error.message}`);
+      toast.error(`Failed to download template: ${error.message}`);
     }
   };
 
@@ -538,12 +540,12 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     setExcelBulkUpload({ examType: 'daily test', exams });
                     setUploadLogs(rowErrors.slice(0, 200));
                     fileAlertShown = true;
-                    alert(`Loaded ${exams.length} unit tests from Excel. Skipped rows: ${skippedRows}. Click "Save Exam Marks" to save to database.`);
+                    toast.success(`Loaded ${exams.length} unit tests from Excel. Skipped rows: ${skippedRows}. Click "Save Exam Marks" to save to database.`);
                   } else {
                     setExcelBulkUpload(null);
                     setUploadLogs(rowErrors.slice(0, 200));
                     fileAlertShown = true;
-                    alert('No valid unit test rows found. Please ensure Exam Date, Subject, Topic, and Marks are filled.');
+                    toast.warning('No valid unit test rows found. Please ensure Exam Date, Subject, Topic, and Marks are filled.');
                   }
                 } else {
                   const updatedMarks = studentMarks.map(student => {
@@ -689,12 +691,12 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
                     setExcelBulkUpload({ examType: 'mock test', exams });
                     setUploadLogs(rowErrors.slice(0, 200));
                     fileAlertShown = true;
-                    alert(`Loaded ${exams.length} monthly tests from Excel by date. Skipped rows: ${skippedRows}. Click "Save Exam Marks" to save to database.`);
+                    toast.success(`Loaded ${exams.length} monthly tests from Excel by date. Skipped rows: ${skippedRows}. Click "Save Exam Marks" to save to database.`);
                   } else {
                     setExcelBulkUpload(null);
                     setUploadLogs(rowErrors.slice(0, 200));
                     fileAlertShown = true;
-                    alert('No valid monthly test rows found. Please ensure Exam Date and marks are filled.');
+                    toast.warning('No valid monthly test rows found. Please ensure Exam Date and marks are filled.');
                   }
                 } else {
                   const updatedMarks = studentMarks.map(student => {
@@ -738,11 +740,11 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
           }
 
           if (!fileAlertShown) {
-            alert('Marks loaded from file! Review the data below, then click "Save Exam Marks" to save to database.');
+            toast.success('Marks loaded from file! Review the data below, then click "Save Exam Marks" to save to database.');
           }
         } catch (error) {
           setUploadLogs([error.message || 'Error reading file. Please check the format and try again.']);
-          alert('Error reading file. Please check the format and try again.');
+          toast.error('Error reading file. Please check the format and try again.');
           console.error('File upload error:', error);
         }
       };
@@ -769,17 +771,17 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
 
     if (examMode === 'multi-excel') {
       if (!examData.examType) {
-        alert('Please select exam type for multiple upload');
+        toast.warning('Please select exam type for multiple upload');
         return;
       }
       if (!hasBulkExcelData) {
-        alert('Please upload the multiple-upload Excel file before submitting');
+        toast.warning('Please upload the multiple-upload Excel file before submitting');
         return;
       }
     } else {
       // Validate
       if (!examData.examName || !examData.examType || (!hasBulkExcelData && !examData.examDate)) {
-        alert('Please fill all required exam details');
+        toast.warning('Please fill all required exam details');
         return;
       }
     }
@@ -787,12 +789,12 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
     // Validate based on exam type
     if (examData.examType === 'daily test' && !hasBulkExcelData && examMode !== 'multi-excel') {
       if (!examData.subject || !examData.unitName || !examData.dailySubjectTotalMarks || !examData.dailyTestTotalMarks) {
-        alert('Please fill subject, unit name, and total marks for unit test');
+        toast.warning('Please fill subject, unit name, and total marks for unit test');
         return;
       }
 
       if (parseInt(examData.dailySubjectTotalMarks, 10) <= 0 || parseInt(examData.dailyTestTotalMarks, 10) <= 0) {
-        alert('Total marks must be greater than 0');
+        toast.warning('Total marks must be greater than 0');
         return;
       }
       
@@ -805,20 +807,20 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
     } else if (examData.examType === 'mock test' && !hasBulkExcelData && examMode !== 'multi-excel') {
       const hasMissingUnitNames = activeMockSubjects.some(subject => !examData[subject.unitField]);
       if (hasMissingUnitNames) {
-        alert('Please fill unit names for all subjects in this batch');
+        toast.warning('Please fill unit names for all subjects in this batch');
         return;
       }
 
       const hasMissingSubjectTotals = activeMockSubjects.some(subject => !examData[subject.totalField]);
       if (hasMissingSubjectTotals || !examData.mockTestTotalMarks) {
-        alert('Please fill subject total marks and overall test total marks for monthly test');
+        toast.warning('Please fill subject total marks and overall test total marks for monthly test');
         return;
       }
 
       const hasInvalidTotals = activeMockSubjects.some(subject => parseInt(examData[subject.totalField], 10) <= 0)
         || parseInt(examData.mockTestTotalMarks, 10) <= 0;
       if (hasInvalidTotals) {
-        alert('All total marks must be greater than 0');
+        toast.warning('All total marks must be greater than 0');
         return;
       }
       
@@ -872,7 +874,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
         });
         setUploadLogs(serverLogs.slice(0, 300));
 
-        alert(
+        toast.success(
           `${result.message}\n\n` +
           `Total Exams Parsed: ${result.total_tests_parsed}\n` +
           `Successful: ${result.successful_exams}\n` +
@@ -921,7 +923,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
         });
         setUploadLogs(serverLogs.slice(0, 300));
 
-        alert(
+        toast.success(
           `${result.message}\n\n` +
           `Total Exams: ${result.total_exams}\n` +
           `Successful: ${result.successful_exams}\n` +
@@ -1004,7 +1006,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
         });
       }
       
-      alert(successMessage);
+      toast.success(successMessage);
       
       // Call onSave callback
       const examResult = {
@@ -1018,7 +1020,7 @@ const AddExam = ({ batch, students, onBack, onSave }) => {
 
     } catch (error) {
       console.error('Error saving exam marks:', error);
-      alert(`Failed to save exam marks: ${error.message}`);
+      toast.error(`Failed to save exam marks: ${error.message}`);
     } finally {
       setIsSaving(false);
     }

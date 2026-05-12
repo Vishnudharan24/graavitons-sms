@@ -10,6 +10,7 @@ import { jsPDF } from 'jspdf';
 import './StudentProfile.css';
 import { API_BASE, DEFAULT_AVATAR } from '../config';
 import { authFetch } from '../utils/api';
+import { useToast } from './Toast';
 
 // Helper: safely parse a mark value to a number, returning null for non-numeric values like 'A', '-'
 const parseNumericMark = (val) => {
@@ -89,6 +90,7 @@ const StudentProfile = ({
   onBulkPdfReady = null,
   onBulkPdfError = null,
 }) => {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState('personal');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -249,7 +251,7 @@ const StudentProfile = ({
     if (!file) return;
 
     if (!file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-      alert('Please select a valid image file (JPG, PNG, GIF, WEBP).');
+      toast.warning('Please select a valid image file (JPG, PNG, GIF, WEBP).');
       return;
     }
 
@@ -270,10 +272,10 @@ const StudentProfile = ({
 
       // Refresh student data to get the new photo URL
       await fetchStudentData();
-      alert('Photo uploaded successfully!');
+      toast.success('Photo uploaded successfully!');
     } catch (err) {
       console.error('Error uploading photo:', err);
-      alert(err.message || 'Error uploading photo');
+      toast.error(err.message || 'Error uploading photo');
     } finally {
       setUploadingPhoto(false);
       // Clear the input
@@ -1123,7 +1125,7 @@ const StudentProfile = ({
     } catch (err) {
       console.error('Failed to generate PDF report:', err);
       if (!silent) {
-        alert('Failed to generate PDF report. Please try again.');
+        toast.error('Failed to generate PDF report. Please try again.');
       }
       return null;
     } finally {
@@ -1221,7 +1223,7 @@ const StudentProfile = ({
   const handleSaveFeedback = async () => {
     if (!studentId) return;
     if (!currentFeedback.teacherFeedback && !currentFeedback.suggestions) {
-      alert('Please enter feedback or suggestions');
+      toast.warning('Please enter feedback or suggestions');
       return;
     }
     try {
@@ -1240,7 +1242,7 @@ const StudentProfile = ({
         })
       });
       if (response.ok) {
-        alert('Feedback saved successfully!');
+        toast.success('Feedback saved successfully!');
         setCurrentFeedback({
           date: new Date().toISOString().split('T')[0],
           teacherFeedback: '',
@@ -1256,7 +1258,7 @@ const StudentProfile = ({
         throw new Error(errData.detail || 'Failed to save feedback');
       }
     } catch (err) {
-      alert('Error saving feedback: ' + err.message);
+      toast.error('Error saving feedback: ' + err.message);
     } finally {
       setSavingFeedback(false);
     }
@@ -1755,34 +1757,30 @@ const StudentProfile = ({
           {/* Entrance Exam Marks */}
           <div className="profile-section">
             <h3>Entrance Exam Marks</h3>
-            {displayData.entranceExams.length > 0 ? (
+            {(displayData.entrance_exam_1 || displayData.entrance_exam_2 || displayData.entrance_exam_3) ? (
               <div className="marks-table">
                 <table>
                   <thead>
                     <tr>
                       <th>Exam Name</th>
-                      <th>Physics</th>
-                      <th>Chemistry</th>
-                      <th>Maths</th>
-                      <th>Biology</th>
-                      <th>Total</th>
-                      <th>Overall Rank</th>
-                      <th>Community Rank</th>
+                      <th>Percentile</th>
+                      <th>Mark</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {displayData.entranceExams.map((exam, index) => (
-                      <tr key={index}>
-                        <td className="exam-name">{exam.exam_name}</td>
-                        <td>{displayMark(exam.physics_marks)}</td>
-                        <td>{displayMark(exam.chemistry_marks)}</td>
-                        <td>{displayMark(exam.maths_marks)}</td>
-                        <td>{displayMark(exam.biology_marks)}</td>
-                        <td><strong>{displayMark(exam.total_marks)}</strong></td>
-                        <td>{displayMark(exam.overall_rank)}</td>
-                        <td>{displayMark(exam.community_rank)}</td>
-                      </tr>
-                    ))}
+                    {[1, 2, 3].map(num => {
+                      const name = displayData[`entrance_exam_${num}`];
+                      const percentile = displayData[`entrance_exam_${num}_percentile`];
+                      const mark = displayData[`entrance_exam_${num}_mark`];
+                      if (!name) return null;
+                      return (
+                        <tr key={num}>
+                          <td className="exam-name">{name}</td>
+                          <td>{displayMark(percentile)}</td>
+                          <td>{displayMark(mark)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1796,24 +1794,42 @@ const StudentProfile = ({
           {/* Counselling Details */}
           <div className="profile-section">
             <h3>Counselling Details</h3>
-            <div className="details-grid">
-              <div className="detail-item">
-                <label>Forum of Counselling:</label>
-                <span>{displayData.counselling.forum}</span>
-              </div>
-              <div className="detail-item">
-                <label>Round:</label>
-                <span>{displayData.counselling.round}</span>
-              </div>
-              <div className="detail-item">
-                <label>College Alloted:</label>
-                <span>{displayData.counselling.collegeAlloted}</span>
-              </div>
-              <div className="detail-item">
-                <label>Year of Completion:</label>
-                <span>{displayData.counselling.yearOfCompletion}</span>
-              </div>
-            </div>
+            {[1, 2, 3].map(num => {
+              const c = displayData[`counselling${num}`];
+              if (!c || c.forum === 'N/A') return null;
+              return (
+                <div key={num} style={{ marginBottom: '16px' }}>
+                  <h4 style={{ marginBottom: '8px', color: '#5b5fc7' }}>Forum {num}</h4>
+                  <div className="details-grid">
+                    <div className="detail-item">
+                      <label>Forum of Counselling:</label>
+                      <span>{c.forum}</span>
+                    </div>
+                    <div className="detail-item">
+                      <label>Round:</label>
+                      <span>{c.round}</span>
+                    </div>
+                    <div className="detail-item">
+                      <label>All India Rank:</label>
+                      <span>{c.allIndiaRank}</span>
+                    </div>
+                    <div className="detail-item">
+                      <label>Community Rank:</label>
+                      <span>{c.communityRank}</span>
+                    </div>
+                    <div className="detail-item">
+                      <label>College Allotted:</label>
+                      <span>{c.collegeAlloted}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {displayData.counselling1.forum === 'N/A' && displayData.counselling2.forum === 'N/A' && displayData.counselling3.forum === 'N/A' && (
+              <p style={{ color: '#666', fontStyle: 'italic', padding: '20px', textAlign: 'center' }}>
+                No counselling data available
+              </p>
+            )}
           </div>
         </div>
       )}

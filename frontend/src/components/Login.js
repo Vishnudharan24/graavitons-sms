@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import './Login.css';
 import { API_BASE } from '../config';
+import { useToast } from './Toast';
 
 const Login = ({ onLogin }) => {
+  const toast = useToast();
   const [isRegister, setIsRegister] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -65,7 +67,7 @@ const Login = ({ onLogin }) => {
         setIsRegister(false);
         setFormData({ username: formData.username, password: '', confirmPassword: '', role: 'Teacher' });
         setError('');
-        alert('Registration successful! Please log in.');
+        toast.success('Registration successful! Please log in.');
       } else {
         // Save tokens and user to localStorage, then notify parent
         localStorage.setItem('graavitons_token', data.access_token);

@@ -6,8 +6,10 @@ import AchieversSection from './AchieversSection';
 import './Dashboard.css';
 import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
+import { useToast } from './Toast';
 
 const Dashboard = () => {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState('courses');
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -67,7 +69,7 @@ const Dashboard = () => {
       }
       fetchBatches();
     } catch (err) {
-      alert(err.message || 'Failed to delete batch');
+      toast.error(err.message || 'Failed to delete batch');
       console.error('Error deleting batch:', err);
     }
   };
@@ -80,7 +82,7 @@ const Dashboard = () => {
 
     const trimmedName = newName.trim();
     if (!trimmedName) {
-      alert('Batch name cannot be empty');
+      toast.warning('Batch name cannot be empty');
       return;
     }
 
@@ -126,7 +128,7 @@ const Dashboard = () => {
 
       fetchBatches();
     } catch (err) {
-      alert(err.message || 'Failed to rename batch');
+      toast.error(err.message || 'Failed to rename batch');
       console.error('Error renaming batch:', err);
     }
   };

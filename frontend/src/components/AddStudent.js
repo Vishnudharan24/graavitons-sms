@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import './AddStudent.css';
 import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
+import { useToast } from './Toast';
 
 const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null }) => {
   const [loading, setLoading] = useState(false);
@@ -11,6 +12,7 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadResult, setUploadResult] = useState(null);
   const [dataLoaded, setDataLoaded] = useState(!editMode);
+  const toast = useToast();
   
   const getInitialFormData = () => ({
     // Personal Information (matches student table)
@@ -74,8 +76,16 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
     twelfth_computer_science: '',
     twelfth_total_marks: '',
 
-    // Entrance Exams (Array - matches entrance_exams table)
-    entrance_exams: [],
+    // Entrance Exams
+    entrance_exam_1: '',
+    entrance_exam_1_percentile: '',
+    entrance_exam_1_mark: '',
+    entrance_exam_2: '',
+    entrance_exam_2_percentile: '',
+    entrance_exam_2_mark: '',
+    entrance_exam_3: '',
+    entrance_exam_3_percentile: '',
+    entrance_exam_3_mark: '',
 
     // Counselling Details
     counselling_forum_1: '',
@@ -174,6 +184,15 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
         twelfth_biology: data.twelfth_biology || '',
         twelfth_computer_science: data.twelfth_computer_science || '',
         twelfth_total_marks: data.twelfth_total_marks || '',
+        entrance_exam_1: data.entrance_exam_1 || '',
+        entrance_exam_1_percentile: data.entrance_exam_1_percentile || '',
+        entrance_exam_1_mark: data.entrance_exam_1_mark || '',
+        entrance_exam_2: data.entrance_exam_2 || '',
+        entrance_exam_2_percentile: data.entrance_exam_2_percentile || '',
+        entrance_exam_2_mark: data.entrance_exam_2_mark || '',
+        entrance_exam_3: data.entrance_exam_3 || '',
+        entrance_exam_3_percentile: data.entrance_exam_3_percentile || '',
+        entrance_exam_3_mark: data.entrance_exam_3_mark || '',
         counselling_forum_1: data.counselling_forum_1 || '',
         counselling_round_1: data.counselling_round_1 || '',
         all_india_rank_1: data.all_india_rank_1 || '',
@@ -208,36 +227,7 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
     }));
   };
 
-  // Entrance Exam Handlers
-  const handleAddExam = () => {
-    const newExam = {
-      exam_name: 'NEET',
-      physics_marks: '',
-      chemistry_marks: '',
-      biology_marks: '',
-      maths_marks: '',
-      total_marks: '',
-      overall_rank: '',
-      community_rank: ''
-    };
-    setFormData(prev => ({
-      ...prev,
-      entrance_exams: [...prev.entrance_exams, newExam]
-    }));
-  };
 
-  const handleRemoveExam = (index) => {
-    setFormData(prev => ({
-      ...prev,
-      entrance_exams: prev.entrance_exams.filter((_, i) => i !== index)
-    }));
-  };
-
-  const handleExamChange = (index, field, value) => {
-    const updatedExams = [...formData.entrance_exams];
-    updatedExams[index][field] = value;
-    setFormData(prev => ({ ...prev, entrance_exams: updatedExams }));
-  };
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -291,17 +281,11 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
       setUploadResult(result);
       
       if (result.success_count > 0) {
-        alert(`Upload completed!\nSuccessfully added: ${result.success_count} students\nErrors: ${result.error_count}`);
-        
-        // If all successful, go back
-        if (result.error_count === 0) {
-          onSave(result);
-          setTimeout(() => onBack(), 2000);
-        }
-      } else if (result.error_count > 0) {
-        alert(`Upload failed!\nNo students were added to the database.\nErrors: ${result.error_count}\n\nThis usually happens when students already exist in the database or required fields are missing.\nCheck the error details below.`);
+        toast.success(`Upload completed!\nSuccessfully added: ${result.success_count} students\nErrors: ${result.error_count}`);
+      } else if (result.success_count === 0 && result.error_count > 0) {
+        toast.error(`Upload failed!\nNo students were added to the database.\nErrors: ${result.error_count}\n\nThis usually happens when students already exist in the database or required fields are missing.`);
       } else {
-        alert('No data rows found in the uploaded file. Please check the file and try again.');
+        toast.warning('No data rows found in the uploaded file. Please check the file and try again.');
       }
       
     } catch (err) {
@@ -445,7 +429,7 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
       }
       
       // Show success message
-      alert(`Student ${editMode ? 'updated' : 'added'} successfully!`);
+      toast.success(`Student ${editMode ? 'updated' : 'added'} successfully!`);
       
       // Go back to batch detail
       onBack();
@@ -1209,29 +1193,23 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
         {/* Entrance Exam Marks */}
         <div className="form-section">
           <h3>Entrance Exam Marks</h3>
-          <button type="button" className="btn-add-exam" onClick={handleAddExam}>
-            + Add Attempt
-          </button>
-
-          {formData.entrance_exams.map((exam, index) => (
-            <div key={index} className="exam-card">
+          
+          {[1, 2, 3].map(num => (
+            <div key={num} className="exam-card">
               <div className="exam-card-header">
-                <h4>Attempt {index + 1}</h4>
-                <button type="button" className="btn-remove-exam" onClick={() => handleRemoveExam(index)}>
-                  Remove
-                </button>
+                <h4>Entrance Exam {num}</h4>
               </div>
-
               <div className="form-grid">
                 <div className="form-group">
                   <label>Exam Name</label>
                   <select
-                    value={exam.exam_name}
-                    onChange={(e) => handleExamChange(index, 'exam_name', e.target.value)}
+                    name={`entrance_exam_${num}`}
+                    value={formData[`entrance_exam_${num}`] || ''}
+                    onChange={handleChange}
                   >
+                    <option value="">-- Select Exam --</option>
                     <option value="NEET">NEET</option>
-                    <option value="JEE Main - Phase 1">JEE Main - Phase 1</option>
-                    <option value="JEE Main - Phase 2">JEE Main - Phase 2</option>
+                    <option value="JEE Main">JEE Main</option>
                     <option value="JEE Advanced">JEE Advanced</option>
                     <option value="CUET">CUET</option>
                     <option value="IISER">IISER</option>
@@ -1240,72 +1218,28 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
                     <option value="Other">Other</option>
                   </select>
                 </div>
-              </div>
-
-              <div className="marks-grid">
                 <div className="form-group">
-                  <label>Physics Marks</label>
+                  <label>Percentile</label>
                   <input 
                     type="number" 
-                    value={exam.physics_marks} 
-                    onChange={(e) => handleExamChange(index, 'physics_marks', e.target.value)} 
+                    step="0.01"
+                    name={`entrance_exam_${num}_percentile`}
+                    value={formData[`entrance_exam_${num}_percentile`] || ''}
+                    onChange={handleChange} 
                   />
                 </div>
                 <div className="form-group">
-                  <label>Chemistry Marks</label>
+                  <label>Mark</label>
                   <input 
                     type="number" 
-                    value={exam.chemistry_marks} 
-                    onChange={(e) => handleExamChange(index, 'chemistry_marks', e.target.value)} 
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Biology Marks</label>
-                  <input 
-                    type="number" 
-                    value={exam.biology_marks} 
-                    onChange={(e) => handleExamChange(index, 'biology_marks', e.target.value)} 
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Maths Marks</label>
-                  <input 
-                    type="number" 
-                    value={exam.maths_marks} 
-                    onChange={(e) => handleExamChange(index, 'maths_marks', e.target.value)} 
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Total Marks</label>
-                  <input 
-                    type="number" 
-                    value={exam.total_marks} 
-                    onChange={(e) => handleExamChange(index, 'total_marks', e.target.value)} 
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Overall Rank</label>
-                  <input 
-                    type="number" 
-                    value={exam.overall_rank} 
-                    onChange={(e) => handleExamChange(index, 'overall_rank', e.target.value)} 
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Community Rank</label>
-                  <input 
-                    type="number" 
-                    value={exam.community_rank} 
-                    onChange={(e) => handleExamChange(index, 'community_rank', e.target.value)} 
+                    name={`entrance_exam_${num}_mark`}
+                    value={formData[`entrance_exam_${num}_mark`] || ''}
+                    onChange={handleChange} 
                   />
                 </div>
               </div>
             </div>
           ))}
-
-          {formData.entrance_exams.length === 0 && (
-            <p style={{ color: '#666', fontStyle: 'italic' }}>No attempts added yet. Click "+ Add Attempt" to add exam details.</p>
-          )}
         </div>
 
         {/* Counselling Details */}

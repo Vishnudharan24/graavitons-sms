@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import './AddAchiever.css';
 import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
+import { useToast } from './Toast';
 
 const AddAchiever = ({ onBack, onSave }) => {
+    const toast = useToast();
     const [admissionQuery, setAdmissionQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [selectedStudent, setSelectedStudent] = useState(null);
@@ -127,7 +129,7 @@ const AddAchiever = ({ onBack, onSave }) => {
                 throw new Error(errData.detail || 'Failed to add achiever');
             }
 
-            alert('Achiever added successfully!');
+            toast.success('Achiever added successfully!');
             onSave();
         } catch (err) {
             console.error('Error adding achiever:', err);
