@@ -360,7 +360,15 @@ const StudentProfile = ({
     },
 
     // Entrance Exam Marks
-    entranceExams: safeStudentData.entrance_exams || [],
+    entrance_exam_1: safeStudentData.entrance_exam_1 || '',
+    entrance_exam_1_percentile: safeStudentData.entrance_exam_1_percentile || '',
+    entrance_exam_1_mark: safeStudentData.entrance_exam_1_mark || '',
+    entrance_exam_2: safeStudentData.entrance_exam_2 || '',
+    entrance_exam_2_percentile: safeStudentData.entrance_exam_2_percentile || '',
+    entrance_exam_2_mark: safeStudentData.entrance_exam_2_mark || '',
+    entrance_exam_3: safeStudentData.entrance_exam_3 || '',
+    entrance_exam_3_percentile: safeStudentData.entrance_exam_3_percentile || '',
+    entrance_exam_3_mark: safeStudentData.entrance_exam_3_mark || '',
 
     // Counselling Details
     counselling1: {
@@ -1354,22 +1362,12 @@ const StudentProfile = ({
       ['Total', displayData.std12Marks.total],
     ];
 
-    if (displayData.entranceExams.length > 0) {
-      academicRows.push([], ['ENTRANCE EXAMS']);
-      academicRows.push(['Exam Name', 'Physics', 'Chemistry', 'Maths', 'Biology', 'Total', 'Overall Rank', 'Community Rank']);
-      displayData.entranceExams.forEach(exam => {
-        academicRows.push([
-          displayMark(exam.exam_name, '-'),
-          displayMark(exam.physics_marks),
-          displayMark(exam.chemistry_marks),
-          displayMark(exam.maths_marks),
-          displayMark(exam.biology_marks),
-          displayMark(exam.total_marks),
-          displayMark(exam.overall_rank),
-          displayMark(exam.community_rank)
-        ]);
-      });
-    }
+    academicRows.push([], ['ENTRANCE EXAMS']);
+    academicRows.push(['Exam Name', 'Percentile', 'Mark']);
+    if (displayData.entrance_exam_1) academicRows.push([displayData.entrance_exam_1, displayData.entrance_exam_1_percentile, displayData.entrance_exam_1_mark]);
+    if (displayData.entrance_exam_2) academicRows.push([displayData.entrance_exam_2, displayData.entrance_exam_2_percentile, displayData.entrance_exam_2_mark]);
+    if (displayData.entrance_exam_3) academicRows.push([displayData.entrance_exam_3, displayData.entrance_exam_3_percentile, displayData.entrance_exam_3_mark]);
+
 
     const wsAcademic = XLSX.utils.aoa_to_sheet(academicRows);
     wsAcademic['!cols'] = [{ wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }];

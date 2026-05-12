@@ -20,6 +20,14 @@ import shutil
 app = FastAPI(title=APP_TITLE)
 
 
+def safe_float(value):
+    if value is None or str(value).strip() == '':
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
 def safe_int(value):
     """Safely convert any value (including numpy floats) to Python int"""
     if value is None:
@@ -51,17 +59,6 @@ app.add_middleware(
 
 
 # Pydantic models
-class EntranceExam(BaseModel):
-    exam_name: str
-    physics_marks: Optional[int] = None
-    chemistry_marks: Optional[int] = None
-    maths_marks: Optional[int] = None
-    biology_marks: Optional[int] = None
-    total_marks: Optional[int] = None
-    community_rank: Optional[int] = None
-    overall_rank: Optional[int] = None
-
-
 class StudentCreate(BaseModel):
     # Student table fields
     student_id: str
@@ -111,6 +108,10 @@ class StudentCreate(BaseModel):
     tenth_social_science: Optional[int] = None
     tenth_total_marks: Optional[int] = None
     
+    # entrance exams
+    "entrance_exam_1", "entrance_exam_1_percentile", "entrance_exam_1_mark",
+    "entrance_exam_2", "entrance_exam_2_percentile", "entrance_exam_2_mark",
+    "entrance_exam_3", "entrance_exam_3_percentile", "entrance_exam_3_mark",
     # 12th marks
     twelfth_school_name: Optional[str] = None
     twelfth_year_of_passing: Optional[int] = None
@@ -124,8 +125,27 @@ class StudentCreate(BaseModel):
     twelfth_computer_science: Optional[int] = None
     twelfth_total_marks: Optional[int] = None
     
-    # Entrance exams (array)
-    entrance_exams: Optional[List[EntranceExam]] = []
+    # Entrance exams
+    entrance_exam_1: Optional[str] = None
+    entrance_exam_1_percentile: Optional[float] = None
+    entrance_exam_1_mark: Optional[int] = None
+    entrance_exam_2: Optional[str] = None
+    entrance_exam_2_percentile: Optional[float] = None
+    entrance_exam_2_mark: Optional[int] = None
+    entrance_exam_3: Optional[str] = None
+    entrance_exam_3_percentile: Optional[float] = None
+    entrance_exam_3_mark: Optional[int] = None
+    
+    # Entrance exams
+    entrance_exam_1: Optional[str] = None
+    entrance_exam_1_percentile: Optional[float] = None
+    entrance_exam_1_mark: Optional[int] = None
+    entrance_exam_2: Optional[str] = None
+    entrance_exam_2_percentile: Optional[float] = None
+    entrance_exam_2_mark: Optional[int] = None
+    entrance_exam_3: Optional[str] = None
+    entrance_exam_3_percentile: Optional[float] = None
+    entrance_exam_3_mark: Optional[int] = None
     
     # Counselling details
     counselling_forum_1: Optional[str] = None
@@ -202,6 +222,10 @@ class StudentUpdate(BaseModel):
     tenth_social_science: Optional[int] = None
     tenth_total_marks: Optional[int] = None
     
+    # entrance exams
+    "entrance_exam_1", "entrance_exam_1_percentile", "entrance_exam_1_mark",
+    "entrance_exam_2", "entrance_exam_2_percentile", "entrance_exam_2_mark",
+    "entrance_exam_3", "entrance_exam_3_percentile", "entrance_exam_3_mark",
     # 12th marks
     twelfth_school_name: Optional[str] = None
     twelfth_year_of_passing: Optional[int] = None
@@ -318,18 +342,20 @@ def insert_student_data(student_data: StudentCreate, conn):
             ))
         
         # 5. Insert entrance exams (if provided)
-        if student_data.entrance_exams:
-            for exam in student_data.entrance_exams:
-                cursor.execute("""
-                    INSERT INTO entrance_exams (
-                        student_no, exam_name, physics_marks, chemistry_marks,
-                        maths_marks, biology_marks, total_marks, community_rank, overall_rank
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
-                """, (
-                    student_no, exam.exam_name, exam.physics_marks,
-                    exam.chemistry_marks, exam.maths_marks, exam.biology_marks,
-                    exam.total_marks, exam.community_rank, exam.overall_rank
-                ))
+        if (student_data.entrance_exam_1 or student_data.entrance_exam_2 or student_data.entrance_exam_3):
+            cursor.execute("""
+                INSERT INTO entrance_exams (
+                    student_no, 
+                    entrance_exam_1, entrance_exam_1_percentile, entrance_exam_1_mark,
+                    entrance_exam_2, entrance_exam_2_percentile, entrance_exam_2_mark,
+                    entrance_exam_3, entrance_exam_3_percentile, entrance_exam_3_mark
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+            """, (
+                student_no, 
+                student_data.entrance_exam_1, student_data.entrance_exam_1_percentile, student_data.entrance_exam_1_mark,
+                student_data.entrance_exam_2, student_data.entrance_exam_2_percentile, student_data.entrance_exam_2_mark,
+                student_data.entrance_exam_3, student_data.entrance_exam_3_percentile, student_data.entrance_exam_3_mark
+            ))
         
         # 6. Insert counselling details (if provided)
         if (student_data.counselling_forum_1 or student_data.counselling_college_1 or
@@ -520,19 +546,7 @@ async def upload_students_excel(
                     except:
                         dob_value = None
                 
-                # Prepare entrance exams if columns exist
-                entrance_exams = []
-                if get_val('entrance_exam_name') is not None:
-                    entrance_exams.append(EntranceExam(
-                        exam_name=safe_str(get_val('entrance_exam_name')),
-                        physics_marks=safe_int(get_val('entrance_physics_marks')),
-                        chemistry_marks=safe_int(get_val('entrance_chemistry_marks')),
-                        maths_marks=safe_int(get_val('entrance_maths_marks')),
-                        biology_marks=safe_int(get_val('entrance_biology_marks')),
-                        total_marks=safe_int(get_val('entrance_total_marks')),
-                        overall_rank=safe_int(get_val('entrance_overall_rank')),
-                        community_rank=safe_int(get_val('entrance_community_rank'))
-                    ))
+
                 
                 # Create student object with safe type conversions
                 student_data = StudentCreate(
@@ -596,7 +610,15 @@ async def upload_students_excel(
                     twelfth_total_marks=safe_int(get_val('twelfth_total_marks')),
                     
                     # Entrance exams
-                    entrance_exams=entrance_exams,
+                    entrance_exam_1=safe_str(get_val('entrance_exam_1')),
+                    entrance_exam_1_percentile=safe_float(get_val('entrance_exam_1_percentile')),
+                    entrance_exam_1_mark=safe_int(get_val('entrance_exam_1_mark')),
+                    entrance_exam_2=safe_str(get_val('entrance_exam_2')),
+                    entrance_exam_2_percentile=safe_float(get_val('entrance_exam_2_percentile')),
+                    entrance_exam_2_mark=safe_int(get_val('entrance_exam_2_mark')),
+                    entrance_exam_3=safe_str(get_val('entrance_exam_3')),
+                    entrance_exam_3_percentile=safe_float(get_val('entrance_exam_3_percentile')),
+                    entrance_exam_3_mark=safe_int(get_val('entrance_exam_3_mark')),
                     
                     # Counselling
                     counselling_forum_1=safe_str(get_val('counselling_forum_1')),
@@ -886,26 +908,25 @@ async def get_student_details(student_no: int, current_user: dict = Depends(get_
         
         # Fetch entrance exams
         cursor.execute("""
-            SELECT exam_name, physics_marks, chemistry_marks, maths_marks,
-                   biology_marks, total_marks, community_rank, overall_rank
+            SELECT entrance_exam_1, entrance_exam_1_percentile, entrance_exam_1_mark,
+                   entrance_exam_2, entrance_exam_2_percentile, entrance_exam_2_mark,
+                   entrance_exam_3, entrance_exam_3_percentile, entrance_exam_3_mark
             FROM entrance_exams WHERE student_no = %s
         """, (student_no,))
         
-        entrance_rows = cursor.fetchall()
-        if entrance_rows:
-            entrance_exams = []
-            for exam_row in entrance_rows:
-                entrance_exams.append({
-                    "exam_name": exam_row[0],
-                    "physics_marks": exam_row[1],
-                    "chemistry_marks": exam_row[2],
-                    "maths_marks": exam_row[3],
-                    "biology_marks": exam_row[4],
-                    "total_marks": exam_row[5],
-                    "community_rank": exam_row[6],
-                    "overall_rank": exam_row[7]
-                })
-            student_data["entrance_exams"] = entrance_exams
+        entrance_row = cursor.fetchone()
+        if entrance_row:
+            student_data.update({
+                "entrance_exam_1": entrance_row[0],
+                "entrance_exam_1_percentile": float(entrance_row[1]) if entrance_row[1] is not None else None,
+                "entrance_exam_1_mark": entrance_row[2],
+                "entrance_exam_2": entrance_row[3],
+                "entrance_exam_2_percentile": float(entrance_row[4]) if entrance_row[4] is not None else None,
+                "entrance_exam_2_mark": entrance_row[5],
+                "entrance_exam_3": entrance_row[6],
+                "entrance_exam_3_percentile": float(entrance_row[7]) if entrance_row[7] is not None else None,
+                "entrance_exam_3_mark": entrance_row[8]
+            })
         
         # Fetch counselling details
         cursor.execute("""
@@ -1102,6 +1123,35 @@ async def update_student(student_no: int, updates: StudentUpdate, current_user: 
                 query = f"INSERT INTO twelfth_mark ({', '.join(columns)}) VALUES ({placeholders})"
                 cursor.execute(query, [student_no] + list(twelfth_updates.values()))
         
+        # Update entrance_exams table (UPSERT logic)
+        entrance_fields = {
+            'entrance_exam_1': updates.entrance_exam_1,
+            'entrance_exam_1_percentile': updates.entrance_exam_1_percentile,
+            'entrance_exam_1_mark': updates.entrance_exam_1_mark,
+            'entrance_exam_2': updates.entrance_exam_2,
+            'entrance_exam_2_percentile': updates.entrance_exam_2_percentile,
+            'entrance_exam_2_mark': updates.entrance_exam_2_mark,
+            'entrance_exam_3': updates.entrance_exam_3,
+            'entrance_exam_3_percentile': updates.entrance_exam_3_percentile,
+            'entrance_exam_3_mark': updates.entrance_exam_3_mark
+        }
+        
+        entrance_updates = {k: v for k, v in entrance_fields.items() if v is not None}
+        
+        if entrance_updates:
+            cursor.execute("SELECT student_no FROM entrance_exams WHERE student_no = %s", (student_no,))
+            entrance_exists = cursor.fetchone()
+            
+            if entrance_exists:
+                set_clause = ", ".join([f"{k} = %s" for k in entrance_updates.keys()])
+                query = f"UPDATE entrance_exams SET {set_clause} WHERE student_no = %s"
+                cursor.execute(query, list(entrance_updates.values()) + [student_no])
+            else:
+                columns = ['student_no'] + list(entrance_updates.keys())
+                placeholders = ', '.join(['%s'] * len(columns))
+                query = f"INSERT INTO entrance_exams ({', '.join(columns)}) VALUES ({placeholders})"
+                cursor.execute(query, [student_no] + list(entrance_updates.values()))
+                
         # Update counselling_detail table (UPSERT logic)
         counselling_fields = {
             'forum': updates.counselling_forum,
@@ -1209,6 +1259,16 @@ BULK_EDIT_FIELD_MAP = {
     "twelfth_biology":        ("twelfth_mark", "biology", "int"),
     "twelfth_computer_science":("twelfth_mark", "computer_science", "int"),
     "twelfth_total_marks":    ("twelfth_mark", "total_marks", "int"),
+    # entrance_exams table
+    "entrance_exam_1":           ("entrance_exams", "entrance_exam_1", "str"),
+    "entrance_exam_1_percentile":("entrance_exams", "entrance_exam_1_percentile", "float"),
+    "entrance_exam_1_mark":      ("entrance_exams", "entrance_exam_1_mark", "int"),
+    "entrance_exam_2":           ("entrance_exams", "entrance_exam_2", "str"),
+    "entrance_exam_2_percentile":("entrance_exams", "entrance_exam_2_percentile", "float"),
+    "entrance_exam_2_mark":      ("entrance_exams", "entrance_exam_2_mark", "int"),
+    "entrance_exam_3":           ("entrance_exams", "entrance_exam_3", "str"),
+    "entrance_exam_3_percentile":("entrance_exams", "entrance_exam_3_percentile", "float"),
+    "entrance_exam_3_mark":      ("entrance_exams", "entrance_exam_3_mark", "int"),
     # counselling_detail table
     "counselling_forum_1":           ("counselling_detail", "counselling_forum_1", "str"),
     "counselling_round_1":           ("counselling_detail", "counselling_round_1", "int"),
@@ -1242,6 +1302,10 @@ ALL_EDIT_COLUMNS = [
     "tenth_school_name", "tenth_year_of_passing", "tenth_board_of_study",
     "tenth_english", "tenth_tamil", "tenth_hindi", "tenth_maths",
     "tenth_science", "tenth_social_science", "tenth_total_marks",
+    # entrance exams
+    "entrance_exam_1", "entrance_exam_1_percentile", "entrance_exam_1_mark",
+    "entrance_exam_2", "entrance_exam_2_percentile", "entrance_exam_2_mark",
+    "entrance_exam_3", "entrance_exam_3_percentile", "entrance_exam_3_mark",
     # 12th marks
     "twelfth_school_name", "twelfth_year_of_passing", "twelfth_board_of_study",
     "twelfth_english", "twelfth_tamil", "twelfth_physics", "twelfth_chemistry",
@@ -1365,6 +1429,22 @@ async def download_edit_template(batch_id: int, current_user: dict = Depends(get
                     "twelfth_maths", "twelfth_biology", "twelfth_computer_science", "twelfth_total_marks"
                 ]):
                     row[key] = t12[i]
+
+            # entrance_exams
+            cursor.execute("""
+                SELECT entrance_exam_1, entrance_exam_1_percentile, entrance_exam_1_mark,
+                       entrance_exam_2, entrance_exam_2_percentile, entrance_exam_2_mark,
+                       entrance_exam_3, entrance_exam_3_percentile, entrance_exam_3_mark
+                FROM entrance_exams WHERE student_no = %s
+            """, (student_no,))
+            en = cursor.fetchone()
+            if en:
+                for i, key in enumerate([
+                    "entrance_exam_1", "entrance_exam_1_percentile", "entrance_exam_1_mark",
+                    "entrance_exam_2", "entrance_exam_2_percentile", "entrance_exam_2_mark",
+                    "entrance_exam_3", "entrance_exam_3_percentile", "entrance_exam_3_mark"
+                ]):
+                    row[key] = en[i]
 
             # counselling_detail
             cursor.execute("""
@@ -1587,6 +1667,12 @@ async def bulk_update_students(
                         except (ValueError, TypeError):
                             errors.append({"row": row_num, "student_id": sid, "error": f"{excel_col}: expected a number, got '{val}'"})
                             continue
+                    elif col_type == "float":
+                        try:
+                            val = float(val)
+                        except (ValueError, TypeError):
+                            errors.append({"row": row_num, "student_id": sid, "error": f"{excel_col}: expected a decimal number, got '{val}'"})
+                            continue
                     elif col_type == "date":
                         try:
                             # Try multiple date formats
@@ -1695,9 +1781,9 @@ async def download_template(current_user: dict = Depends(get_current_user)):
             "twelfth_maths", "twelfth_biology", "twelfth_computer_science", "twelfth_total_marks"
         ],
         "optional_entrance_exam": [
-            "entrance_exam_name", "entrance_physics_marks", "entrance_chemistry_marks",
-            "entrance_maths_marks", "entrance_biology_marks", "entrance_total_marks",
-            "entrance_overall_rank", "entrance_community_rank"
+            "entrance_exam_1", "entrance_exam_1_percentile", "entrance_exam_1_mark",
+            "entrance_exam_2", "entrance_exam_2_percentile", "entrance_exam_2_mark",
+            "entrance_exam_3", "entrance_exam_3_percentile", "entrance_exam_3_mark"
         ],
         "optional_counselling": [
             "counselling_forum", "counselling_round", "counselling_college_alloted",

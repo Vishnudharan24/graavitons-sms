@@ -99,19 +99,18 @@ CREATE TABLE twelfth_mark (
 
 
 CREATE TABLE entrance_exams (
-    exam_id BIGSERIAL PRIMARY KEY, -- Surrogate key needed
+    exam_id BIGSERIAL PRIMARY KEY,
     student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
-    exam_name VARCHAR(100),
-    physics_marks INT,
-    chemistry_marks INT,
-    maths_marks INT,
-    biology_marks INT,
-    total_marks INT,
-    community_rank INT,
-    overall_rank INT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    -- Ensure one student doesn't have duplicate entries for the same exam name
-    UNIQUE (student_no, exam_name) 
+    entrance_exam_1 VARCHAR(100),
+    entrance_exam_1_percentile DECIMAL(5,2),
+    entrance_exam_1_mark INT,
+    entrance_exam_2 VARCHAR(100),
+    entrance_exam_2_percentile DECIMAL(5,2),
+    entrance_exam_2_mark INT,
+    entrance_exam_3 VARCHAR(100),
+    entrance_exam_3_percentile DECIMAL(5,2),
+    entrance_exam_3_mark INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 
