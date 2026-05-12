@@ -687,6 +687,7 @@ const StudentProfile = ({
             : `UT-${idx + 1}`,
           value: numericValue,
           value_display: displayValue,
+          isAbsent: !hasScores && Boolean(point.absentLabel),
           hasValue: hasScores || Boolean(point.absentLabel),
           subjectKey: point.subjectKey,
           subjectLabel: reportSubjectMeta[point.subjectKey]?.label || point.subjectKey,
@@ -717,14 +718,16 @@ const StudentProfile = ({
 
       report[subjectKey] = subjectTests.map((test, index) => {
         const total = test.subject_total_marks ?? test.test_total_marks;
-        const student = toPercentage(test.marks, total) ?? parseNumericMark(test.marks);
+        const absent = isAbsentMark(test.marks);
+        const student = absent ? null : (toPercentage(test.marks, total) ?? parseNumericMark(test.marks));
         const high = toPercentage(test.top_score, total) ?? parseNumericMark(test.top_score);
         const average = toPercentage(test.class_avg, total) ?? parseNumericMark(test.class_avg);
         const low = toPercentage(test.class_low, total) ?? parseNumericMark(test.class_low);
 
         return {
           label: buildDailyAxisLabel(test.test_date, subjectKey, `UT-${index + 1}`),
-          student: roundedOrNull(student),
+          student: absent ? 0 : roundedOrNull(student),
+          isAbsent: absent,
           high: roundedOrNull(high),
           average: roundedOrNull(average),
           low: roundedOrNull(low)
@@ -759,11 +762,13 @@ const StudentProfile = ({
 
       const total = test.subject_total_marks ?? test.test_total_marks;
 
-      const student = toPercentage(test.marks, total) ?? parseNumericMark(test.marks);
+      const absent = isAbsentMark(test.marks);
+      const student = absent ? null : (toPercentage(test.marks, total) ?? parseNumericMark(test.marks));
       const high = toPercentage(test.top_score, total) ?? parseNumericMark(test.top_score);
       const average = toPercentage(test.class_avg, total) ?? parseNumericMark(test.class_avg);
       const low = toPercentage(test.class_low, total) ?? parseNumericMark(test.class_low);
 
+      if (absent) groupedByDate[groupKey].hasAbsent = true;
       if (student !== null) groupedByDate[groupKey].student.push(student);
       if (high !== null) groupedByDate[groupKey].high.push(high);
       if (average !== null) groupedByDate[groupKey].average.push(average);
@@ -785,9 +790,11 @@ const StudentProfile = ({
           ? orderedSubjects.map((key) => reportSubjectMeta[key]?.label || key).join('/')
           : 'All Subjects';
 
+        const isAbsent = values.hasAbsent && values.student.length === 0;
         return {
           label: buildDailyAxisLabel(date, subjectText, `UT-${index + 1}`),
-          student: averageOrNull(values.student),
+          student: isAbsent ? 0 : averageOrNull(values.student),
+          isAbsent,
           high: averageOrNull(values.high),
           average: averageOrNull(values.average),
           low: averageOrNull(values.low)
@@ -818,7 +825,8 @@ const StudentProfile = ({
     };
 
     return reportTests.map((test, index) => {
-      const student = hasAbsentInMockTestRecord(test)
+      const absent = hasAbsentInMockTestRecord(test);
+      const student = absent
         ? null
         : (parseNumericMark(test.report_student_total)
         ?? sumNumericFields(
@@ -843,7 +851,8 @@ const StudentProfile = ({
 
       return {
         label: buildReportPointLabel(test, index),
-        student: roundedOrNull(student),
+        student: absent ? 0 : roundedOrNull(student),
+        isAbsent: absent,
         high: roundedOrNull(high),
         average: roundedOrNull(average),
         low: roundedOrNull(low)
@@ -853,7 +862,8 @@ const StudentProfile = ({
 
   const buildMockSubjectVsClassData = useCallback((subjectKey) => {
     return reportTests.map((test, index) => {
-      const student = hasAbsentInMockTestRecord(test)
+      const absent = hasAbsentInMockTestRecord(test);
+      const student = absent
         ? null
         : (toPercentage(test[`${subjectKey}_marks`], test[`${subjectKey}_total_marks`])
         ?? parseNumericMark(test[`${subjectKey}_marks`]));
@@ -866,7 +876,8 @@ const StudentProfile = ({
 
       return {
         label: buildReportPointLabel(test, index),
-        student: student !== null ? Math.round(student) : null,
+        student: absent ? 0 : (student !== null ? Math.round(student) : null),
+        isAbsent: absent,
         high: high !== null ? Math.round(high) : null,
         average: average !== null ? Math.round(average) : null,
         low: low !== null ? Math.round(low) : null
@@ -1031,13 +1042,31 @@ const StudentProfile = ({
     </div>
   );
 
-  const renderSmartPdfBarLabel = (insideColor = '#ffffff', outsideColor = '#111827') => ({ x, y, width, height, value }) => {
+  const renderSmartPdfBarLabel = (insideColor = '#ffffff', outsideColor = '#111827', chartData = null) => ({ x, y, width, height, value, index }) => {
+    const centerX = Number(x) + Number(width) / 2;
+
+    // Check if this entry is an absent record
+    if (chartData && chartData[index]?.isAbsent) {
+      const baselineY = Number(y) + Number(height);
+      return (
+        <text
+          x={centerX}
+          y={baselineY - 8}
+          textAnchor="middle"
+          fontSize={12}
+          fontWeight={800}
+          fill="#2563eb"
+        >
+          AB
+        </text>
+      );
+    }
+
     const num = Number(value);
     if (value === null || value === undefined || value === '' || Number.isNaN(num)) return null;
 
     const label = formatChartValue(num);
     const topY = Number(y);
-    const centerX = Number(x) + Number(width) / 2;
 
     // If there is visible space above the bar, place label outside; otherwise keep it inside.
     const hasSpaceAbove = Number.isFinite(topY) && topY > 16;
@@ -2450,7 +2479,7 @@ const StudentProfile = ({
                 {dailySubjectComparisonReportData.map((entry, index) => (
                   <Cell key={`daily-report-cell-${entry.label}-${index}`} fill={entry.fill} />
                 ))}
-                <LabelList dataKey="value" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                <LabelList dataKey="value" content={renderSmartPdfBarLabel('#ffffff', '#111827', dailySubjectComparisonReportData)} />
               </Bar>
             </BarChart>
           </div>
@@ -2466,7 +2495,7 @@ const StudentProfile = ({
                 <Tooltip />
                 <Legend {...pdfLegendProps} />
                 <Bar dataKey="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
-                  <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                  <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827', dailyTotalComparisonReportData)} />
                 </Bar>
                 <Bar dataKey="high" isAnimationActive={false} fill="#22c55e" name="High" radius={[3, 3, 0, 0]}>
                   <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
@@ -2492,7 +2521,7 @@ const StudentProfile = ({
                 <Tooltip />
                 <Legend {...pdfLegendProps} />
                 <Bar dataKey="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
-                  <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                  <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827', totalComparisonReportData)} />
                 </Bar>
                 <Bar dataKey="high" isAnimationActive={false} fill="#22c55e" name="High" radius={[3, 3, 0, 0]}>
                   <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
@@ -2526,7 +2555,7 @@ const StudentProfile = ({
                     <Tooltip />
                     <Legend {...pdfLegendProps} />
                     <Bar dataKey="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
-                      <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                      <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827', chartData)} />
                     </Bar>
                     <Bar dataKey="high" isAnimationActive={false} fill="#22c55e" name="High" radius={[3, 3, 0, 0]}>
                       <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
@@ -2561,7 +2590,7 @@ const StudentProfile = ({
                   <Tooltip />
                   <Legend {...pdfLegendProps} />
                   <Bar dataKey="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
-                    <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                    <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827', chartData)} />
                   </Bar>
                   <Bar dataKey="high" isAnimationActive={false} fill="#22c55e" name="High" radius={[3, 3, 0, 0]}>
                     <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />

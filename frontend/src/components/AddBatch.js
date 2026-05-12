@@ -149,6 +149,7 @@ const AddBatch = ({ onBack, onSave }) => {
                             <option value="NEET">NEET</option>
                             <option value="JEE">JEE</option>
                             <option value="Foundation">Foundation (6th-10th)</option>
+                            <option value="Board">Board</option>
                             <option value="Other">Other</option>
                         </select>
                     </div>
