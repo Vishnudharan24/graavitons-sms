@@ -28,7 +28,7 @@ CREATE TABLE student (
     community VARCHAR(50),
     enrollment_year SMALLINT,
     course VARCHAR(100),
-    branch VARCHAR(100),
+    board VARCHAR(100),
     student_mobile VARCHAR(15), -- Changed from INT to VARCHAR
     aadhar_no VARCHAR(20),      -- Changed from INT to VARCHAR (12 digits)
     apaar_id VARCHAR(20),       -- Changed from INT to VARCHAR
@@ -118,10 +118,21 @@ CREATE TABLE entrance_exams (
 CREATE TABLE counselling_detail (
     counselling_id BIGSERIAL PRIMARY KEY,
     student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
-    counseling_forum VARCHAR(100),
-    round_number INT,
-    college_allotted VARCHAR(255),
-    year_of_completion SMALLINT,
+    counselling_forum_1 VARCHAR(100),
+    counselling_round_1 INT,
+    all_india_rank_1 INT,
+    community_rank_1 INT,
+    counselling_college_1 VARCHAR(255),
+    counselling_forum_2 VARCHAR(100),
+    counselling_round_2 INT,
+    all_india_rank_2 INT,
+    community_rank_2 INT,
+    counselling_college_2 VARCHAR(255),
+    counselling_forum_3 VARCHAR(100),
+    counselling_round_3 INT,
+    all_india_rank_3 INT,
+    community_rank_3 INT,
+    counselling_college_3 VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

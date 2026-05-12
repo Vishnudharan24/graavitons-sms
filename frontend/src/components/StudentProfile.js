@@ -301,7 +301,7 @@ const StudentProfile = ({
     community: safeStudentData.community || 'N/A',
     academicYear: safeStudentData.enrollment_year || 'N/A',
     course: safeStudentData.course || 'N/A',
-    branch: safeStudentData.branch || 'N/A',
+    board: safeStudentData.board || 'N/A',
     rollNo: safeStudentData.student_id || 'N/A',
     gender: safeStudentData.gender || 'N/A',
 
@@ -363,11 +363,26 @@ const StudentProfile = ({
     entranceExams: safeStudentData.entrance_exams || [],
 
     // Counselling Details
-    counselling: {
-      forum: safeStudentData.counselling_forum || 'N/A',
-      round: safeStudentData.counselling_round || 'N/A',
-      collegeAlloted: safeStudentData.counselling_college_alloted || 'N/A',
-      yearOfCompletion: safeStudentData.counselling_year_of_completion || 'N/A'
+    counselling1: {
+      forum: safeStudentData.counselling_forum_1 || 'N/A',
+      round: safeStudentData.counselling_round_1 || 'N/A',
+      allIndiaRank: safeStudentData.all_india_rank_1 || 'N/A',
+      communityRank: safeStudentData.community_rank_1 || 'N/A',
+      collegeAlloted: safeStudentData.counselling_college_1 || 'N/A'
+    },
+    counselling2: {
+      forum: safeStudentData.counselling_forum_2 || 'N/A',
+      round: safeStudentData.counselling_round_2 || 'N/A',
+      allIndiaRank: safeStudentData.all_india_rank_2 || 'N/A',
+      communityRank: safeStudentData.community_rank_2 || 'N/A',
+      collegeAlloted: safeStudentData.counselling_college_2 || 'N/A'
+    },
+    counselling3: {
+      forum: safeStudentData.counselling_forum_3 || 'N/A',
+      round: safeStudentData.counselling_round_3 || 'N/A',
+      allIndiaRank: safeStudentData.all_india_rank_3 || 'N/A',
+      communityRank: safeStudentData.community_rank_3 || 'N/A',
+      collegeAlloted: safeStudentData.counselling_college_3 || 'N/A'
     }
   };
 
@@ -1257,7 +1272,7 @@ const StudentProfile = ({
       ['Community', displayData.community],
       ['Academic Year', displayData.academicYear],
       ['Program', reportProgram],
-      ['Branch', displayData.branch],
+      ['Board', displayData.board],
       ['Student Mobile', displayData.studentMobile],
       ['Aadhar Number', displayData.aadharNumber],
       ['APAAR ID', displayData.aasarId],
@@ -1283,10 +1298,23 @@ const StudentProfile = ({
       ['Sibling College', displayData.siblingCollege],
       [],
       ['COUNSELLING DETAILS'],
-      ['Forum', displayData.counselling.forum],
-      ['Round', displayData.counselling.round],
-      ['College Alloted', displayData.counselling.collegeAlloted],
-      ['Year of Completion', displayData.counselling.yearOfCompletion],
+      ['Forum 1', displayData.counselling1.forum],
+      ['Round 1', displayData.counselling1.round],
+      ['All India Rank 1', displayData.counselling1.allIndiaRank],
+      ['Community Rank 1', displayData.counselling1.communityRank],
+      ['College Allotted 1', displayData.counselling1.collegeAlloted],
+      [],
+      ['Forum 2', displayData.counselling2.forum],
+      ['Round 2', displayData.counselling2.round],
+      ['All India Rank 2', displayData.counselling2.allIndiaRank],
+      ['Community Rank 2', displayData.counselling2.communityRank],
+      ['College Allotted 2', displayData.counselling2.collegeAlloted],
+      [],
+      ['Forum 3', displayData.counselling3.forum],
+      ['Round 3', displayData.counselling3.round],
+      ['All India Rank 3', displayData.counselling3.allIndiaRank],
+      ['Community Rank 3', displayData.counselling3.communityRank],
+      ['College Allotted 3', displayData.counselling3.collegeAlloted],
     ];
     const wsPersonal = XLSX.utils.aoa_to_sheet(personalRows);
     wsPersonal['!cols'] = [{ wch: 22 }, { wch: 40 }];
@@ -1537,8 +1565,8 @@ const StudentProfile = ({
                 <span>{displayData.course}</span>
               </div>
               <div className="detail-item">
-                <label>Branch:</label>
-                <span>{displayData.branch}</span>
+                <label>Board:</label>
+                <span>{displayData.board}</span>
               </div>
               <div className="detail-item">
                 <label>Student Mobile:</label>

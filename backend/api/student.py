@@ -72,7 +72,7 @@ class StudentCreate(BaseModel):
     community: Optional[str] = None
     enrollment_year: Optional[int] = None
     course: Optional[str] = None
-    branch: Optional[str] = None
+    board: Optional[str] = None
     gender: Optional[str] = None
     student_mobile: Optional[str] = None
     aadhar_no: Optional[str] = None
@@ -128,10 +128,21 @@ class StudentCreate(BaseModel):
     entrance_exams: Optional[List[EntranceExam]] = []
     
     # Counselling details
-    counselling_forum: Optional[str] = None
-    counselling_round: Optional[int] = None
-    counselling_college_alloted: Optional[str] = None
-    counselling_year_of_completion: Optional[int] = None
+    counselling_forum_1: Optional[str] = None
+    counselling_round_1: Optional[int] = None
+    all_india_rank_1: Optional[int] = None
+    community_rank_1: Optional[int] = None
+    counselling_college_1: Optional[str] = None
+    counselling_forum_2: Optional[str] = None
+    counselling_round_2: Optional[int] = None
+    all_india_rank_2: Optional[int] = None
+    community_rank_2: Optional[int] = None
+    counselling_college_2: Optional[str] = None
+    counselling_forum_3: Optional[str] = None
+    counselling_round_3: Optional[int] = None
+    all_india_rank_3: Optional[int] = None
+    community_rank_3: Optional[int] = None
+    counselling_college_3: Optional[str] = None
 
 
 class StudentResponse(BaseModel):
@@ -153,7 +164,7 @@ class StudentUpdate(BaseModel):
     community: Optional[str] = None
     enrollment_year: Optional[int] = None
     course: Optional[str] = None
-    branch: Optional[str] = None
+    board: Optional[str] = None
     gender: Optional[str] = None
     student_mobile: Optional[str] = None
     aadhar_no: Optional[str] = None
@@ -205,10 +216,21 @@ class StudentUpdate(BaseModel):
     twelfth_total_marks: Optional[int] = None
     
     # Counselling details
-    counselling_forum: Optional[str] = None
-    counselling_round: Optional[int] = None
-    counselling_college_alloted: Optional[str] = None
-    counselling_year_of_completion: Optional[int] = None
+    counselling_forum_1: Optional[str] = None
+    counselling_round_1: Optional[int] = None
+    all_india_rank_1: Optional[int] = None
+    community_rank_1: Optional[int] = None
+    counselling_college_1: Optional[str] = None
+    counselling_forum_2: Optional[str] = None
+    counselling_round_2: Optional[int] = None
+    all_india_rank_2: Optional[int] = None
+    community_rank_2: Optional[int] = None
+    counselling_college_2: Optional[str] = None
+    counselling_forum_3: Optional[str] = None
+    counselling_round_3: Optional[int] = None
+    all_india_rank_3: Optional[int] = None
+    community_rank_3: Optional[int] = None
+    counselling_college_3: Optional[str] = None
     email: Optional[str]
     created_at: Optional[datetime]
 
@@ -227,14 +249,14 @@ def insert_student_data(student_data: StudentCreate, conn):
         cursor.execute("""
             INSERT INTO student (
                 student_id, batch_id, student_name, dob, grade, community,
-                enrollment_year, course, branch, gender, student_mobile,
+                enrollment_year, course, board, gender, student_mobile,
                 aadhar_no, apaar_id, email, photo_url, school_name
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING student_no, student_id, student_name, batch_id, grade, gender, email, created_at;
         """, (
             student_data.student_id, student_data.batch_id, student_data.student_name,
             student_data.dob, student_data.grade, student_data.community,
-            student_data.enrollment_year, student_data.course, student_data.branch,
+            student_data.enrollment_year, student_data.course, student_data.board,
             student_data.gender, student_data.student_mobile, student_data.aadhar_no,
             student_data.apaar_id, student_data.email, student_data.photo_url,
             student_data.school_name
@@ -310,15 +332,21 @@ def insert_student_data(student_data: StudentCreate, conn):
                 ))
         
         # 6. Insert counselling details (if provided)
-        if student_data.counselling_forum or student_data.counselling_college_alloted:
+        if (student_data.counselling_forum_1 or student_data.counselling_college_1 or
+            student_data.counselling_forum_2 or student_data.counselling_college_2 or
+            student_data.counselling_forum_3 or student_data.counselling_college_3):
             cursor.execute("""
                 INSERT INTO counselling_detail (
-                    student_no, forum, round, college_alloted, year_of_completion
-                ) VALUES (%s, %s, %s, %s, %s);
+                    student_no, 
+                    counselling_forum_1, counselling_round_1, all_india_rank_1, community_rank_1, counselling_college_1,
+                    counselling_forum_2, counselling_round_2, all_india_rank_2, community_rank_2, counselling_college_2,
+                    counselling_forum_3, counselling_round_3, all_india_rank_3, community_rank_3, counselling_college_3
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
             """, (
-                student_no, student_data.counselling_forum,
-                student_data.counselling_round, student_data.counselling_college_alloted,
-                student_data.counselling_year_of_completion
+                student_no, 
+                student_data.counselling_forum_1, student_data.counselling_round_1, student_data.all_india_rank_1, student_data.community_rank_1, student_data.counselling_college_1,
+                student_data.counselling_forum_2, student_data.counselling_round_2, student_data.all_india_rank_2, student_data.community_rank_2, student_data.counselling_college_2,
+                student_data.counselling_forum_3, student_data.counselling_round_3, student_data.all_india_rank_3, student_data.community_rank_3, student_data.counselling_college_3
             ))
         
         return student_result
@@ -516,7 +544,7 @@ async def upload_students_excel(
                     community=safe_str(get_val('community')),
                     enrollment_year=safe_int(get_val('enrollment_year')),
                     course=safe_str(get_val('course')),
-                    branch=safe_str(get_val('branch')),
+                    board=safe_str(get_val('board')),
                     gender=safe_str(get_val('gender')),
                     student_mobile=safe_str(get_val('student_mobile')),
                     aadhar_no=safe_str(get_val('aadhar_no')),
@@ -571,10 +599,21 @@ async def upload_students_excel(
                     entrance_exams=entrance_exams,
                     
                     # Counselling
-                    counselling_forum=safe_str(get_val('counselling_forum')),
-                    counselling_round=safe_int(get_val('counselling_round')),
-                    counselling_college_alloted=safe_str(get_val('counselling_college_alloted')),
-                    counselling_year_of_completion=safe_int(get_val('counselling_year_of_completion'))
+                    counselling_forum_1=safe_str(get_val('counselling_forum_1')),
+                    counselling_round_1=safe_int(get_val('counselling_round_1')),
+                    all_india_rank_1=safe_int(get_val('all_india_rank_1')),
+                    community_rank_1=safe_int(get_val('community_rank_1')),
+                    counselling_college_1=safe_str(get_val('counselling_college_1')),
+                    counselling_forum_2=safe_str(get_val('counselling_forum_2')),
+                    counselling_round_2=safe_int(get_val('counselling_round_2')),
+                    all_india_rank_2=safe_int(get_val('all_india_rank_2')),
+                    community_rank_2=safe_int(get_val('community_rank_2')),
+                    counselling_college_2=safe_str(get_val('counselling_college_2')),
+                    counselling_forum_3=safe_str(get_val('counselling_forum_3')),
+                    counselling_round_3=safe_int(get_val('counselling_round_3')),
+                    all_india_rank_3=safe_int(get_val('all_india_rank_3')),
+                    community_rank_3=safe_int(get_val('community_rank_3')),
+                    counselling_college_3=safe_str(get_val('counselling_college_3'))
                 )
                 
                 # Use SAVEPOINT so a single row failure doesn't abort the whole transaction
@@ -661,7 +700,7 @@ async def get_students_by_batch(batch_id: int, current_user: dict = Depends(get_
                 s.grade,
                 s.enrollment_year,
                 s.course,
-                s.branch,
+                s.board,
                 s.student_mobile,
                 s.email,
                 s.created_at
@@ -689,7 +728,7 @@ async def get_students_by_batch(batch_id: int, current_user: dict = Depends(get_
                 "grade": row[6],
                 "enrollment_year": row[7],
                 "course": row[8],
-                "branch": row[9],
+                "board": row[9],
                 "student_mobile": row[10],
                 "email": row[11],
                 "created_at": row[12].isoformat() if row[12] else None
@@ -735,7 +774,7 @@ async def get_student_details(student_no: int, current_user: dict = Depends(get_
         # Fetch student basic info
         cursor.execute("""
             SELECT student_no, student_id, batch_id, student_name, dob, grade, community, 
-                   enrollment_year, course, branch, gender, student_mobile, 
+                   enrollment_year, course, board, gender, student_mobile, 
                    aadhar_no, apaar_id, email, school_name, created_at, photo_url
             FROM student WHERE student_no = %s
         """, (student_no,))
@@ -759,7 +798,7 @@ async def get_student_details(student_no: int, current_user: dict = Depends(get_
             "community": student_row[6],
             "enrollment_year": student_row[7],
             "course": student_row[8],
-            "branch": student_row[9],
+            "board": student_row[9],
             "gender": student_row[10],
             "student_mobile": student_row[11],
             "aadhar_no": student_row[12],
@@ -870,17 +909,30 @@ async def get_student_details(student_no: int, current_user: dict = Depends(get_
         
         # Fetch counselling details
         cursor.execute("""
-            SELECT forum, round, college_alloted, year_of_completion
+            SELECT counselling_forum_1, counselling_round_1, all_india_rank_1, community_rank_1, counselling_college_1,
+                   counselling_forum_2, counselling_round_2, all_india_rank_2, community_rank_2, counselling_college_2,
+                   counselling_forum_3, counselling_round_3, all_india_rank_3, community_rank_3, counselling_college_3
             FROM counselling_detail WHERE student_no = %s
         """, (student_no,))
         
         counselling_row = cursor.fetchone()
         if counselling_row:
             student_data.update({
-                "counselling_forum": counselling_row[0],
-                "counselling_round": counselling_row[1],
-                "counselling_college_alloted": counselling_row[2],
-                "counselling_year_of_completion": counselling_row[3]
+                "counselling_forum_1": counselling_row[0],
+                "counselling_round_1": counselling_row[1],
+                "all_india_rank_1": counselling_row[2],
+                "community_rank_1": counselling_row[3],
+                "counselling_college_1": counselling_row[4],
+                "counselling_forum_2": counselling_row[5],
+                "counselling_round_2": counselling_row[6],
+                "all_india_rank_2": counselling_row[7],
+                "community_rank_2": counselling_row[8],
+                "counselling_college_2": counselling_row[9],
+                "counselling_forum_3": counselling_row[10],
+                "counselling_round_3": counselling_row[11],
+                "all_india_rank_3": counselling_row[12],
+                "community_rank_3": counselling_row[13],
+                "counselling_college_3": counselling_row[14]
             })
         
         cursor.close()
@@ -935,7 +987,7 @@ async def update_student(student_no: int, updates: StudentUpdate, current_user: 
             'community': updates.community,
             'enrollment_year': updates.enrollment_year,
             'course': updates.course,
-            'branch': updates.branch,
+            'board': updates.board,
             'gender': updates.gender,
             'student_mobile': updates.student_mobile,
             'aadhar_no': updates.aadhar_no,
@@ -1110,7 +1162,7 @@ BULK_EDIT_FIELD_MAP = {
     "community":          ("student", "community", "str"),
     "enrollment_year":    ("student", "enrollment_year", "int"),
     "course":             ("student", "course", "str"),
-    "branch":             ("student", "branch", "str"),
+    "board":             ("student", "board", "str"),
     "gender":             ("student", "gender", "str"),
     "student_mobile":     ("student", "student_mobile", "str"),
     "aadhar_no":          ("student", "aadhar_no", "str"),
@@ -1158,17 +1210,28 @@ BULK_EDIT_FIELD_MAP = {
     "twelfth_computer_science":("twelfth_mark", "computer_science", "int"),
     "twelfth_total_marks":    ("twelfth_mark", "total_marks", "int"),
     # counselling_detail table
-    "counselling_forum":           ("counselling_detail", "forum", "str"),
-    "counselling_round":           ("counselling_detail", "round", "int"),
-    "counselling_college_alloted": ("counselling_detail", "college_alloted", "str"),
-    "counselling_year_of_completion":("counselling_detail", "year_of_completion", "int"),
+    "counselling_forum_1":           ("counselling_detail", "counselling_forum_1", "str"),
+    "counselling_round_1":           ("counselling_detail", "counselling_round_1", "int"),
+    "all_india_rank_1":              ("counselling_detail", "all_india_rank_1", "int"),
+    "community_rank_1":              ("counselling_detail", "community_rank_1", "int"),
+    "counselling_college_1":         ("counselling_detail", "counselling_college_1", "str"),
+    "counselling_forum_2":           ("counselling_detail", "counselling_forum_2", "str"),
+    "counselling_round_2":           ("counselling_detail", "counselling_round_2", "int"),
+    "all_india_rank_2":              ("counselling_detail", "all_india_rank_2", "int"),
+    "community_rank_2":              ("counselling_detail", "community_rank_2", "int"),
+    "counselling_college_2":         ("counselling_detail", "counselling_college_2", "str"),
+    "counselling_forum_3":           ("counselling_detail", "counselling_forum_3", "str"),
+    "counselling_round_3":           ("counselling_detail", "counselling_round_3", "int"),
+    "all_india_rank_3":              ("counselling_detail", "all_india_rank_3", "int"),
+    "community_rank_3":              ("counselling_detail", "community_rank_3", "int"),
+    "counselling_college_3":         ("counselling_detail", "counselling_college_3", "str"),
 }
 
 # All possible Excel headers in display order
 ALL_EDIT_COLUMNS = [
     "student_id", "student_name",
     # student info
-    "dob", "grade", "community", "enrollment_year", "course", "branch",
+    "dob", "grade", "community", "enrollment_year", "course", "board",
     "gender", "student_mobile", "aadhar_no", "apaar_id", "email", "school_name",
     # parent info
     "guardian_name", "guardian_occupation", "guardian_mobile", "guardian_email",
@@ -1184,8 +1247,9 @@ ALL_EDIT_COLUMNS = [
     "twelfth_english", "twelfth_tamil", "twelfth_physics", "twelfth_chemistry",
     "twelfth_maths", "twelfth_biology", "twelfth_computer_science", "twelfth_total_marks",
     # counselling
-    "counselling_forum", "counselling_round", "counselling_college_alloted",
-    "counselling_year_of_completion",
+    "counselling_forum_1", "counselling_round_1", "all_india_rank_1", "community_rank_1", "counselling_college_1",
+    "counselling_forum_2", "counselling_round_2", "all_india_rank_2", "community_rank_2", "counselling_college_2",
+    "counselling_forum_3", "counselling_round_3", "all_india_rank_3", "community_rank_3", "counselling_college_3",
 ]
 
 
@@ -1245,7 +1309,7 @@ async def download_edit_template(batch_id: int, current_user: dict = Depends(get
                 row["community"] = s[4]
                 row["enrollment_year"] = s[5]
                 row["course"] = s[6]
-                row["branch"] = s[7]
+                row["board"] = s[7]
                 row["gender"] = s[8]
                 row["student_mobile"] = s[9]
                 row["aadhar_no"] = s[10]
@@ -1304,14 +1368,17 @@ async def download_edit_template(batch_id: int, current_user: dict = Depends(get
 
             # counselling_detail
             cursor.execute("""
-                SELECT forum, round, college_alloted, year_of_completion
+                SELECT counselling_forum_1, counselling_round_1, all_india_rank_1, community_rank_1, counselling_college_1,
+                       counselling_forum_2, counselling_round_2, all_india_rank_2, community_rank_2, counselling_college_2,
+                       counselling_forum_3, counselling_round_3, all_india_rank_3, community_rank_3, counselling_college_3
                 FROM counselling_detail WHERE student_no = %s
             """, (student_no,))
             co = cursor.fetchone()
             if co:
                 for i, key in enumerate([
-                    "counselling_forum", "counselling_round",
-                    "counselling_college_alloted", "counselling_year_of_completion"
+                    "counselling_forum_1", "counselling_round_1", "all_india_rank_1", "community_rank_1", "counselling_college_1",
+                    "counselling_forum_2", "counselling_round_2", "all_india_rank_2", "community_rank_2", "counselling_college_2",
+                    "counselling_forum_3", "counselling_round_3", "all_india_rank_3", "community_rank_3", "counselling_college_3"
                 ]):
                     row[key] = co[i]
 
@@ -1608,7 +1675,7 @@ async def download_template(current_user: dict = Depends(get_current_user)):
     columns = {
         "required": ["student_id", "student_name"],
         "optional_student_info": [
-            "dob", "grade", "community", "enrollment_year", "course", "branch",
+            "dob", "grade", "community", "enrollment_year", "course", "board",
             "gender", "student_mobile", "aadhar_no", "apaar_id", "email", "school_name"
         ],
         "optional_parent_info": [

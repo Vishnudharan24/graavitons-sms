@@ -22,7 +22,7 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
     community: '',
     enrollment_year: new Date().getFullYear(),
     course: '',
-    branch: '',
+    board: '',
     student_mobile: '',
     aadhar_no: '',
     apaar_id: '',
@@ -77,11 +77,22 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
     // Entrance Exams (Array - matches entrance_exams table)
     entrance_exams: [],
 
-    // Counselling Details (matches counselling_detail table)
-    counselling_forum: '',
-    counselling_round: '',
-    counselling_college_alloted: '',
-    counselling_year_of_completion: ''
+    // Counselling Details
+    counselling_forum_1: '',
+    counselling_round_1: '',
+    all_india_rank_1: '',
+    community_rank_1: '',
+    counselling_college_1: '',
+    counselling_forum_2: '',
+    counselling_round_2: '',
+    all_india_rank_2: '',
+    community_rank_2: '',
+    counselling_college_2: '',
+    counselling_forum_3: '',
+    counselling_round_3: '',
+    all_india_rank_3: '',
+    community_rank_3: '',
+    counselling_college_3: ''
   });
   
   const [formData, setFormData] = useState(getInitialFormData());
@@ -119,7 +130,7 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
         community: data.community || '',
         enrollment_year: data.enrollment_year || new Date().getFullYear(),
         course: data.course || '',
-        branch: data.branch || '',
+        board: data.board || '',
         student_mobile: data.student_mobile || '',
         aadhar_no: data.aadhar_no || '',
         apaar_id: data.apaar_id || '',
@@ -163,10 +174,21 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
         twelfth_biology: data.twelfth_biology || '',
         twelfth_computer_science: data.twelfth_computer_science || '',
         twelfth_total_marks: data.twelfth_total_marks || '',
-        counselling_forum: data.counselling_forum || '',
-        counselling_round: data.counselling_round || '',
-        counselling_college_alloted: data.counselling_college_alloted || '',
-        counselling_year_of_completion: data.counselling_year_of_completion || ''
+        counselling_forum_1: data.counselling_forum_1 || '',
+        counselling_round_1: data.counselling_round_1 || '',
+        all_india_rank_1: data.all_india_rank_1 || '',
+        community_rank_1: data.community_rank_1 || '',
+        counselling_college_1: data.counselling_college_1 || '',
+        counselling_forum_2: data.counselling_forum_2 || '',
+        counselling_round_2: data.counselling_round_2 || '',
+        all_india_rank_2: data.all_india_rank_2 || '',
+        community_rank_2: data.community_rank_2 || '',
+        counselling_college_2: data.counselling_college_2 || '',
+        counselling_forum_3: data.counselling_forum_3 || '',
+        counselling_round_3: data.counselling_round_3 || '',
+        all_india_rank_3: data.all_india_rank_3 || '',
+        community_rank_3: data.community_rank_3 || '',
+        counselling_college_3: data.counselling_college_3 || ''
       });
       
       setDataLoaded(true);
@@ -296,7 +318,7 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
     // All column headers matching the backend upload API
     const headers = [
       'student_id', 'student_name', 'dob', 'grade', 'community',
-      'enrollment_year', 'course', 'branch', 'gender',
+      'enrollment_year', 'course', 'board', 'gender',
       'student_mobile', 'aadhar_no', 'apaar_id', 'email', 'school_name',
       // Parent info
       'guardian_name', 'guardian_occupation', 'guardian_mobile', 'guardian_email',
@@ -316,8 +338,9 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
       'entrance_maths_marks', 'entrance_biology_marks', 'entrance_total_marks',
       'entrance_overall_rank', 'entrance_community_rank',
       // Counselling
-      'counselling_forum', 'counselling_round', 'counselling_college_alloted',
-      'counselling_year_of_completion'
+      'counselling_forum_1', 'counselling_round_1', 'all_india_rank_1', 'community_rank_1', 'counselling_college_1',
+      'counselling_forum_2', 'counselling_round_2', 'all_india_rank_2', 'community_rank_2', 'counselling_college_2',
+      'counselling_forum_3', 'counselling_round_3', 'all_india_rank_3', 'community_rank_3', 'counselling_college_3'
     ];
 
     // Create sheet with headers only
@@ -754,11 +777,11 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
               />
             </div>
             <div className="form-group">
-              <label>Branch</label>
+              <label>Board</label>
               <input 
                 type="text" 
-                name="branch" 
-                value={formData.branch} 
+                name="board" 
+                value={formData.board} 
                 onChange={handleChange} 
               />
             </div>
@@ -1288,13 +1311,16 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
         {/* Counselling Details */}
         <div className="form-section">
           <h3>Counselling Details</h3>
+
+          {/* Forum 1 */}
+          <h4>Forum 1</h4>
           <div className="form-grid">
             <div className="form-group">
               <label>Proposed/Completed Forum</label>
               <input 
                 type="text" 
-                name="counselling_forum" 
-                value={formData.counselling_forum} 
+                name="counselling_forum_1" 
+                value={formData.counselling_forum_1} 
                 onChange={handleChange} 
               />
             </div>
@@ -1302,26 +1328,135 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
               <label>Round</label>
               <input 
                 type="number" 
-                name="counselling_round" 
-                value={formData.counselling_round} 
+                name="counselling_round_1" 
+                value={formData.counselling_round_1} 
                 onChange={handleChange} 
               />
             </div>
             <div className="form-group">
+              <label>All India Rank</label>
+              <input 
+                type="number" 
+                name="all_india_rank_1" 
+                value={formData.all_india_rank_1} 
+                onChange={handleChange} 
+              />
+            </div>
+            <div className="form-group">
+              <label>Community Rank</label>
+              <input 
+                type="number" 
+                name="community_rank_1" 
+                value={formData.community_rank_1} 
+                onChange={handleChange} 
+              />
+            </div>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label>College Allotted</label>
               <input 
                 type="text" 
-                name="counselling_college_alloted" 
-                value={formData.counselling_college_alloted} 
+                name="counselling_college_1" 
+                value={formData.counselling_college_1} 
+                onChange={handleChange} 
+              />
+            </div>
+          </div>
+
+          {/* Forum 2 */}
+          <h4>Forum 2</h4>
+          <div className="form-grid">
+            <div className="form-group">
+              <label>Proposed/Completed Forum</label>
+              <input 
+                type="text" 
+                name="counselling_forum_2" 
+                value={formData.counselling_forum_2} 
                 onChange={handleChange} 
               />
             </div>
             <div className="form-group">
-              <label>Year of Completion</label>
+              <label>Round</label>
               <input 
                 type="number" 
-                name="counselling_year_of_completion" 
-                value={formData.counselling_year_of_completion} 
+                name="counselling_round_2" 
+                value={formData.counselling_round_2} 
+                onChange={handleChange} 
+              />
+            </div>
+            <div className="form-group">
+              <label>All India Rank</label>
+              <input 
+                type="number" 
+                name="all_india_rank_2" 
+                value={formData.all_india_rank_2} 
+                onChange={handleChange} 
+              />
+            </div>
+            <div className="form-group">
+              <label>Community Rank</label>
+              <input 
+                type="number" 
+                name="community_rank_2" 
+                value={formData.community_rank_2} 
+                onChange={handleChange} 
+              />
+            </div>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label>College Allotted</label>
+              <input 
+                type="text" 
+                name="counselling_college_2" 
+                value={formData.counselling_college_2} 
+                onChange={handleChange} 
+              />
+            </div>
+          </div>
+
+          {/* Forum 3 */}
+          <h4>Forum 3</h4>
+          <div className="form-grid">
+            <div className="form-group">
+              <label>Proposed/Completed Forum</label>
+              <input 
+                type="text" 
+                name="counselling_forum_3" 
+                value={formData.counselling_forum_3} 
+                onChange={handleChange} 
+              />
+            </div>
+            <div className="form-group">
+              <label>Round</label>
+              <input 
+                type="number" 
+                name="counselling_round_3" 
+                value={formData.counselling_round_3} 
+                onChange={handleChange} 
+              />
+            </div>
+            <div className="form-group">
+              <label>All India Rank</label>
+              <input 
+                type="number" 
+                name="all_india_rank_3" 
+                value={formData.all_india_rank_3} 
+                onChange={handleChange} 
+              />
+            </div>
+            <div className="form-group">
+              <label>Community Rank</label>
+              <input 
+                type="number" 
+                name="community_rank_3" 
+                value={formData.community_rank_3} 
+                onChange={handleChange} 
+              />
+            </div>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label>College Allotted</label>
+              <input 
+                type="text" 
+                name="counselling_college_3" 
+                value={formData.counselling_college_3} 
                 onChange={handleChange} 
               />
             </div>
