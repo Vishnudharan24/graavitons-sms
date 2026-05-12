@@ -1786,8 +1786,9 @@ async def download_template(current_user: dict = Depends(get_current_user)):
             "entrance_exam_3", "entrance_exam_3_percentile", "entrance_exam_3_mark"
         ],
         "optional_counselling": [
-            "counselling_forum", "counselling_round", "counselling_college_alloted",
-            "counselling_year_of_completion"
+            "counselling_forum_1", "counselling_round_1", "all_india_rank_1", "community_rank_1", "counselling_college_1",
+            "counselling_forum_2", "counselling_round_2", "all_india_rank_2", "community_rank_2", "counselling_college_2",
+            "counselling_forum_3", "counselling_round_3", "all_india_rank_3", "community_rank_3", "counselling_college_3"
         ]
     }
     
@@ -1798,7 +1799,6 @@ async def download_template(current_user: dict = Depends(get_current_user)):
             "Only 'student_id' and 'student_name' are required",
             "All other columns are optional",
             "Date format for 'dob': YYYY-MM-DD or DD/MM/YYYY",
-            "For entrance exams, only one exam per row is supported",
             "batch_id will be provided during upload, not in Excel file"
         ]
     }

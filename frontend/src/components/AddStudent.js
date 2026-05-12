@@ -334,9 +334,9 @@ const AddStudent = ({ batch, onBack, onSave, editMode = false, studentNo = null 
       'twelfth_english', 'twelfth_tamil', 'twelfth_physics', 'twelfth_chemistry',
       'twelfth_maths', 'twelfth_biology', 'twelfth_computer_science', 'twelfth_total_marks',
       // Entrance exam
-      'entrance_exam_name', 'entrance_physics_marks', 'entrance_chemistry_marks',
-      'entrance_maths_marks', 'entrance_biology_marks', 'entrance_total_marks',
-      'entrance_overall_rank', 'entrance_community_rank',
+      'entrance_exam_1', 'entrance_exam_1_percentile', 'entrance_exam_1_mark',
+      'entrance_exam_2', 'entrance_exam_2_percentile', 'entrance_exam_2_mark',
+      'entrance_exam_3', 'entrance_exam_3_percentile', 'entrance_exam_3_mark',
       // Counselling
       'counselling_forum_1', 'counselling_round_1', 'all_india_rank_1', 'community_rank_1', 'counselling_college_1',
       'counselling_forum_2', 'counselling_round_2', 'all_india_rank_2', 'community_rank_2', 'counselling_college_2',
