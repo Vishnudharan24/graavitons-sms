@@ -34,6 +34,67 @@
     flex: 1;
 }
 
+.filter-top-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.search-bar-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1;
+    max-width: 320px;
+}
+
+.search-icon {
+    position: absolute;
+    left: 10px;
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.batch-search-input {
+    width: 100%;
+    padding: 8px 32px 8px 32px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--color-text-primary);
+    background: var(--color-surface);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.batch-search-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.batch-search-input::placeholder {
+    color: var(--color-text-secondary);
+}
+
+.search-clear-btn {
+    position: absolute;
+    right: 6px;
+    background: none;
+    border: none;
+    font-size: 18px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    border-radius: 50%;
+    transition: color 150ms ease;
+}
+
+.search-clear-btn:hover {
+    color: var(--color-text-primary);
+}
+
 .filter-options {
     background: var(--color-surface);
     padding: var(--space-3);
@@ -41,7 +102,10 @@
     border: 1px solid var(--color-border);
     box-shadow: var(--shadow-sm);
     animation: slideDown 0.3s ease-out;
-    max-width: 340px;
+    max-width: 540px;
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
 }
 
 @keyframes slideDown {

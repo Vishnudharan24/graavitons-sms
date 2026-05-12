@@ -593,7 +593,7 @@ async def get_branchwise_analysis(
         # Get unit test data grouped by branch
         daily_query = """
             SELECT
-                s.branch,
+                s.board,
                 dt.subject,
                 AVG(safe_numeric(dt.total_marks)) as avg_marks,
                 MAX(safe_numeric(dt.total_marks)) as max_marks,
@@ -603,7 +603,7 @@ async def get_branchwise_analysis(
             FROM daily_test dt
             JOIN student s ON dt.student_no = s.student_no
             JOIN batch b ON s.batch_id = b.batch_id
-            WHERE s.branch IS NOT NULL
+            WHERE s.board IS NOT NULL
         """
         params = []
 
@@ -631,7 +631,7 @@ async def get_branchwise_analysis(
             daily_query += " AND dt.test_date <= %s"
             params.append(to_date)
 
-        daily_query += " GROUP BY s.branch, dt.subject ORDER BY s.branch, dt.subject"
+        daily_query += " GROUP BY s.board, dt.subject ORDER BY s.board, dt.subject"
 
         cursor.execute(daily_query, params)
         daily_rows = cursor.fetchall()
@@ -675,7 +675,7 @@ async def get_branchwise_analysis(
 
         mock_query = """
             SELECT
-                s.branch,
+                s.board,
                 AVG({mock_maths_expr}) as avg_maths,
                 AVG({mock_physics_expr}) as avg_physics,
                 AVG({mock_chemistry_expr}) as avg_chemistry,
@@ -688,7 +688,7 @@ async def get_branchwise_analysis(
             FROM mock_test mt
             JOIN student s ON mt.student_no = s.student_no
             JOIN batch b ON s.batch_id = b.batch_id
-            WHERE s.branch IS NOT NULL
+            WHERE s.board IS NOT NULL
         """.format(
             mock_maths_expr=mock_maths_expr,
             mock_physics_expr=mock_physics_expr,
@@ -718,7 +718,7 @@ async def get_branchwise_analysis(
             mock_query += " AND mt.test_date <= %s"
             mock_params.append(to_date)
 
-        mock_query += " GROUP BY s.branch ORDER BY s.branch"
+        mock_query += " GROUP BY s.board ORDER BY s.board"
 
         cursor.execute(mock_query, mock_params)
         mock_rows = cursor.fetchall()
@@ -780,7 +780,7 @@ async def get_branchwise_analysis(
             SELECT
                 s.student_id,
                 s.student_name,
-                s.branch,
+                s.board,
                 s.grade,
                 b.batch_name,
                 dt.subject,
@@ -788,7 +788,7 @@ async def get_branchwise_analysis(
             FROM daily_test dt
             JOIN student s ON dt.student_no = s.student_no
             JOIN batch b ON s.batch_id = b.batch_id
-            WHERE s.branch IS NOT NULL
+            WHERE s.board IS NOT NULL
         """
         student_params = []
 
@@ -812,10 +812,10 @@ async def get_branchwise_analysis(
             student_query += " AND dt.test_date <= %s"
             student_params.append(to_date)
 
-        student_query += " GROUP BY s.student_id, s.student_name, s.branch, s.grade, b.batch_name, dt.subject"
+        student_query += " GROUP BY s.student_id, s.student_name, s.board, s.grade, b.batch_name, dt.subject"
         student_query += """
             ORDER BY
-                s.branch,
+                s.board,
                 CASE WHEN s.student_id ~ '^[0-9]+$' THEN 0 ELSE 1 END,
                 CASE WHEN s.student_id ~ '^[0-9]+$' THEN s.student_id::BIGINT END,
                 s.student_id ASC,
@@ -889,7 +889,7 @@ async def get_students_for_analysis(
                 s.student_id,
                 s.student_name,
                 s.course,
-                s.branch,
+                s.board,
                 s.grade,
                 s.photo_url,
                 b.batch_name,
@@ -913,7 +913,7 @@ async def get_students_for_analysis(
             params.append(course)
 
         if branch:
-            query += " AND s.branch = %s"
+            query += " AND s.board = %s"
             params.append(branch)
 
         query += """
@@ -975,7 +975,7 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
         # 1. Get student info
         cursor.execute("""
             SELECT
-                s.student_no, s.student_id, s.student_name, s.course, s.branch, s.grade,
+                s.student_no, s.student_id, s.student_name, s.course, s.board, s.grade,
                 s.photo_url, s.gender, s.email, s.student_mobile,
                 b.batch_name, b.batch_id, b.type, b.subjects
             FROM student s

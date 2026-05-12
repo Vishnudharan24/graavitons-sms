@@ -2168,7 +2168,7 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
                 s.grade,
                 s.enrollment_year,
                 s.course,
-                s.branch,
+                s.board,
                 s.student_mobile,
                 s.email
             FROM student s

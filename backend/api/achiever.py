@@ -63,7 +63,7 @@ async def get_all_achievers(current_user: dict = Depends(get_current_user)):
                 s.community,
                 s.enrollment_year,
                 s.course,
-                s.branch,
+                s.board,
                 s.student_mobile,
                 s.aadhar_no,
                 s.email,
@@ -145,7 +145,7 @@ async def get_achiever(achievement_id: int, current_user: dict = Depends(get_cur
                 a.achievement, a.achievement_details, a.rank,
                 a.score, a.photo_url, a.achieved_date, a.created_at,
                 s.student_name, s.gender, s.dob, s.community, s.enrollment_year,
-                s.course, s.branch, s.student_mobile, s.aadhar_no, s.email, s.grade,
+                s.course, s.board, s.student_mobile, s.aadhar_no, s.email, s.grade,
                 b.batch_name, b.start_year, b.end_year
             FROM achievers a
             JOIN student s ON a.student_no = s.student_no
@@ -214,7 +214,7 @@ async def search_students_for_achiever(
                 s.student_name,
                 s.grade,
                 s.course,
-                s.branch,
+                s.board,
                 s.photo_url,
                 s.batch_id,
                 b.batch_name,

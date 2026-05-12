@@ -443,7 +443,7 @@ const StudentProfile = ({
     const byDate = {};
     filteredDailyTests.forEach(test => {
       const d = test.test_date || 'Unknown';
-      if (!byDate[d]) byDate[d] = { marks: [], classAvg: [] };
+      if (!byDate[d]) byDate[d] = { marks: [], classAvg: [], hasAbsent: false };
       const effectiveTotal = test.subject_total_marks ?? test.test_total_marks;
       const numMark = hasDailyTotals
         ? (toPercentage(test.marks, effectiveTotal) ?? parseNumericMark(test.marks))
@@ -451,14 +451,21 @@ const StudentProfile = ({
       const numAvg = hasDailyTotals
         ? (toPercentage(test.class_avg, effectiveTotal) ?? parseNumericMark(test.class_avg))
         : parseNumericMark(test.class_avg);
-      if (numMark !== null) byDate[d].marks.push(numMark);
+
+      if (numMark !== null) {
+        byDate[d].marks.push(numMark);
+      } else if (isAbsentMark(test.marks)) {
+        byDate[d].marks.push(0);
+        byDate[d].hasAbsent = true;
+      }
       if (numAvg !== null) byDate[d].classAvg.push(numAvg);
     });
     return Object.entries(byDate).sort().map(([date, data]) => ({
       date: new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
       score: data.marks.length > 0 ? Math.round(data.marks.reduce((a, b) => a + b, 0) / data.marks.length) : null,
       classAvg: data.classAvg.length > 0 ? Math.round(data.classAvg.reduce((a, b) => a + b, 0) / data.classAvg.length) : null,
-      unit: hasDailyTotals ? '%' : 'marks'
+      unit: hasDailyTotals ? '%' : 'marks',
+      absent: data.hasAbsent
     }));
   };
 
@@ -480,13 +487,14 @@ const StudentProfile = ({
     return chronologicalMockTests.map((test, idx) => {
       const isAbsent = hasAbsentInMockTestRecord(test);
       return {
-      exam: `Monthly ${idx + 1} (${test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''})`,
-      physics: isAbsent ? null : getSubjectValue(test.physics_marks, test.physics_total_marks),
-      chemistry: isAbsent ? null : getSubjectValue(test.chemistry_marks, test.chemistry_total_marks),
-      biology: isAbsent ? null : getSubjectValue(test.biology_marks, test.biology_total_marks),
-      maths: isAbsent ? null : getSubjectValue(test.maths_marks, test.maths_total_marks),
-      total: isAbsent ? null : getSubjectValue(test.total_marks, test.test_total_marks),
-      unit: hasMockSubjectTotals ? '%' : 'marks'
+        exam: `Monthly ${idx + 1} (${test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''})`,
+        physics: isAbsent ? 0 : getSubjectValue(test.physics_marks, test.physics_total_marks),
+        chemistry: isAbsent ? 0 : getSubjectValue(test.chemistry_marks, test.chemistry_total_marks),
+        biology: isAbsent ? 0 : getSubjectValue(test.biology_marks, test.biology_total_marks),
+        maths: isAbsent ? 0 : getSubjectValue(test.maths_marks, test.maths_total_marks),
+        total: isAbsent ? 0 : getSubjectValue(test.total_marks, test.test_total_marks),
+        unit: hasMockSubjectTotals ? '%' : 'marks',
+        absent: isAbsent
       };
     });
   };
@@ -497,20 +505,21 @@ const StudentProfile = ({
     return chronologicalMockTests.map((test, idx) => {
       const isAbsent = hasAbsentInMockTestRecord(test);
       return {
-      exam: `Monthly ${idx + 1}`,
-      date: test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-',
-      total: isAbsent
-        ? null
-        : (hasMockTotal
-        ? (toPercentage(test.total_marks, test.test_total_marks) ?? parseNumericMark(test.total_marks))
-        : parseNumericMark(test.total_marks)),
-      classAvg: hasMockTotal
-        ? (toPercentage(test.class_avg_total, test.test_total_marks) ?? parseNumericMark(test.class_avg_total))
-        : parseNumericMark(test.class_avg_total),
-      topScore: hasMockTotal
-        ? (toPercentage(test.top_score_total, test.test_total_marks) ?? parseNumericMark(test.top_score_total))
-        : parseNumericMark(test.top_score_total),
-      unit: hasMockTotal ? '%' : 'marks'
+        exam: `Monthly ${idx + 1}`,
+        date: test.test_date ? new Date(test.test_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-',
+        total: isAbsent
+          ? 0
+          : (hasMockTotal
+          ? (toPercentage(test.total_marks, test.test_total_marks) ?? parseNumericMark(test.total_marks))
+          : parseNumericMark(test.total_marks)),
+        classAvg: hasMockTotal
+          ? (toPercentage(test.class_avg_total, test.test_total_marks) ?? parseNumericMark(test.class_avg_total))
+          : parseNumericMark(test.class_avg_total),
+        topScore: hasMockTotal
+          ? (toPercentage(test.top_score_total, test.test_total_marks) ?? parseNumericMark(test.top_score_total))
+          : parseNumericMark(test.top_score_total),
+        unit: hasMockTotal ? '%' : 'marks',
+        absent: isAbsent
       };
     });
   };
@@ -818,8 +827,9 @@ const StudentProfile = ({
     };
 
     return reportTests.map((test, index) => {
-      const student = hasAbsentInMockTestRecord(test)
-        ? null
+      const isAbsent = hasAbsentInMockTestRecord(test);
+      const student = isAbsent
+        ? 0
         : (parseNumericMark(test.report_student_total)
         ?? sumNumericFields(
         test,
@@ -843,18 +853,21 @@ const StudentProfile = ({
 
       return {
         label: buildReportPointLabel(test, index),
-        student: roundedOrNull(student),
+        student: isAbsent ? null : roundedOrNull(student),
+        student_absent: isAbsent ? 0 : null,
         high: roundedOrNull(high),
         average: roundedOrNull(average),
-        low: roundedOrNull(low)
+        low: roundedOrNull(low),
+        absent: isAbsent
       };
     });
   }, [reportTests, reportSubjectKeys, hasAbsentInMockTestRecord]);
 
   const buildMockSubjectVsClassData = useCallback((subjectKey) => {
     return reportTests.map((test, index) => {
-      const student = hasAbsentInMockTestRecord(test)
-        ? null
+      const isAbsent = hasAbsentInMockTestRecord(test);
+      const student = isAbsent
+        ? 0
         : (toPercentage(test[`${subjectKey}_marks`], test[`${subjectKey}_total_marks`])
         ?? parseNumericMark(test[`${subjectKey}_marks`]));
       const average = toPercentage(test[`class_avg_${subjectKey}`], test[`${subjectKey}_total_marks`])
@@ -866,10 +879,12 @@ const StudentProfile = ({
 
       return {
         label: buildReportPointLabel(test, index),
-        student: student !== null ? Math.round(student) : null,
+        student: isAbsent ? null : (student !== null ? Math.round(student) : null),
+        student_absent: isAbsent ? 0 : null,
         high: high !== null ? Math.round(high) : null,
         average: average !== null ? Math.round(average) : null,
-        low: low !== null ? Math.round(low) : null
+        low: low !== null ? Math.round(low) : null,
+        absent: isAbsent
       };
     });
   }, [reportTests, hasAbsentInMockTestRecord]);
@@ -1031,13 +1046,40 @@ const StudentProfile = ({
     </div>
   );
 
-  const renderSmartPdfBarLabel = (insideColor = '#ffffff', outsideColor = '#111827') => ({ x, y, width, height, value }) => {
+  const renderSmartPdfBarLabel = (insideColor = '#ffffff', outsideColor = '#111827', specificDataKey = null) => (props) => {
+    const { x, y, width, height, value, index } = props;
     const num = Number(value);
     if (value === null || value === undefined || value === '' || Number.isNaN(num)) return null;
 
-    const label = formatChartValue(num);
+    // Check if the data point is absent — show "AB" above the bar position
+    const dataItem = props?.payload;
+    const key = specificDataKey || props.dataKey;
+    const isAbsentEntry = (dataItem?.absent && num === 0 && key === 'student')
+      || (key === 'value' && num === 0 && dataItem?.hasValue && !dataItem?.value_display?.match(/^[0-9]/))
+      || (key === 'student_absent');
+
+    const label = isAbsentEntry ? 'AB' : formatChartValue(num);
     const topY = Number(y);
     const centerX = Number(x) + Number(width) / 2;
+
+    // For absent entries, always place label above; for normal bars use smart placement
+    if (isAbsentEntry) {
+      return (
+        <text
+          x={centerX}
+          y={topY - 6}
+          textAnchor="middle"
+          fontSize={11}
+          fontWeight={700}
+          fill="#dc2626"
+          stroke="#ffffff"
+          strokeWidth={2}
+          paintOrder="stroke"
+        >
+          {label}
+        </text>
+      );
+    }
 
     // If there is visible space above the bar, place label outside; otherwise keep it inside.
     const hasSpaceAbove = Number.isFinite(topY) && topY > 16;
@@ -2015,6 +2057,7 @@ const StudentProfile = ({
                             {...chartTooltipStyle}
                             formatter={(value, name, payload) => {
                               const unit = payload?.payload?.unit || 'marks';
+                              if (payload?.payload?.absent && name === 'Your Score') return ['Absent', name];
                               return [unit === '%' ? `${value}%` : value, name];
                             }}
                           />
@@ -2034,6 +2077,7 @@ const StudentProfile = ({
                             {...chartTooltipStyle}
                             formatter={(value, name, payload) => {
                               const unit = payload?.payload?.unit || 'marks';
+                              if (payload?.payload?.absent && name === 'Your Score') return ['Absent', name];
                               return [unit === '%' ? `${value}%` : value, name];
                             }}
                           />
@@ -2053,6 +2097,7 @@ const StudentProfile = ({
                             {...chartTooltipStyle}
                             formatter={(value, name, payload) => {
                               const unit = payload?.payload?.unit || 'marks';
+                              if (payload?.payload?.absent && name === 'Your Score') return ['Absent', name];
                               return [unit === '%' ? `${value}%` : value, name];
                             }}
                           />
@@ -2113,6 +2158,7 @@ const StudentProfile = ({
                         {...chartTooltipStyle}
                         formatter={(value, name, payload) => {
                           const unit = payload?.payload?.unit || 'marks';
+                          if (payload?.payload?.absent) return ['Absent', name];
                           return [unit === '%' ? `${value}%` : value, name];
                         }}
                       />
@@ -2135,6 +2181,7 @@ const StudentProfile = ({
                         {...chartTooltipStyle}
                         formatter={(value, name, payload) => {
                           const unit = payload?.payload?.unit || 'marks';
+                          if (payload?.payload?.absent && name === 'Your Total') return ['Absent', name];
                           return [unit === '%' ? `${value}%` : value, name];
                         }}
                       />
@@ -2450,7 +2497,7 @@ const StudentProfile = ({
                 {dailySubjectComparisonReportData.map((entry, index) => (
                   <Cell key={`daily-report-cell-${entry.label}-${index}`} fill={entry.fill} />
                 ))}
-                <LabelList dataKey="value" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                <LabelList dataKey="value" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'value')} />
               </Bar>
             </BarChart>
           </div>
@@ -2466,16 +2513,16 @@ const StudentProfile = ({
                 <Tooltip />
                 <Legend {...pdfLegendProps} />
                 <Bar dataKey="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
-                  <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                  <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'student')} />
                 </Bar>
                 <Bar dataKey="high" isAnimationActive={false} fill="#22c55e" name="High" radius={[3, 3, 0, 0]}>
-                  <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                  <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'high')} />
                 </Bar>
                 <Bar dataKey="average" isAnimationActive={false} fill="#f1ed08" name="Average" radius={[3, 3, 0, 0]}>
-                  <LabelList dataKey="average" content={renderSmartPdfBarLabel('#111827', '#111827')} />
+                  <LabelList dataKey="average" content={renderSmartPdfBarLabel('#111827', '#111827', 'average')} />
                 </Bar>
                 <Bar dataKey="low" isAnimationActive={false} fill="#ef4444" name="Low" radius={[3, 3, 0, 0]}>
-                  <LabelList dataKey="low" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                  <LabelList dataKey="low" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'low')} />
                 </Bar>
               </BarChart>
             </div>
@@ -2491,17 +2538,20 @@ const StudentProfile = ({
                 <YAxis {...pdfYAxisProps} />
                 <Tooltip />
                 <Legend {...pdfLegendProps} />
-                <Bar dataKey="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
-                  <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                <Bar dataKey="student" stackId="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
+                  <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'student')} />
+                </Bar>
+                <Bar dataKey="student_absent" stackId="student" isAnimationActive={false} fill="transparent" legendType="none" tooltipType="none">
+                  <LabelList dataKey="student_absent" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'student_absent')} />
                 </Bar>
                 <Bar dataKey="high" isAnimationActive={false} fill="#22c55e" name="High" radius={[3, 3, 0, 0]}>
-                  <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                  <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'high')} />
                 </Bar>
                 <Bar dataKey="average" isAnimationActive={false} fill="#f1ed08" name="Average" radius={[3, 3, 0, 0]}>
-                  <LabelList dataKey="average" content={renderSmartPdfBarLabel('#111827', '#111827')} />
+                  <LabelList dataKey="average" content={renderSmartPdfBarLabel('#111827', '#111827', 'average')} />
                 </Bar>
                 <Bar dataKey="low" isAnimationActive={false} fill="#ef4444" name="Low" radius={[3, 3, 0, 0]}>
-                  <LabelList dataKey="low" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                  <LabelList dataKey="low" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'low')} />
                 </Bar>
               </BarChart>
             </div>
@@ -2526,16 +2576,16 @@ const StudentProfile = ({
                     <Tooltip />
                     <Legend {...pdfLegendProps} />
                     <Bar dataKey="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
-                      <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                      <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'student')} />
                     </Bar>
                     <Bar dataKey="high" isAnimationActive={false} fill="#22c55e" name="High" radius={[3, 3, 0, 0]}>
-                      <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                      <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'high')} />
                     </Bar>
                     <Bar dataKey="average" isAnimationActive={false} fill="#f1ed08" name="Average" radius={[3, 3, 0, 0]}>
-                      <LabelList dataKey="average" content={renderSmartPdfBarLabel('#111827', '#111827')} />
+                      <LabelList dataKey="average" content={renderSmartPdfBarLabel('#111827', '#111827', 'average')} />
                     </Bar>
                     <Bar dataKey="low" isAnimationActive={false} fill="#ef4444" name="Low" radius={[3, 3, 0, 0]}>
-                      <LabelList dataKey="low" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                      <LabelList dataKey="low" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'low')} />
                     </Bar>
                   </BarChart>
                 </div>
@@ -2560,17 +2610,20 @@ const StudentProfile = ({
                   <YAxis {...pdfYAxisProps} />
                   <Tooltip />
                   <Legend {...pdfLegendProps} />
-                  <Bar dataKey="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
-                    <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                  <Bar dataKey="student" stackId="student" isAnimationActive={false} fill="#2563eb" name="Student" radius={[3, 3, 0, 0]}>
+                    <LabelList dataKey="student" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'student')} />
+                  </Bar>
+                  <Bar dataKey="student_absent" stackId="student" isAnimationActive={false} fill="transparent" legendType="none" tooltipType="none">
+                    <LabelList dataKey="student_absent" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'student_absent')} />
                   </Bar>
                   <Bar dataKey="high" isAnimationActive={false} fill="#22c55e" name="High" radius={[3, 3, 0, 0]}>
-                    <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                    <LabelList dataKey="high" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'high')} />
                   </Bar>
                   <Bar dataKey="average" isAnimationActive={false} fill="#f1ed08" name="Average" radius={[3, 3, 0, 0]}>
-                    <LabelList dataKey="average" content={renderSmartPdfBarLabel('#111827', '#111827')} />
+                    <LabelList dataKey="average" content={renderSmartPdfBarLabel('#111827', '#111827', 'average')} />
                   </Bar>
                   <Bar dataKey="low" isAnimationActive={false} fill="#ef4444" name="Low" radius={[3, 3, 0, 0]}>
-                    <LabelList dataKey="low" content={renderSmartPdfBarLabel('#ffffff', '#111827')} />
+                    <LabelList dataKey="low" content={renderSmartPdfBarLabel('#ffffff', '#111827', 'low')} />
                   </Bar>
                 </BarChart>
               </div>

@@ -14,6 +14,8 @@ const Dashboard = () => {
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [selectedYear, setSelectedYear] = useState('2024-2025');
+  const [selectedType, setSelectedType] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
   const [showAddBatch, setShowAddBatch] = useState(false);
   const [showAchievers, setShowAchievers] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -153,11 +155,17 @@ const Dashboard = () => {
 
   const filteredBatches = batches.filter(batch => {
     const batchYear = `${batch.start_year}-${batch.end_year}`;
-    return batchYear === selectedYear;
+    const matchesYear = batchYear === selectedYear;
+    const matchesType = selectedType === 'all' || (batch.type || '') === selectedType;
+    const matchesSearch = !searchTerm.trim() || (batch.batch_name || '').toLowerCase().includes(searchTerm.trim().toLowerCase());
+    return matchesYear && matchesType && matchesSearch;
   });
 
   // Generate available years from batches
   const years = [...new Set(batches.map(batch => `${batch.start_year}-${batch.end_year}`))].sort();
+
+  // Generate available batch types from batches
+  const batchTypes = [...new Set(batches.map(b => b.type).filter(Boolean))].sort();
   
   // Set default year if not set and batches are available
   useEffect(() => {
@@ -192,9 +200,24 @@ const Dashboard = () => {
 
       <div className="filter-section">
         <div className="filter-container">
-          <button className="filter-button" onClick={toggleFilters}>
-            {showFilters ? '▲ Hide Filters' : '▼ Show Filters'}
-          </button>
+          <div className="filter-top-row">
+            <button className="filter-button" onClick={toggleFilters}>
+              {showFilters ? '▲ Hide Filters' : '▼ Show Filters'}
+            </button>
+            <div className="search-bar-wrapper">
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                className="batch-search-input"
+                placeholder="Search batches..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              {searchTerm && (
+                <button className="search-clear-btn" onClick={() => setSearchTerm('')}>×</button>
+              )}
+            </div>
+          </div>
           {showFilters && (
             <div className="filter-options">
               <div className="filter-group">
@@ -205,6 +228,18 @@ const Dashboard = () => {
                 >
                   {years.map(year => (
                     <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="filter-group">
+                <label>Batch Type</label>
+                <select
+                  value={selectedType}
+                  onChange={(e) => setSelectedType(e.target.value)}
+                >
+                  <option value="all">All Types</option>
+                  {batchTypes.map(type => (
+                    <option key={type} value={type}>{type}</option>
                   ))}
                 </select>
               </div>
@@ -235,7 +270,7 @@ const Dashboard = () => {
           ))
         ) : (
           <div className="dashboard-message">
-            <p>No batches found for {selectedYear}</p>
+            <p>No batches found{searchTerm ? ` matching "${searchTerm}"` : ''}{selectedType !== 'all' ? ` of type "${selectedType}"` : ''} for {selectedYear}</p>
           </div>
         )}
       </div>
