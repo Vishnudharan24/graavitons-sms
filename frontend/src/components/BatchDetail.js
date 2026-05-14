@@ -69,7 +69,7 @@ const BatchDetail = ({ batch, onBack }) => {
         grade: student.grade,
         enrollment_year: student.enrollment_year,
         course: student.course,
-        branch: student.branch,
+        board: student.board,
         student_mobile: student.student_mobile,
         email: student.email
       }));
@@ -268,7 +268,7 @@ const BatchDetail = ({ batch, onBack }) => {
       // ── Sheet 2: Student Details ──
       const studentHeaders = [
         'S.No', 'Admission No', 'Student Name', 'Gender', 'Date of Birth',
-        'Community', 'Grade', 'Enrollment Year', 'Course', 'Branch',
+        'Community', 'Grade', 'Enrollment Year', 'Course', 'Board',
         'Mobile', 'Email', 'Unit Tests Attended', 'Monthly Tests Attended'
       ];
       const studentRows = sortedStudents.map((s, i) => [
@@ -281,7 +281,7 @@ const BatchDetail = ({ batch, onBack }) => {
         s.grade || 'N/A',
         s.enrollment_year || 'N/A',
         s.course || 'N/A',
-        s.branch || 'N/A',
+        s.board || 'N/A',
         s.student_mobile || 'N/A',
         s.email || 'N/A',
         s.daily_test_count,

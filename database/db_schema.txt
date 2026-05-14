@@ -140,7 +140,7 @@ CREATE TABLE daily_test (
     test_id BIGSERIAL PRIMARY KEY, -- Changed from simple INT to Bigserial PK
     student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
     grade INT,
-    branch VARCHAR(100),
+    board VARCHAR(100),
     test_date DATE,
     subject VARCHAR(100),
     unit_name VARCHAR(100),
@@ -155,7 +155,7 @@ CREATE TABLE mock_test (
     test_id BIGSERIAL PRIMARY KEY,
     student_no BIGINT REFERENCES student(student_no) ON DELETE CASCADE,
     grade INT,
-    branch VARCHAR(100),
+    board VARCHAR(100),
     test_date DATE,
     maths_marks VARCHAR(20), -- VARCHAR to support 'A', '-', negative marks
     physics_marks VARCHAR(20),

@@ -260,7 +260,7 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Get batch details to extract grade and branch
+        # Get batch details to extract grade and board
         cursor.execute("""
             SELECT batch_name, type, subjects FROM batch WHERE batch_id = %s
         """, (exam_data.batch_id,))
@@ -299,7 +299,7 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
             if grade_match:
                 grade = int(grade_match.group())
         
-        # Get branch from student (we'll fetch it for each student)
+        # Get board from student (we'll fetch it for each student)
         inserted_count = 0
         failed_students = []
         subject_total_marks = exam_data.subjectTotalMarks if exam_data.subjectTotalMarks is not None else exam_data.totalMarks
@@ -307,9 +307,9 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
         
         for student_mark in exam_data.studentMarks:
             try:
-                # Get student's branch
+                # Get student's board
                 cursor.execute("""
-                    SELECT student_no, branch
+                    SELECT student_no, board
                     FROM student
                     WHERE student_id = %s AND batch_id = %s
                     ORDER BY created_at DESC, student_no DESC
@@ -325,7 +325,7 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
                     continue
                 
                 student_no = student_result[0]
-                branch = student_result[1]
+                board = student_result[1]
                 
                 # Store marks as-is (supports integers, 'A' for absent, '-' for N/A, negative marks)
                 marks = student_mark.marks.strip() if student_mark.marks and student_mark.marks.strip() else None
@@ -333,14 +333,14 @@ async def create_daily_test(exam_data: DailyTestCreate, current_user: dict = Dep
                 # Insert unit test record
                 cursor.execute("""
                     INSERT INTO daily_test (
-                        student_no, grade, branch, test_date, 
+                        student_no, grade, board, test_date, 
                         subject, unit_name, total_marks, subject_total_marks, test_total_marks
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     student_no,
                     grade,
-                    branch,
+                    board,
                     exam_data.examDate,
                     normalized_subject,
                     exam_data.unitName,
@@ -449,9 +449,9 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
         
         for student_mark in exam_data.studentMarks:
             try:
-                # Get student's branch
+                # Get student's board
                 cursor.execute("""
-                    SELECT student_no, branch
+                    SELECT student_no, board
                     FROM student
                     WHERE student_id = %s AND batch_id = %s
                     ORDER BY created_at DESC, student_no DESC
@@ -467,7 +467,7 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
                     continue
                 
                 student_no = student_result[0]
-                branch = student_result[1]
+                board = student_result[1]
                 
                 # Store marks as-is (supports integers, 'A' for absent, '-' for N/A, negative marks)
                 maths_marks = student_mark.mathsMarks.strip() if "maths" in active_subjects and student_mark.mathsMarks and student_mark.mathsMarks.strip() else None
@@ -489,7 +489,7 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
                 # Insert monthly test record
                 cursor.execute("""
                     INSERT INTO mock_test (
-                        student_no, grade, branch, test_date,
+                        student_no, grade, board, test_date,
                         maths_marks, physics_marks, chemistry_marks, biology_marks,
                         maths_unit_names, physics_unit_names, chemistry_unit_names, biology_unit_names,
                         total_marks,
@@ -500,7 +500,7 @@ async def create_mock_test(exam_data: MockTestCreate, current_user: dict = Depen
                 """, (
                     student_no,
                     grade,
-                    branch,
+                    board,
                     exam_data.examDate,
                     maths_marks,
                     physics_marks,
@@ -830,11 +830,11 @@ async def update_daily_test_group(
         normalized_subject = normalize_subject_key(payload.subject)
 
         cursor.execute("""
-            SELECT student_id, student_no, branch, grade
+            SELECT student_id, student_no, board, grade
             FROM student
             WHERE batch_id = %s
         """, (batch_id,))
-        student_map = {r[0]: {"student_no": r[1], "branch": r[2], "grade": r[3]} for r in cursor.fetchall()}
+        student_map = {r[0]: {"student_no": r[1], "board": r[2], "grade": r[3]} for r in cursor.fetchall()}
 
         updated_count = 0
         inserted_count = 0
@@ -875,14 +875,14 @@ async def update_daily_test_group(
                 student_meta = student_map[sid]
                 cursor.execute("""
                     INSERT INTO daily_test (
-                        student_no, grade, branch, test_date,
+                        student_no, grade, board, test_date,
                         subject, unit_name, total_marks, subject_total_marks, test_total_marks
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     student_meta["student_no"],
                     student_meta["grade"] if student_meta["grade"] is not None else batch_grade,
-                    student_meta["branch"],
+                    student_meta["board"],
                     payload.test_date,
                     normalized_subject_label,
                     payload.unit_name,
@@ -1141,11 +1141,11 @@ async def update_mock_test_group(
         active_subjects = set(get_batch_mock_subjects(batch_row[1]))
 
         cursor.execute("""
-            SELECT student_id, student_no, branch, grade
+            SELECT student_id, student_no, board, grade
             FROM student
             WHERE batch_id = %s
         """, (batch_id,))
-        student_map = {r[0]: {"student_no": r[1], "branch": r[2], "grade": r[3]} for r in cursor.fetchall()}
+        student_map = {r[0]: {"student_no": r[1], "board": r[2], "grade": r[3]} for r in cursor.fetchall()}
 
         def safe_int(val):
             try:
@@ -1247,7 +1247,7 @@ async def update_mock_test_group(
                 student_meta = student_map[sid]
                 cursor.execute("""
                     INSERT INTO mock_test (
-                        student_no, grade, branch, test_date,
+                        student_no, grade, board, test_date,
                         maths_marks, physics_marks, chemistry_marks, biology_marks,
                         maths_unit_names, physics_unit_names, chemistry_unit_names, biology_unit_names,
                         total_marks,
@@ -1258,7 +1258,7 @@ async def update_mock_test_group(
                 """, (
                     student_meta["student_no"],
                     student_meta["grade"] if student_meta["grade"] is not None else batch_grade,
-                    student_meta["branch"],
+                    student_meta["board"],
                     payload.test_date,
                     maths_marks,
                     physics_marks,
@@ -1990,7 +1990,7 @@ async def get_student_daily_tests(student_no: int, current_user: dict = Depends(
             SELECT 
                 test_id,
                 grade,
-                branch,
+                board,
                 test_date,
                 subject,
                 unit_name,
@@ -2011,7 +2011,7 @@ async def get_student_daily_tests(student_no: int, current_user: dict = Depends(
             daily_tests.append({
                 "test_id": test[0],
                 "grade": test[1],
-                "branch": test[2],
+                "board": test[2],
                 "test_date": test[3].isoformat() if test[3] else None,
                 "subject": test[4],
                 "unit_name": test[5],
@@ -2056,7 +2056,7 @@ async def get_student_mock_tests(student_no: int, current_user: dict = Depends(g
             SELECT 
                 test_id,
                 grade,
-                branch,
+                board,
                 test_date,
                 maths_marks,
                 physics_marks,
@@ -2086,7 +2086,7 @@ async def get_student_mock_tests(student_no: int, current_user: dict = Depends(g
             mock_tests.append({
                 "test_id": test[0],
                 "grade": test[1],
-                "branch": test[2],
+                "board": test[2],
                 "test_date": test[3].isoformat() if test[3] else None,
                 "maths_marks": test[4],
                 "physics_marks": test[5],
@@ -2342,7 +2342,7 @@ async def get_batch_report(batch_id: int, current_user: dict = Depends(get_curre
                 "grade": row[6],
                 "enrollment_year": row[7],
                 "course": row[8],
-                "branch": row[9],
+                "board": row[9],
                 "student_mobile": row[10],
                 "email": row[11],
                 "daily_test_count": daily_counts.get(sno, 0),

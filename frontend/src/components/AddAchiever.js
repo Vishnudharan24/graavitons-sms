@@ -216,7 +216,7 @@ const AddAchiever = ({ onBack, onSave }) => {
                                             <span>
                                                 {student.batch_name || 'No Batch'}
                                                 {student.academic_year ? ` (${student.academic_year})` : ''}
-                                                {student.branch ? ` • ${student.branch}` : ''}
+                                                {student.board ? ` • ${student.board}` : ''}
                                             </span>
                                         </button>
                                     ))}
@@ -230,7 +230,7 @@ const AddAchiever = ({ onBack, onSave }) => {
                             <p><strong>Name:</strong> {selectedStudent.student_name}</p>
                             <p><strong>Admission No:</strong> {selectedStudent.student_id}</p>
                             <p><strong>Batch:</strong> {selectedStudent.batch_name || 'N/A'}</p>
-                            <p><strong>Course / Branch:</strong> {selectedStudent.course || 'N/A'} / {selectedStudent.branch || 'N/A'}</p>
+                            <p><strong>Course / Board:</strong> {selectedStudent.course || 'N/A'} / {selectedStudent.board || 'N/A'}</p>
                             <p><strong>Grade:</strong> {selectedStudent.grade || 'N/A'}</p>
                         </div>
                     )}

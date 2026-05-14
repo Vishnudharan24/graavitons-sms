@@ -258,9 +258,9 @@ async def get_filter_options(current_user: dict = Depends(get_current_user)):
         subject_labels = [normalize_subject_label(row[0]) for row in cursor.fetchall() if row[0]]
         subjects = sorted(list({s for s in subject_labels if s}))
 
-        # Get distinct branches
-        cursor.execute("SELECT DISTINCT branch FROM student WHERE branch IS NOT NULL ORDER BY branch")
-        branches = [row[0] for row in cursor.fetchall()]
+        # Get distinct boards
+        cursor.execute("SELECT DISTINCT board FROM student WHERE board IS NOT NULL ORDER BY board")
+        boards = [row[0] for row in cursor.fetchall()]
 
         # Get distinct courses
         cursor.execute("SELECT DISTINCT course FROM student WHERE course IS NOT NULL ORDER BY course")
@@ -270,7 +270,7 @@ async def get_filter_options(current_user: dict = Depends(get_current_user)):
             "grades": grades,
             "batches": batches,
             "subjects": subjects,
-            "branches": branches,
+            "boards": boards,
             "courses": courses
         }
 
@@ -568,10 +568,10 @@ async def get_subjectwise_analysis(
             conn.close()
 
 
-# ==================== BRANCHWISE ANALYSIS ====================
+# ==================== BOARDWISE ANALYSIS ====================
 
 @app.get("/api/analysis/branchwise")
-async def get_branchwise_analysis(
+async def get_boardwise_analysis(
     grade: Optional[str] = None,
     admission_number: Optional[str] = None,
     batch_id: Optional[int] = None,
@@ -581,8 +581,8 @@ async def get_branchwise_analysis(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Get branchwise analysis data with filters.
-    Aggregates performance by branch across subjects.
+    Get boardwise analysis data with filters.
+    Aggregates performance by board across subjects.
     """
     conn = None
     cursor = None
@@ -590,7 +590,7 @@ async def get_branchwise_analysis(
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Get unit test data grouped by branch
+        # Get unit test data grouped by board
         daily_query = """
             SELECT
                 s.board,
@@ -636,7 +636,7 @@ async def get_branchwise_analysis(
         cursor.execute(daily_query, params)
         daily_rows = cursor.fetchall()
 
-        # Get monthly test data grouped by branch
+        # Get monthly test data grouped by board
         mock_maths_expr = """
             CASE
                 WHEN mt.maths_total_marks IS NOT NULL AND mt.maths_total_marks > 0 AND safe_numeric(mt.maths_marks) IS NOT NULL
@@ -723,28 +723,28 @@ async def get_branchwise_analysis(
         cursor.execute(mock_query, mock_params)
         mock_rows = cursor.fetchall()
 
-        # Build branch-wise data from unit tests
-        branches_daily = {}
+        # Build board-wise data from unit tests
+        boards_daily = {}
         for row in daily_rows:
-            branch = row[0]
-            if branch not in branches_daily:
-                branches_daily[branch] = {"subjects": {}, "student_count": 0}
+            board = row[0]
+            if board not in boards_daily:
+                boards_daily[board] = {"subjects": {}, "student_count": 0}
             subject_label = normalize_subject_label(row[1]) if row[1] else row[1]
-            branches_daily[branch]["subjects"][subject_label] = {
+            boards_daily[board]["subjects"][subject_label] = {
                 "average": round(float(row[2]), 1) if row[2] is not None else None,
                 "top_score": row[3] if row[3] is not None else None,
                 "lowest": row[4] if row[4] is not None else None,
                 "test_count": row[5]
             }
-            branches_daily[branch]["student_count"] = max(
-                branches_daily[branch]["student_count"], row[6]
+            boards_daily[board]["student_count"] = max(
+                boards_daily[board]["student_count"], row[6]
             )
 
-        # Build branch-wise data from monthly tests
-        branches_mock = {}
+        # Build board-wise data from monthly tests
+        boards_mock = {}
         for row in mock_rows:
-            branch = row[0]
-            branches_mock[branch] = {
+            board = row[0]
+            boards_mock[board] = {
                 "maths": round(float(row[1]), 1) if row[1] is not None else None,
                 "physics": round(float(row[2]), 1) if row[2] is not None else None,
                 "chemistry": round(float(row[3]), 1) if row[3] is not None else None,
@@ -757,15 +757,15 @@ async def get_branchwise_analysis(
             }
 
         # Combine into results
-        all_branches = set(list(branches_daily.keys()) + list(branches_mock.keys()))
-        branch_results = []
+        all_boards = set(list(boards_daily.keys()) + list(boards_mock.keys()))
+        board_results = []
 
-        for branch in sorted(all_branches):
-            daily = branches_daily.get(branch, {"subjects": {}, "student_count": 0})
-            mock = branches_mock.get(branch, {})
+        for board in sorted(all_boards):
+            daily = boards_daily.get(board, {"subjects": {}, "student_count": 0})
+            mock = boards_mock.get(board, {})
 
-            branch_result = {
-                "branch": branch,
+            board_result = {
+                "board": board,
                 "daily_test_data": daily["subjects"],
                 "mock_test_data": mock if mock else None,
                 "student_count": max(
@@ -773,9 +773,9 @@ async def get_branchwise_analysis(
                     mock.get("student_count", 0)
                 )
             }
-            branch_results.append(branch_result)
+            board_results.append(board_result)
 
-        # Get individual student data per branch for detailed view
+        # Get individual student data per board for detailed view
         student_query = """
             SELECT
                 s.student_id,
@@ -825,29 +825,29 @@ async def get_branchwise_analysis(
         cursor.execute(student_query, student_params)
         student_rows = cursor.fetchall()
 
-        students_by_branch = {}
+        students_by_board = {}
         for row in student_rows:
-            branch = row[2]
+            board = row[2]
             sid = row[0]
-            if branch not in students_by_branch:
-                students_by_branch[branch] = {}
-            if sid not in students_by_branch[branch]:
-                students_by_branch[branch][sid] = {
+            if board not in students_by_board:
+                students_by_board[board] = {}
+            if sid not in students_by_board[board]:
+                students_by_board[board][sid] = {
                     "student_id": row[0],
                     "student_name": row[1],
                     "grade": row[3],
                     "batch": row[4],
                     "subjects": {}
                 }
-            students_by_branch[branch][sid]["subjects"][row[5]] = round(float(row[6]), 1)
+            students_by_board[board][sid]["subjects"][row[5]] = round(float(row[6]), 1)
 
         return {
-            "branches": branch_results,
-            "students_by_branch": {
-                branch: list(students.values())
-                for branch, students in students_by_branch.items()
+            "boards": board_results,
+            "students_by_board": {
+                board: list(students.values())
+                for board, students in students_by_board.items()
             },
-            "total_branches": len(branch_results)
+            "total_boards": len(board_results)
         }
 
     except HTTPException:
@@ -855,7 +855,7 @@ async def get_branchwise_analysis(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch branchwise analysis: {str(e)}"
+            detail=f"Failed to fetch boardwise analysis: {str(e)}"
         )
     finally:
         if cursor:
@@ -871,7 +871,7 @@ async def get_students_for_analysis(
     name: Optional[str] = None,
     batch_id: Optional[int] = None,
     course: Optional[str] = None,
-    branch: Optional[str] = None,
+    board: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -912,9 +912,9 @@ async def get_students_for_analysis(
             query += " AND s.course = %s"
             params.append(course)
 
-        if branch:
+        if board:
             query += " AND s.board = %s"
-            params.append(branch)
+            params.append(board)
 
         query += """
             ORDER BY
@@ -933,7 +933,7 @@ async def get_students_for_analysis(
                 "student_id": row[0],
                 "student_name": row[1],
                 "course": row[2],
-                "branch": row[3],
+                "board": row[3],
                 "grade": row[4],
                 "photo_url": row[5],
                 "batch_name": row[6],
@@ -960,7 +960,7 @@ async def get_students_for_analysis(
 async def get_individual_analysis(student_no: int, current_user: dict = Depends(get_current_user)):
     """
     Get complete individual analysis for a student:
-    - Student info (name, photo, course, branch, batch)
+    - Student info (name, photo, course, board, batch)
     - Unit test performance
     - Monthly test performance
     - Class averages & top scores for comparison
@@ -995,7 +995,7 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
             "student_id": student_row[1],
             "student_name": student_row[2],
             "course": student_row[3],
-            "branch": student_row[4],
+            "board": student_row[4],
             "grade": student_row[5],
             "photo_url": student_row[6],
             "gender": student_row[7],
@@ -1021,7 +1021,7 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
         cursor.execute("""
             SELECT
                 dt.test_id, dt.subject, dt.unit_name, dt.total_marks, dt.test_date,
-                dt.grade, dt.branch, dt.subject_total_marks, dt.test_total_marks
+                dt.grade, dt.board, dt.subject_total_marks, dt.test_total_marks
             FROM daily_test dt
             WHERE dt.student_no = %s
             ORDER BY dt.test_date DESC, dt.subject
@@ -1087,7 +1087,7 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
                 "marks": test[3],
                 "test_date": test[4].isoformat() if test[4] else None,
                 "grade": test[5],
-                "branch": test[6],
+                "board": test[6],
                 "subject_total_marks": test[7],
                 "test_total_marks": test[8],
                 "class_avg": round(float(stats_row["class_avg"]), 1) if stats_row["class_avg"] is not None else None,
@@ -1102,7 +1102,7 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
                 mt.chemistry_marks, mt.biology_marks, mt.total_marks,
                 mt.maths_unit_names, mt.physics_unit_names,
                 mt.chemistry_unit_names, mt.biology_unit_names,
-                mt.grade, mt.branch,
+                mt.grade, mt.board,
                 mt.maths_total_marks, mt.physics_total_marks,
                 mt.chemistry_total_marks, mt.biology_total_marks,
                 mt.test_total_marks
@@ -1369,7 +1369,7 @@ async def get_individual_analysis(student_no: int, current_user: dict = Depends(
                 "chemistry_unit_names": test[9],
                 "biology_unit_names": test[10],
                 "grade": test[11],
-                "branch": test[12],
+                "board": test[12],
                 "maths_total_marks": test[13],
                 "physics_total_marks": test[14],
                 "chemistry_total_marks": test[15],
