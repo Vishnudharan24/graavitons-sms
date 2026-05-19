@@ -11,6 +11,7 @@ import './StudentProfile.css';
 import { API_BASE, DEFAULT_AVATAR } from '../config';
 import { authFetch } from '../utils/api';
 import { useToast } from './Toast';
+import DateFilterModal from './DateFilterModal';
 
 // Helper: safely parse a mark value to a number, returning null for non-numeric values like 'A', '-'
 const parseNumericMark = (val) => {
@@ -89,6 +90,8 @@ const StudentProfile = ({
   autoGeneratePdf = false,
   onBulkPdfReady = null,
   onBulkPdfError = null,
+  bulkPdfDateFrom = null,
+  bulkPdfDateTo = null,
 }) => {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState('personal');
@@ -113,6 +116,10 @@ const StudentProfile = ({
   const [mockChartType, setMockChartType] = useState('grouped');
   const [exportingPdf, setExportingPdf] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [showDateFilterModal, setShowDateFilterModal] = useState(false);
+  const [pdfDateFrom, setPdfDateFrom] = useState(null);
+  const [pdfDateTo, setPdfDateTo] = useState(null);
+  const [pdfExportPending, setPdfExportPending] = useState(false);
   const [currentFeedback, setCurrentFeedback] = useState({
     date: new Date().toISOString().split('T')[0],
     teacherFeedback: '',
@@ -575,12 +582,39 @@ const StudentProfile = ({
   const mockTrendData = buildMockTrendData();
   const latestMockSubjectShare = buildLatestMockSubjectShare();
 
+  // Resolve effective PDF date filters (props for bulk, state for individual)
+  const effectivePdfDateFrom = bulkPdfDateFrom || pdfDateFrom;
+  const effectivePdfDateTo = bulkPdfDateTo || pdfDateTo;
+
+  // Create date-filtered versions of tests for PDF report pages
+  const pdfFilteredDailyTests = useMemo(() => {
+    if (!effectivePdfDateFrom && !effectivePdfDateTo) return dailyTests;
+    return (dailyTests || []).filter(test => {
+      if (!test.test_date) return true;
+      const d = test.test_date;
+      if (effectivePdfDateFrom && d < effectivePdfDateFrom) return false;
+      if (effectivePdfDateTo && d > effectivePdfDateTo) return false;
+      return true;
+    });
+  }, [dailyTests, effectivePdfDateFrom, effectivePdfDateTo]);
+
+  const pdfFilteredMockTests = useMemo(() => {
+    if (!effectivePdfDateFrom && !effectivePdfDateTo) return mockTests;
+    return (mockTests || []).filter(test => {
+      if (!test.test_date) return true;
+      const d = test.test_date;
+      if (effectivePdfDateFrom && d < effectivePdfDateFrom) return false;
+      if (effectivePdfDateTo && d > effectivePdfDateTo) return false;
+      return true;
+    });
+  }, [mockTests, effectivePdfDateFrom, effectivePdfDateTo]);
+
   const reportTests = useMemo(() => {
-    if (!mockTests || mockTests.length === 0) return [];
-    return [...mockTests]
+    if (!pdfFilteredMockTests || pdfFilteredMockTests.length === 0) return [];
+    return [...pdfFilteredMockTests]
       .filter((test) => test?.test_date)
       .sort((a, b) => new Date(a.test_date) - new Date(b.test_date));
-  }, [mockTests]);
+  }, [pdfFilteredMockTests]);
 
   const reportSubjectMeta = useMemo(() => ({
     maths: { label: 'Maths', color: '#f1ed08' },
@@ -650,7 +684,7 @@ const StudentProfile = ({
 
   const dailySubjectComparisonReportData = useMemo(() => {
     const groupedPoints = {};
-    (dailyTests || []).forEach((test) => {
+    (pdfFilteredDailyTests || []).forEach((test) => {
       if (!test?.test_date || !test?.subject) return;
       const subjectKey = normalizeReportSubjectKey(test.subject);
 
@@ -702,7 +736,7 @@ const StudentProfile = ({
           fill: reportSubjectMeta[point.subjectKey]?.color || '#64748b'
         };
       });
-  }, [dailyTests, isDailyOnlyProgressReport, pdfReportSubjectKeys, reportSubjectMeta, buildDailyAxisLabel]);
+  }, [pdfFilteredDailyTests, isDailyOnlyProgressReport, pdfReportSubjectKeys, reportSubjectMeta, buildDailyAxisLabel]);
 
   const dailySubjectVsClassReportData = useMemo(() => {
     const roundedOrNull = (value) => {
@@ -713,7 +747,7 @@ const StudentProfile = ({
 
     const report = {};
     pdfReportSubjectKeys.forEach((subjectKey) => {
-      const subjectTests = (dailyTests || [])
+      const subjectTests = (pdfFilteredDailyTests || [])
         .filter((test) => {
           const testSubjectKey = normalizeReportSubjectKey(test?.subject);
           return testSubjectKey === subjectKey && test?.test_date;
@@ -742,12 +776,12 @@ const StudentProfile = ({
     });
 
     return report;
-  }, [dailyTests, pdfReportSubjectKeys, buildDailyAxisLabel]);
+  }, [pdfFilteredDailyTests, pdfReportSubjectKeys, buildDailyAxisLabel]);
 
   const dailyTotalComparisonReportData = useMemo(() => {
     const groupedByDate = {};
 
-    (dailyTests || []).forEach((test) => {
+    (pdfFilteredDailyTests || []).forEach((test) => {
       if (!test?.test_date) return;
 
       const groupKey = test.test_date;
@@ -802,7 +836,7 @@ const StudentProfile = ({
           low: averageOrNull(values.low)
         };
       });
-  }, [dailyTests, buildDailyAxisLabel, reportSubjectMeta]);
+  }, [pdfFilteredDailyTests, buildDailyAxisLabel, reportSubjectMeta]);
 
   const totalComparisonReportData = useMemo(() => {
     const roundedOrNull = (value) => {
@@ -954,11 +988,54 @@ const StudentProfile = ({
     return keySet.size;
   }, [mockTests, buildMockGroupKey]);
 
+  // PDF-specific attendance counts (respects date filter)
+  const pdfDailyConductedCount = useMemo(() => {
+    const keySet = new Set(
+      (pdfFilteredDailyTests || []).map((t) => `${t.test_date || ''}::${(t.subject || '').trim().toLowerCase()}::${(t.unit_name || '').trim().toLowerCase() || 'unknown'}`)
+    );
+    return keySet.size;
+  }, [pdfFilteredDailyTests]);
+
+  const pdfDailyAttemptedCount = useMemo(() => {
+    const keySet = new Set(
+      (pdfFilteredDailyTests || [])
+        .filter((t) => parseNumericMark(t.marks) !== null)
+        .map((t) => `${t.test_date || ''}::${(t.subject || '').trim().toLowerCase()}::${(t.unit_name || '').trim().toLowerCase() || 'unknown'}`)
+    );
+    return keySet.size;
+  }, [pdfFilteredDailyTests]);
+
+  const pdfMockConductedCount = useMemo(() => {
+    const keySet = new Set((pdfFilteredMockTests || []).map((t) => buildMockGroupKey(t)));
+    return keySet.size;
+  }, [pdfFilteredMockTests, buildMockGroupKey]);
+
+  const pdfMockAttemptedCount = useMemo(() => {
+    const hasAnyNumericInMockTest = (test) => {
+      const markFields = [
+        test?.total_marks,
+        test?.maths_marks,
+        test?.physics_marks,
+        test?.chemistry_marks,
+        test?.biology_marks
+      ];
+      return markFields.some((value) => parseNumericMark(value) !== null);
+    };
+
+    const keySet = new Set(
+      (pdfFilteredMockTests || [])
+        .filter((t) => hasAnyNumericInMockTest(t))
+        .map((t) => buildMockGroupKey(t))
+    );
+    return keySet.size;
+  }, [pdfFilteredMockTests, buildMockGroupKey]);
+
   const attendanceSummaryRows = useMemo(() => {
-    const weeklyConducted = Number(studentMetrics?.daily_tests_conducted ?? dailyConductedCount);
-    const weeklyAttended = Number(studentMetrics?.daily_tests_attended ?? dailyAttemptedCount);
-    const mockConducted = Number(studentMetrics?.mock_tests_conducted ?? mockConductedCount);
-    const mockAttended = Number(studentMetrics?.mock_tests_attended ?? mockAttemptedCount);
+    const isDateFiltered = effectivePdfDateFrom || effectivePdfDateTo;
+    const weeklyConducted = isDateFiltered ? pdfDailyConductedCount : Number(studentMetrics?.daily_tests_conducted ?? dailyConductedCount);
+    const weeklyAttended = isDateFiltered ? pdfDailyAttemptedCount : Number(studentMetrics?.daily_tests_attended ?? dailyAttemptedCount);
+    const mockConducted = isDateFiltered ? pdfMockConductedCount : Number(studentMetrics?.mock_tests_conducted ?? mockConductedCount);
+    const mockAttended = isDateFiltered ? pdfMockAttemptedCount : Number(studentMetrics?.mock_tests_attended ?? mockAttemptedCount);
 
     const rows = [
       {
@@ -980,7 +1057,7 @@ const StudentProfile = ({
         summary: `${mockAttended}/${mockConducted || 0}`
       }
     ];
-  }, [studentMetrics, dailyAttemptedCount, dailyConductedCount, mockAttemptedCount, mockConductedCount, isDailyOnlyProgressReport]);
+  }, [studentMetrics, dailyAttemptedCount, dailyConductedCount, mockAttemptedCount, mockConductedCount, isDailyOnlyProgressReport, effectivePdfDateFrom, effectivePdfDateTo, pdfDailyConductedCount, pdfDailyAttemptedCount, pdfMockConductedCount, pdfMockAttemptedCount]);
 
   const activeInsightRows = useMemo(() => {
     if (insightTab === 'daily') return studentTestInsights?.daily || [];
@@ -1472,6 +1549,19 @@ const StudentProfile = ({
     XLSX.writeFile(wb, fileName);
   };
 
+  // Trigger PDF export once filtered data has recomputed after date selection
+  useEffect(() => {
+    if (!pdfExportPending) return;
+    setPdfExportPending(false);
+    // Brief delay allows Recharts to re-render with updated filtered data
+    // before html2canvas captures the DOM
+    const rafId = requestAnimationFrame(() => {
+      setTimeout(() => exportStudentPdfReport(), 200);
+    });
+    return () => cancelAnimationFrame(rafId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfExportPending]);
+
   // Show loading state
   if (loading) {
     return (
@@ -1505,18 +1595,41 @@ const StudentProfile = ({
     );
   }
 
+  const handleDateFilterConfirm = ({ dateFrom, dateTo }) => {
+    setShowDateFilterModal(false);
+    setPdfDateFrom(dateFrom);
+    setPdfDateTo(dateTo);
+    setPdfExportPending(true);
+  };
+
+  const formatDateRangeLabel = () => {
+    if (!effectivePdfDateFrom && !effectivePdfDateTo) return null;
+    const fmt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
+    if (effectivePdfDateFrom && effectivePdfDateTo) return `${fmt(effectivePdfDateFrom)} – ${fmt(effectivePdfDateTo)}`;
+    if (effectivePdfDateFrom) return `From ${fmt(effectivePdfDateFrom)}`;
+    return `Until ${fmt(effectivePdfDateTo)}`;
+  };
+
   return (
     <div className="student-profile">
       <div className="profile-header">
         <div className="profile-header-actions">
           <button className="back-button" onClick={onBack}>← Back to Students</button>
-          <button className="btn-download-report" onClick={exportStudentPdfReport} disabled={exportingPdf}>
+          <button className="btn-download-report" onClick={() => setShowDateFilterModal(true)} disabled={exportingPdf}>
             {exportingPdf ? '⏳ Generating PDF...' : '📄 Download Progress PDF'}
           </button>
           <button className="btn-download-report" onClick={generateExcelReport}>
             📊 Download Report
           </button>
         </div>
+
+      {showDateFilterModal && (
+        <DateFilterModal
+          title="Select Date Range for Progress Report"
+          onConfirm={handleDateFilterConfirm}
+          onCancel={() => setShowDateFilterModal(false)}
+        />
+      )}
         <div className="profile-title-section">
           <h2>Student Profile - {displayData.name}</h2>
           <div className="student-photo" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
@@ -2428,6 +2541,11 @@ const StudentProfile = ({
           <h1>Student Progress Charts</h1>
           <p style={{ margin: '0 0 10px', color: '#64748b', fontSize: '14px' }}>
             {isDailyOnlyProgressReport ? 'Unit test performance report' : 'Unit test and monthly test performance report'}
+            {formatDateRangeLabel() && (
+              <span style={{ display: 'block', marginTop: '4px', color: '#6366f1', fontWeight: 600, fontSize: '13px' }}>
+                📅 Date Filter: {formatDateRangeLabel()}
+              </span>
+            )}
           </p>
           <div className="student-pdf-info-grid">
             <div>

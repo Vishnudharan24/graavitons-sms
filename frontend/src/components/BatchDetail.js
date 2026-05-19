@@ -5,6 +5,7 @@ import StudentProfile from './StudentProfile';
 import AddStudent from './AddStudent';
 import AddExam from './AddExam';
 import BatchPerformance from './BatchPerformance';
+import DateFilterModal from './DateFilterModal';
 import './BatchDetail.css';
 import { API_BASE } from '../config';
 import { authFetch } from '../utils/api';
@@ -34,6 +35,9 @@ const BatchDetail = ({ batch, onBack }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('students');
+  const [showBulkDateFilter, setShowBulkDateFilter] = useState(false);
+  const [bulkPdfDateFrom, setBulkPdfDateFrom] = useState(null);
+  const [bulkPdfDateTo, setBulkPdfDateTo] = useState(null);
 
   const [students, setStudents] = useState([]);
 
@@ -390,6 +394,8 @@ const BatchDetail = ({ batch, onBack }) => {
       setBulkPdfLoading(false);
       setBulkPdfCurrent(null);
       setBulkPdfProgress({ current: 0, total: 0 });
+      setBulkPdfDateFrom(null);
+      setBulkPdfDateTo(null);
       bulkZipRef.current = null;
       bulkStudentsRef.current = [];
       bulkIndexRef.current = 0;
@@ -461,13 +467,15 @@ const BatchDetail = ({ batch, onBack }) => {
     await moveToNextBulkStudent();
   };
 
-  const handleDownloadAllProgressReports = async () => {
+  const handleDownloadAllProgressReports = async (dateFrom = null, dateTo = null) => {
     if (!students || students.length === 0) {
       toast.warning('No students available in this batch to generate reports.');
       return;
     }
     if (bulkPdfLoading) return;
 
+    setBulkPdfDateFrom(dateFrom);
+    setBulkPdfDateTo(dateTo);
     setBulkPdfLoading(true);
     bulkZipRef.current = new JSZip();
     bulkStudentsRef.current = [...students];
@@ -477,6 +485,11 @@ const BatchDetail = ({ batch, onBack }) => {
     setBulkPdfProgress({ current: 1, total: students.length });
     setBulkPdfCurrent(students[0]);
     startBulkStudentTimeout();
+  };
+
+  const handleBulkDateFilterConfirm = ({ dateFrom, dateTo }) => {
+    setShowBulkDateFilter(false);
+    handleDownloadAllProgressReports(dateFrom, dateTo);
   };
 
   if (showAddExam) {
@@ -684,12 +697,20 @@ const BatchDetail = ({ batch, onBack }) => {
             <button className="btn btn-report" onClick={handleGenerateReport} disabled={reportLoading}>
               {reportLoading ? '⏳ Generating...' : '📊 Generate Batch Report'}
             </button>
-            <button className="btn btn-report" onClick={handleDownloadAllProgressReports} disabled={bulkPdfLoading}>
+            <button className="btn btn-report" onClick={() => { if (!bulkPdfLoading) setShowBulkDateFilter(true); }} disabled={bulkPdfLoading}>
               {bulkPdfLoading
                 ? `⏳ Progress PDFs ${bulkPdfProgress.current}/${bulkPdfProgress.total}`
                 : '📦 Download All Progress Reports (ZIP)'}
             </button>
           </div>
+
+          {showBulkDateFilter && (
+            <DateFilterModal
+              title="Select Date Range for Bulk Progress Reports"
+              onConfirm={handleBulkDateFilterConfirm}
+              onCancel={() => setShowBulkDateFilter(false)}
+            />
+          )}
 
           {bulkPdfLoading && bulkPdfCurrent && (
             <div style={{ margin: '10px 0 14px', color: '#334155', fontWeight: 600 }}>
@@ -788,6 +809,8 @@ const BatchDetail = ({ batch, onBack }) => {
             autoGeneratePdf={true}
             onBulkPdfReady={handleBulkPdfReady}
             onBulkPdfError={handleBulkPdfError}
+            bulkPdfDateFrom={bulkPdfDateFrom}
+            bulkPdfDateTo={bulkPdfDateTo}
           />
         </div>
       )}

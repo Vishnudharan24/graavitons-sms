@@ -1,0 +1,210 @@
+/* ── Date Filter Modal ── */
+
+.date-filter-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: dfm-fade-in 0.25s ease-out;
+}
+
+.date-filter-modal {
+  background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 16px;
+  padding: 28px 32px 24px;
+  width: 90%;
+  max-width: 480px;
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.18),
+    0 8px 24px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  animation: dfm-slide-up 0.3s cubic-bezier(0.21, 1.02, 0.73, 1);
+}
+
+.date-filter-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.date-filter-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  letter-spacing: -0.02em;
+}
+
+.date-filter-close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #94a3b8;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.date-filter-close-btn:hover {
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+.date-filter-description {
+  color: #64748b;
+  font-size: 13.5px;
+  line-height: 1.55;
+  margin: 0 0 20px;
+}
+
+.date-filter-inputs {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.date-filter-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.date-filter-field label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.date-filter-input {
+  padding: 10px 12px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 14px;
+  color: #1e293b;
+  background: #f8fafc;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.date-filter-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  background: #fff;
+}
+
+.date-filter-error {
+  color: #ef4444;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.date-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.date-filter-btn {
+  flex: 1;
+  min-width: 120px;
+  padding: 11px 16px;
+  border: none;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.01em;
+}
+
+.date-filter-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.date-filter-btn-primary {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+}
+
+.date-filter-btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+}
+
+.date-filter-btn-secondary {
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  color: #334155;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.date-filter-btn-secondary:hover {
+  background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+  transform: translateY(-1px);
+}
+
+.date-filter-btn-cancel {
+  background: transparent;
+  color: #94a3b8;
+  flex: 0 0 auto;
+  min-width: 80px;
+}
+
+.date-filter-btn-cancel:hover {
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+/* ── Animations ── */
+
+@keyframes dfm-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes dfm-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 500px) {
+  .date-filter-modal {
+    padding: 20px;
+    max-width: 96%;
+  }
+
+  .date-filter-inputs {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .date-filter-actions {
+    flex-direction: column;
+  }
+
+  .date-filter-btn {
+    min-width: unset;
+  }
+}
