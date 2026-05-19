@@ -1807,6 +1807,90 @@ async def download_template(current_user: dict = Depends(get_current_user)):
     }
 
 
+@app.delete("/api/student/{student_no}")
+async def delete_student(student_no: int, current_user: dict = Depends(get_current_user)):
+    """
+    Permanently delete a student and ALL related data from the database.
+    Related tables (parent_info, tenth_mark, twelfth_mark, entrance_exams,
+    counselling_detail, daily_test, mock_test, achievers) are automatically
+    cleaned up via ON DELETE CASCADE foreign key constraints.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database connection failed"
+            )
+
+        cursor = conn.cursor()
+
+        # Fetch the student to confirm existence and get photo_url for cleanup
+        cursor.execute(
+            "SELECT student_no, student_id, student_name, photo_url FROM student WHERE student_no = %s",
+            (student_no,)
+        )
+        student_row = cursor.fetchone()
+
+        if not student_row:
+            cursor.close()
+            conn.close()
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Student with student_no {student_no} not found"
+            )
+
+        student_id = student_row[1]
+        student_name = student_row[2]
+        photo_url = student_row[3]
+
+        # Delete the student — CASCADE will remove all child records
+        cursor.execute("DELETE FROM student WHERE student_no = %s", (student_no,))
+        conn.commit()
+
+        # Clean up avatar file from disk if it exists
+        if photo_url:
+            try:
+                # photo_url is typically stored as "/uploads/avatars/<filename>"
+                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                avatar_path = os.path.join(base_dir, photo_url.lstrip("/"))
+                if os.path.isfile(avatar_path):
+                    os.remove(avatar_path)
+            except Exception:
+                # Non-critical — log but don't fail the request
+                pass
+
+        cursor.close()
+        conn.close()
+
+        return {
+            "message": f"Student '{student_name}' (ID: {student_id}) and all related data have been permanently deleted.",
+            "student_no": student_no,
+            "student_id": student_id,
+            "student_name": student_name
+        }
+
+    except HTTPException:
+        raise
+    except psycopg2.Error as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error while deleting student: {str(e)}"
+        )
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server error while deleting student: {str(e)}"
+        )
+
+
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

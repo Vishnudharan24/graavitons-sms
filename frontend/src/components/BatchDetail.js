@@ -38,6 +38,8 @@ const BatchDetail = ({ batch, onBack }) => {
   const [showBulkDateFilter, setShowBulkDateFilter] = useState(false);
   const [bulkPdfDateFrom, setBulkPdfDateFrom] = useState(null);
   const [bulkPdfDateTo, setBulkPdfDateTo] = useState(null);
+  const [removeConfirm, setRemoveConfirm] = useState(null); // student object to confirm removal
+  const [removeLoading, setRemoveLoading] = useState(false);
 
   const [students, setStudents] = useState([]);
 
@@ -139,6 +141,29 @@ const BatchDetail = ({ batch, onBack }) => {
   
   const handleEditStudent = (student) => {
     setShowEditStudent(student);
+  };
+
+  // ── Remove Student ──
+  const handleRemoveStudent = async () => {
+    if (!removeConfirm) return;
+    setRemoveLoading(true);
+    try {
+      const response = await authFetch(`${API_BASE}/api/student/${removeConfirm.studentNo}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `Failed to remove student (${response.status})`);
+      }
+      toast.success(`Student "${removeConfirm.name}" (${removeConfirm.rollNo}) has been removed successfully.`);
+      setRemoveConfirm(null);
+      fetchStudents(); // refresh list
+    } catch (err) {
+      console.error('Remove student error:', err);
+      toast.error(err.message || 'Failed to remove student. Please try again.');
+    } finally {
+      setRemoveLoading(false);
+    }
   };
 
   // ── Bulk Edit via Excel ──
@@ -777,7 +802,8 @@ const BatchDetail = ({ batch, onBack }) => {
                         <td>{student.gender}</td>
                         <td>
                           <button className="btn-action" onClick={() => handleViewStudent(student)} style={{ marginRight: '5px' }}>View</button>
-                          <button className="btn-action" onClick={() => handleEditStudent(student)} style={{ backgroundColor: '#f59e0b' }}>Edit</button>
+                          <button className="btn-action" onClick={() => handleEditStudent(student)} style={{ backgroundColor: '#f59e0b', marginRight: '5px' }}>Edit</button>
+                          <button className="btn-action btn-action-remove" onClick={() => setRemoveConfirm(student)}>Remove</button>
                         </td>
                       </tr>
                     ))
@@ -812,6 +838,39 @@ const BatchDetail = ({ batch, onBack }) => {
             bulkPdfDateFrom={bulkPdfDateFrom}
             bulkPdfDateTo={bulkPdfDateTo}
           />
+        </div>
+      )}
+
+      {/* Remove Student Confirmation Modal */}
+      {removeConfirm && (
+        <div className="remove-modal-overlay" onClick={() => !removeLoading && setRemoveConfirm(null)}>
+          <div className="remove-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="remove-modal-icon">⚠️</div>
+            <h3 className="remove-modal-title">Remove Student</h3>
+            <p className="remove-modal-text">
+              Are you sure you want to permanently remove{' '}
+              <strong>{removeConfirm.name}</strong> ({removeConfirm.rollNo}) from this batch?
+            </p>
+            <p className="remove-modal-warning">
+              This action is irreversible. All data including exam records, marks, and profile information will be permanently deleted.
+            </p>
+            <div className="remove-modal-actions">
+              <button
+                className="remove-modal-btn remove-modal-btn-cancel"
+                onClick={() => setRemoveConfirm(null)}
+                disabled={removeLoading}
+              >
+                Cancel
+              </button>
+              <button
+                className="remove-modal-btn remove-modal-btn-confirm"
+                onClick={handleRemoveStudent}
+                disabled={removeLoading}
+              >
+                {removeLoading ? '⏳ Removing...' : '🗑️ Remove Student'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

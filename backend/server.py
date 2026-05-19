@@ -77,6 +77,7 @@ async def root():
             "batch_delete": "DELETE /api/batch/{batch_id}",
             "student_create": "POST /api/student",
             "student_upload": "POST /api/student/upload",
+            "student_delete": "DELETE /api/student/{student_no}",
             "student_template": "GET /api/student/template",
             "daily_test_create": "POST /api/exam/daily-test",
             "daily_test_groups": "GET /api/exam/daily-test/batch/{batch_id}/groups",
