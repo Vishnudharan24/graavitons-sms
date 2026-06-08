@@ -40,6 +40,10 @@ const BatchDetail = ({ batch, onBack }) => {
   const [bulkPdfDateTo, setBulkPdfDateTo] = useState(null);
   const [removeConfirm, setRemoveConfirm] = useState(null); // student object to confirm removal
   const [removeLoading, setRemoveLoading] = useState(false);
+  const [showBulkPhotoUpload, setShowBulkPhotoUpload] = useState(false);
+  const [bulkPhotoFile, setBulkPhotoFile] = useState(null);
+  const [bulkPhotoResult, setBulkPhotoResult] = useState(null);
+  const [bulkPhotoLoading, setBulkPhotoLoading] = useState(false);
 
   const [students, setStudents] = useState([]);
 
@@ -226,6 +230,52 @@ const BatchDetail = ({ batch, onBack }) => {
       setBulkEditResult({ error: err.message });
     } finally {
       setBulkEditLoading(false);
+    }
+  };
+
+  // ── Bulk Photo Upload via ZIP ──
+  const handleBulkPhotoFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file && file.name.toLowerCase().endsWith('.zip')) {
+      setBulkPhotoFile(file);
+    } else if (file) {
+      toast.warning('Please upload a ZIP file (.zip)');
+      e.target.value = '';
+    }
+  };
+
+  const handleBulkPhotoUpload = async () => {
+    if (!bulkPhotoFile) return;
+    setBulkPhotoLoading(true);
+    setBulkPhotoResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', bulkPhotoFile);
+
+      const response = await authFetch(`${API_BASE}/api/student/bulk-upload-photos/${batch.batch_id}`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || 'Upload failed');
+      }
+
+      const result = await response.json();
+      setBulkPhotoResult(result);
+
+      if (result.success_count > 0) {
+        toast.success(`${result.success_count} photo(s) uploaded successfully!`);
+      } else {
+        toast.warning(result.message || 'No photos were matched to students.');
+      }
+    } catch (err) {
+      console.error('Bulk photo upload error:', err);
+      setBulkPhotoResult({ error: err.message });
+      toast.error(err.message || 'Bulk photo upload failed.');
+    } finally {
+      setBulkPhotoLoading(false);
     }
   };
 
@@ -537,6 +587,137 @@ const BatchDetail = ({ batch, onBack }) => {
     return <AddStudent batch={batch} onBack={handleBackFromAddStudent} onSave={handleSaveStudent} />;
   }
 
+  if (showBulkPhotoUpload) {
+    return (
+      <div className="batch-detail">
+        <div className="batch-header">
+          <button className="back-button" onClick={() => { setShowBulkPhotoUpload(false); setBulkPhotoFile(null); setBulkPhotoResult(null); }}>← Back</button>
+          <h2>📸 Bulk Upload Student Photos — {batch.batch_name}</h2>
+        </div>
+
+        <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px' }}>
+          {/* Instructions */}
+          <div style={{ background: '#f0f4ff', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
+            <h3 style={{ margin: '0 0 10px' }}>How It Works</h3>
+            <ol style={{ margin: 0, paddingLeft: '20px', color: '#4a5568', lineHeight: '2' }}>
+              <li>Name each photo with the student's <strong>Admission Number</strong> (e.g., <code>S2024001.jpg</code>, <code>S2024002.png</code>)</li>
+              <li>Put all photos into a <strong>ZIP file</strong></li>
+              <li>Upload the ZIP below</li>
+              <li>The system will automatically match photos to students in this batch</li>
+            </ol>
+            <div style={{ marginTop: '12px', padding: '10px 14px', background: '#e2e8f0', borderRadius: '8px', fontSize: '13px', color: '#475569' }}>
+              <strong>💡 Tips:</strong> Matching is case-insensitive • Supported formats: JPG, PNG, GIF, WEBP • Max 5MB per image • Max 50MB total ZIP
+            </div>
+          </div>
+
+          {/* Upload Section */}
+          <div style={{ background: '#fffbeb', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
+            <h3 style={{ margin: '0 0 10px' }}>Upload ZIP File</h3>
+            <input
+              type="file"
+              accept=".zip"
+              onChange={handleBulkPhotoFileChange}
+              disabled={bulkPhotoLoading}
+              style={{
+                padding: '10px', border: '2px dashed #cbd5e0',
+                borderRadius: '8px', width: '100%', cursor: 'pointer', marginBottom: '10px',
+              }}
+            />
+            {bulkPhotoFile && (
+              <p style={{ color: '#5b5fc7', fontWeight: '600', margin: '5px 0 15px' }}>
+                Selected: {bulkPhotoFile.name} ({(bulkPhotoFile.size / (1024 * 1024)).toFixed(1)} MB)
+              </p>
+            )}
+            <button
+              onClick={handleBulkPhotoUpload}
+              disabled={bulkPhotoLoading || !bulkPhotoFile}
+              style={{
+                padding: '10px 20px',
+                background: bulkPhotoLoading || !bulkPhotoFile
+                  ? '#cbd5e0'
+                  : 'linear-gradient(135deg, #5b5fc7 0%, #4347a0 100%)',
+                color: 'white', border: 'none', borderRadius: '8px',
+                cursor: bulkPhotoLoading || !bulkPhotoFile ? 'not-allowed' : 'pointer',
+                fontWeight: '600', fontSize: '14px',
+              }}
+            >
+              {bulkPhotoLoading ? '⏳ Uploading...' : '📸 Upload Photos'}
+            </button>
+          </div>
+
+          {/* Results */}
+          {bulkPhotoResult && (
+            <div style={{
+              borderRadius: '12px', padding: '20px',
+              background: bulkPhotoResult.error
+                ? '#fee'
+                : bulkPhotoResult.error_count === 0 && bulkPhotoResult.success_count > 0 ? '#d4edda'
+                : bulkPhotoResult.success_count > 0 ? '#fff3cd' : '#fee',
+              color: bulkPhotoResult.error
+                ? '#c00'
+                : bulkPhotoResult.error_count === 0 && bulkPhotoResult.success_count > 0 ? '#155724'
+                : bulkPhotoResult.success_count > 0 ? '#856404' : '#c00',
+              border: `1px solid ${bulkPhotoResult.error ? '#fcc' : bulkPhotoResult.error_count === 0 && bulkPhotoResult.success_count > 0 ? '#c3e6cb' : '#ffeaa7'}`,
+            }}>
+              {bulkPhotoResult.error ? (
+                <p><strong>Error:</strong> {bulkPhotoResult.error}</p>
+              ) : (
+                <>
+                  <h4 style={{ margin: '0 0 10px' }}>Upload Results</h4>
+                  {bulkPhotoResult.success_count > 0 && (
+                    <p style={{ margin: '5px 0' }}>✅ Photos matched & uploaded: <strong>{bulkPhotoResult.success_count}</strong></p>
+                  )}
+                  {bulkPhotoResult.skipped_count > 0 && (
+                    <p style={{ margin: '5px 0' }}>⏭️ Skipped: <strong>{bulkPhotoResult.skipped_count}</strong></p>
+                  )}
+                  {bulkPhotoResult.error_count > 0 && (
+                    <p style={{ margin: '5px 0' }}>❌ Errors: <strong>{bulkPhotoResult.error_count}</strong></p>
+                  )}
+
+                  {/* Matched details */}
+                  {bulkPhotoResult.results?.matched?.length > 0 && (
+                    <div style={{ marginTop: '10px' }}>
+                      <strong>Matched Students:</strong>
+                      <ul style={{ margin: '5px 0', paddingLeft: '20px', maxHeight: '150px', overflowY: 'auto' }}>
+                        {bulkPhotoResult.results.matched.map((item, idx) => (
+                          <li key={idx} style={{ color: '#155724' }}>{item.student_id} ← {item.filename}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Skipped details */}
+                  {bulkPhotoResult.results?.skipped?.length > 0 && (
+                    <div style={{ marginTop: '10px' }}>
+                      <strong>Skipped Files:</strong>
+                      <ul style={{ margin: '5px 0', paddingLeft: '20px', maxHeight: '150px', overflowY: 'auto' }}>
+                        {bulkPhotoResult.results.skipped.map((item, idx) => (
+                          <li key={idx} style={{ color: '#856404' }}>{item.filename} — {item.reason}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Error details */}
+                  {bulkPhotoResult.results?.errors?.length > 0 && (
+                    <div style={{ marginTop: '10px' }}>
+                      <strong>Errors:</strong>
+                      <ul style={{ margin: '5px 0', paddingLeft: '20px', maxHeight: '150px', overflowY: 'auto' }}>
+                        {bulkPhotoResult.results.errors.map((item, idx) => (
+                          <li key={idx} style={{ color: '#c00' }}>{item.filename} ({item.student_id}) — {item.reason}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (showBulkEdit) {
     return (
       <div className="batch-detail">
@@ -718,6 +899,7 @@ const BatchDetail = ({ batch, onBack }) => {
           <div className="management-buttons">
             <button className="btn btn-primary" onClick={handleAddStudent}>+ Add New Student</button>
             <button className="btn btn-secondary" onClick={() => setShowBulkEdit(true)} style={{ backgroundColor: '#f59e0b', color: 'white' }}>✏️ Bulk Edit via Excel</button>
+            <button className="btn btn-secondary" onClick={() => setShowBulkPhotoUpload(true)} style={{ backgroundColor: '#8b5cf6', color: 'white' }}>📸 Bulk Upload Photos</button>
             <button className="btn btn-secondary" onClick={handleAddExam}>+ New Exam</button>
             <button className="btn btn-report" onClick={handleGenerateReport} disabled={reportLoading}>
               {reportLoading ? '⏳ Generating...' : '📊 Generate Batch Report'}

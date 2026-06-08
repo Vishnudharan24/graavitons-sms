@@ -1807,6 +1807,338 @@ async def download_template(current_user: dict = Depends(get_current_user)):
     }
 
 
+@app.post("/api/student/{student_no}/photo")
+async def upload_student_photo(
+    student_no: int,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Upload or replace a student's profile photo.
+    Accepts image files (jpg, jpeg, png, gif, webp), max 5MB.
+    Saves to uploads/avatars/ and updates photo_url in the student table.
+    """
+    import time as _time
+
+    ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+
+    # Validate file extension
+    _, ext = os.path.splitext(file.filename or '')
+    ext = ext.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type '{ext}'. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+
+    # Read file content and validate size
+    contents = await file.read()
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File too large ({len(contents) / (1024*1024):.1f}MB). Maximum is 5MB."
+        )
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database connection failed"
+            )
+
+        cursor = conn.cursor()
+
+        # Check student exists and get current photo_url
+        cursor.execute(
+            "SELECT student_no, photo_url FROM student WHERE student_no = %s",
+            (student_no,)
+        )
+        student_row = cursor.fetchone()
+        if not student_row:
+            cursor.close()
+            conn.close()
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Student with student_no {student_no} not found"
+            )
+
+        old_photo_url = student_row[1]
+
+        # Save the new file
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        avatars_dir = os.path.join(base_dir, "uploads", "avatars")
+        os.makedirs(avatars_dir, exist_ok=True)
+
+        timestamp = int(_time.time() * 1000)
+        new_filename = f"student_{student_no}_{timestamp}{ext}"
+        new_filepath = os.path.join(avatars_dir, new_filename)
+
+        with open(new_filepath, "wb") as f:
+            f.write(contents)
+
+        new_photo_url = f"/uploads/avatars/{new_filename}"
+
+        # Update photo_url in the database
+        cursor.execute(
+            "UPDATE student SET photo_url = %s WHERE student_no = %s",
+            (new_photo_url, student_no)
+        )
+        conn.commit()
+
+        # Clean up old avatar file
+        if old_photo_url:
+            try:
+                old_path = os.path.join(base_dir, old_photo_url.lstrip("/"))
+                if os.path.isfile(old_path) and old_path != new_filepath:
+                    os.remove(old_path)
+            except Exception:
+                pass  # Non-critical — old file cleanup is best-effort
+
+        cursor.close()
+        conn.close()
+
+        return {"photo_url": new_photo_url, "message": "Photo uploaded successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error uploading photo: {str(e)}"
+        )
+
+
+@app.post("/api/student/bulk-upload-photos/{batch_id}")
+async def bulk_upload_student_photos(
+    batch_id: int,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Bulk upload student photos via a ZIP file.
+    Each image inside the ZIP should be named with the student's admission number (student_id).
+    e.g., S2024001.jpg, S2024002.png
+
+    The server matches filenames (case-insensitive, extension stripped) to students in the given batch.
+    """
+    import zipfile
+    import tempfile
+    import time as _time
+
+    ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    MAX_ZIP_SIZE = 50 * 1024 * 1024  # 50 MB
+    MAX_SINGLE_FILE_SIZE = 5 * 1024 * 1024  # 5 MB per image
+
+    # Validate file type
+    if not (file.filename or '').lower().endswith('.zip'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please upload a .zip file"
+        )
+
+    # Read and validate ZIP size
+    zip_contents = await file.read()
+    if len(zip_contents) > MAX_ZIP_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"ZIP file too large ({len(zip_contents) / (1024*1024):.1f}MB). Maximum is 50MB."
+        )
+
+    # Validate it's a real ZIP
+    if not zipfile.is_zipfile(io.BytesIO(zip_contents)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded file is not a valid ZIP archive"
+        )
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database connection failed"
+            )
+
+        cursor = conn.cursor()
+
+        # Check batch exists
+        cursor.execute("SELECT batch_id FROM batch WHERE batch_id = %s", (batch_id,))
+        if not cursor.fetchone():
+            cursor.close()
+            conn.close()
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Batch with ID {batch_id} not found"
+            )
+
+        # Build a lookup: lowercase student_id -> (student_no, current photo_url)
+        cursor.execute(
+            "SELECT student_no, student_id, photo_url FROM student WHERE batch_id = %s",
+            (batch_id,)
+        )
+        student_rows = cursor.fetchall()
+        student_lookup = {}
+        for row in student_rows:
+            student_lookup[str(row[1]).strip().lower()] = {
+                "student_no": row[0],
+                "student_id": row[1],
+                "photo_url": row[2]
+            }
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        avatars_dir = os.path.join(base_dir, "uploads", "avatars")
+        os.makedirs(avatars_dir, exist_ok=True)
+
+        matched = []
+        skipped = []
+        errors = []
+
+        with zipfile.ZipFile(io.BytesIO(zip_contents), 'r') as zf:
+            for entry in zf.namelist():
+                # Skip directories and hidden/system files
+                if entry.endswith('/') or entry.startswith('__MACOSX') or entry.startswith('.'):
+                    continue
+
+                # Get just the filename (ignore subdirectories inside ZIP)
+                basename = os.path.basename(entry)
+                if not basename:
+                    continue
+
+                name_without_ext, ext = os.path.splitext(basename)
+                ext = ext.lower()
+
+                # Skip non-image files
+                if ext not in ALLOWED_EXTENSIONS:
+                    skipped.append({
+                        "filename": basename,
+                        "reason": f"Not an image file (extension: {ext})"
+                    })
+                    continue
+
+                # Match to student (case-insensitive)
+                lookup_key = name_without_ext.strip().lower()
+                student_info = student_lookup.get(lookup_key)
+
+                if not student_info:
+                    skipped.append({
+                        "filename": basename,
+                        "reason": "No matching student found in this batch"
+                    })
+                    continue
+
+                # Read the image data
+                try:
+                    img_data = zf.read(entry)
+                except Exception as e:
+                    errors.append({
+                        "filename": basename,
+                        "student_id": student_info["student_id"],
+                        "reason": f"Failed to read from ZIP: {str(e)}"
+                    })
+                    continue
+
+                # Validate individual file size
+                if len(img_data) > MAX_SINGLE_FILE_SIZE:
+                    errors.append({
+                        "filename": basename,
+                        "student_id": student_info["student_id"],
+                        "reason": f"File too large ({len(img_data) / (1024*1024):.1f}MB). Max 5MB per image."
+                    })
+                    continue
+
+                # Save the file
+                try:
+                    sno = student_info["student_no"]
+                    timestamp = int(_time.time() * 1000)
+                    new_filename = f"student_{sno}_{timestamp}{ext}"
+                    new_filepath = os.path.join(avatars_dir, new_filename)
+
+                    with open(new_filepath, "wb") as f:
+                        f.write(img_data)
+
+                    new_photo_url = f"/uploads/avatars/{new_filename}"
+
+                    # Update DB
+                    cursor.execute(
+                        "UPDATE student SET photo_url = %s WHERE student_no = %s",
+                        (new_photo_url, sno)
+                    )
+
+                    # Clean up old avatar
+                    old_url = student_info["photo_url"]
+                    if old_url:
+                        try:
+                            old_path = os.path.join(base_dir, old_url.lstrip("/"))
+                            if os.path.isfile(old_path) and old_path != new_filepath:
+                                os.remove(old_path)
+                        except Exception:
+                            pass
+
+                    # Update lookup so subsequent entries for the same student see the new URL
+                    student_info["photo_url"] = new_photo_url
+
+                    matched.append({
+                        "student_id": student_info["student_id"],
+                        "filename": basename,
+                        "photo_url": new_photo_url
+                    })
+
+                except Exception as e:
+                    errors.append({
+                        "filename": basename,
+                        "student_id": student_info["student_id"],
+                        "reason": f"Failed to save: {str(e)}"
+                    })
+
+        # Commit all DB updates
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        success_count = len(matched)
+        skipped_count = len(skipped)
+        error_count = len(errors)
+
+        if success_count > 0 and error_count == 0:
+            message = f"All {success_count} photo(s) uploaded successfully"
+        elif success_count > 0:
+            message = f"Upload partially completed — {success_count} matched, {error_count} error(s)"
+        elif skipped_count > 0 and error_count == 0:
+            message = "No photos matched any students in this batch. Check that filenames match admission numbers."
+        else:
+            message = "Upload failed — no photos were processed"
+
+        return {
+            "message": message,
+            "success_count": success_count,
+            "skipped_count": skipped_count,
+            "error_count": error_count,
+            "results": {
+                "matched": matched,
+                "skipped": skipped[:50],
+                "errors": errors[:50]
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing ZIP file: {str(e)}"
+        )
+
+
 @app.delete("/api/student/{student_no}")
 async def delete_student(student_no: int, current_user: dict = Depends(get_current_user)):
     """
