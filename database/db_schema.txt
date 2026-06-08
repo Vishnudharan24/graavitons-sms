@@ -182,3 +182,25 @@ CREATE TABLE achievers (
     description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Function needed for safe text to numeric conversions
+CREATE OR REPLACE FUNCTION safe_numeric(val text)
+RETURNS NUMERIC AS $$
+BEGIN
+    IF val IS NULL OR val = '' THEN
+        RETURN NULL;
+    END IF;
+    RETURN val::NUMERIC;
+EXCEPTION WHEN OTHERS THEN
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- Performance Indexes
+CREATE INDEX IF NOT EXISTS idx_student_batch_id ON student(batch_id);
+CREATE INDEX IF NOT EXISTS idx_student_admission_no ON student(student_id);
+CREATE INDEX IF NOT EXISTS idx_daily_test_student_date ON daily_test(student_no, test_date);
+CREATE INDEX IF NOT EXISTS idx_daily_test_batch_key ON daily_test(test_date, subject, unit_name);
+CREATE INDEX IF NOT EXISTS idx_mock_test_student_date ON mock_test(student_no, test_date);
+CREATE INDEX IF NOT EXISTS idx_mock_test_date ON mock_test(test_date);
+CREATE INDEX IF NOT EXISTS idx_feedback_student_date ON feedback(student_no, feedback_date DESC);
