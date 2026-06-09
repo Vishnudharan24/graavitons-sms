@@ -1,23 +1,21 @@
-version: '3.8'
-
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     container_name: graavitons_postgres
     restart: always
     environment:
-      POSTGRES_USER: myuser
+      POSTGRES_USER: graavitons
       POSTGRES_PASSWORD: mypassword
-      POSTGRES_DB: mydb
+      POSTGRES_DB: graavitons_sms
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db-init:/docker-entrypoint-initdb.d
     networks:
       - graavitons-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U myuser -d mydb"]
+      test: ["CMD-SHELL", "pg_isready -U graavitons -d graavitons_sms"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -29,16 +27,11 @@ services:
     env_file:
       - ./backend/.env
     ports:
-      - "8000:8000"
-    expose:
-      - "8000"
+      - "127.0.0.1:8000:8000"
     networks:
       - graavitons-network
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./backend/uploads:/app/uploads
-      - ./database:/app/database
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 10s
@@ -52,6 +45,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        REACT_APP_API_BASE_URL: ""
     container_name: graavitons_frontend
     restart: always
     ports:
@@ -64,7 +59,7 @@ services:
 
 networks:
   graavitons-network:
-    external: true
+    driver: bridge
 
 volumes:
   postgres_data:
