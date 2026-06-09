@@ -16,8 +16,8 @@ services:
       - graavitons-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U graavitons -d graavitons_sms"]
-      interval: 10s
-      timeout: 5s
+      interval: 15s
+      timeout: 10s
       retries: 30
 
   backend:
